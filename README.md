@@ -43,14 +43,6 @@ different view on Jupiters Great Red Spot.
 
 ## Cloud & Circulation Structure
 
-The zonal view below shows NH₃-ice (background) with closed white contours marking water-cloud-ice regions
-and vertical lines indicating five circulation cells north and south of the equator (colour = radial
-velocity component u).
-
-![Jupiter NH3/water-ice clouds in circulation cells](Jupiter_zonal.jpeg)
-
-![Jupiter chemistry layers](Jupiter_chemistry.jpeg)
-
 ---
 
 ## Repository Layout
