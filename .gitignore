@@ -1,0 +1,34 @@
+# Compiled artifacts
+*.o
+*.d
+*.a
+*.so
+*.so.*
+
+# Python build artifacts
+*.pyc
+__pycache__/
+*.egg-info/
+build/
+dist/
+python/build/
+
+# Cython generated C++
+python/pyatjup.cpp
+
+# Simulation output data
+python/output-Jupiter/
+python/output-Jupiter_vor_Claude/
+jupiter/output-Jupiter/
+planet/output-Jupiter*/
+
+# Executables
+cli/jup
+python/jup
+planet/jup
+
+# Reference papers (copyright)
+Reaction_Papers/
+
+# ODT documents
+*.odt

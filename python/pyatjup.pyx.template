@@ -1,0 +1,97 @@
+import sys
+
+from atjup cimport cJupiterModel
+
+from libcpp cimport bool
+from libcpp.string cimport string
+from libcpp.vector cimport vector
+
+class Model:
+    """
+        ATJUP Jupiter's cell structure in the atmosphere
+    """
+    def __init__(self):
+        self.jupiter = Jupiter()
+        self.output_path = ""
+        self.config_xml = ""
+
+    def run_atjup(self, output_path, cfg_xml):
+        self.output_path = output_path
+        self.config_xml = cfg_xml
+
+#        cfg_xml = cfg_xml.str.encode('utf-8')
+
+        print self.output_path 
+        print self.config_xml 
+        self.jupiter.load_config(self.config_xml)
+        self.jupiter.run()
+
+
+
+
+cdef class Jupiter:
+    """ 
+    Cython wrapper class for C++ class Jupiter
+    """
+    cdef:
+        cJupiterModel *_thisptr
+
+    def __cinit__(Jupiter self):
+        # Initialize the "this pointer" to NULL so __dealloc__
+        # knows if there is something to deallocate. Do not 
+        # call new cJupiterModel() here.
+        self._thisptr = NULL
+        
+    def __init__(Jupiter self):
+        # Constructing the C++ object might raise std::bad_alloc
+        # which is automatically converted to a Python MemoryError
+        # by Cython. We therefore need to call "new cJupiterModel()" in
+        # __init__ instead of __cinit__.
+        self._thisptr = new cJupiterModel() 
+
+    def __dealloc__(Jupiter self):
+        # Only call del if the C++ object is alive, 
+        # or we will get a segfault.
+        if self._thisptr != NULL:
+            del self._thisptr
+            
+    cdef int _check_alive(Jupiter self) except -1:
+        # Because of the context manager protocol, the C++ object
+        # might die before PyJupiter self is reclaimed.
+        # We therefore need a small utility to check for the
+        # availability of self._thisptr
+        if self._thisptr == NULL:
+            raise RuntimeError("Wrapped C++ object is deleted")
+        else:
+            return 0
+
+    def load_config(Jupiter self, str filename):
+        self._check_alive()
+        self._thisptr.LoadConfig(filename)
+        return None
+
+    def run(Jupiter self):
+        self._check_alive()
+        self._thisptr.Run()
+        return None
+
+{{ jupiter_params }}
+
+    # The context manager protocol allows us to precisely
+    # control the liftetime of the wrapped C++ object. del
+    # is called deterministically and independently of 
+    # the Python garbage collection.
+
+    def __enter__(Jupiter self):
+        self._check_alive()
+        return self
+    
+    def __exit__(Jupiter self, exc_tp, exc_val, exc_tb):
+        if self._thisptr != NULL:
+            del self._thisptr 
+            self._thisptr = NULL # inform __dealloc__
+        return False # propagate exceptions
+
+cdef public void PythonPrint(const char *s):
+    print s,
+    sys.stdout.flush()

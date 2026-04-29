@@ -1,0 +1,200 @@
+#include "cJupiterModel.h"
+
+using namespace std;
+
+void cJupiterModel::RungeKuttaJup(){
+    cout << endl << "      ATJUP: RungeKuttaJup" << endl;
+
+    auto begin = std::chrono::high_resolution_clock::now();
+
+    // Precompute sin/cos tables — depend only on j
+    // sinthe is clamped to a minimum to prevent 1/sin²θ blow-up near the poles.
+    // The sequential k-loop in the RK creates an asymmetric phi Laplacian whose
+    // error is amplified by inv_rm2sinthe2; clamping keeps the amplification < 1.
+    // PressureSolverJup uses the same threshold (0.4).
+    constexpr double sinthe_min = 0.4;
+    std::vector<double> sinthe_tbl(jm), costhe_tbl(jm);
+    for(int j = 0; j < jm; j++){
+        sinthe_tbl[j] = std::max(sinthe_min, std::abs(sin(the.z[j])));
+        costhe_tbl[j] = cos(the.z[j]);
+    }
+
+    const double inv_2dr   = 1.0 / (2.0 * dr);
+    const double inv_2dthe = 1.0 / (2.0 * dthe);
+    const double inv_2dphi = 1.0 / (2.0 * dphi);
+    const double inv_dr2   = 1.0 / (dr   * dr);
+    const double inv_dthe2 = 1.0 / (dthe * dthe);
+    const double inv_dphi2 = 1.0 / (dphi * dphi);
+
+    #pragma omp parallel for collapse(2) schedule(static)
+    for(int i = 1; i < im-1; i++){
+        for(int j = 3; j < jm-3; j++){
+
+            // Build geometry struct once per (i,j)
+            CellGeometry geo;
+            geo.rm      = rad.z[i];
+            geo.rm2     = geo.rm * geo.rm;
+            geo.exp_rm   = coord_stretching ? 1.0 / (geo.rm + 1.0) : 1.0;
+            geo.exp_2_rm = geo.exp_rm * geo.exp_rm;
+            geo.sinthe  = sinthe_tbl[j];
+            geo.sinthe2 = geo.sinthe * geo.sinthe;
+            geo.costhe  = costhe_tbl[j];
+            if(j > 90) geo.costhe = -geo.costhe;
+            geo.cotanthe            = geo.costhe / geo.sinthe;
+            geo.inv_rm              = 1.0 / geo.rm;
+            geo.inv_rm2             = 1.0 / geo.rm2;
+            geo.inv_rmsinthe        = 1.0 / (geo.rm * geo.sinthe);
+            geo.inv_rm2sinthe       = geo.inv_rm2 / geo.sinthe;
+            geo.inv_rm2sinthe2      = geo.inv_rm2 / geo.sinthe2;
+            geo.costhe_inv_rm2sinthe = geo.costhe * geo.inv_rm2sinthe;
+            geo.inv_2dr   = inv_2dr;
+            geo.inv_2dthe = inv_2dthe;
+            geo.inv_2dphi = inv_2dphi;
+            geo.inv_dr2   = inv_dr2;
+            geo.inv_dthe2 = inv_dthe2;
+            geo.inv_dphi2 = inv_dphi2;
+
+            for(int k = 1; k < km-1; k++){
+
+                if(SeaMount.x[i][j][k] == 1.0) continue;
+
+                double tn_ijk     = tn.x[i][j][k];
+                double un_ijk     = un.x[i][j][k];
+                double vn_ijk     = vn.x[i][j][k];
+                double wn_ijk     = wn.x[i][j][k];
+                double h2on_ijk   = h2on.x[i][j][k];
+                double h2ocn_ijk  = h2o_cloudn.x[i][j][k];
+                double h2oin_ijk  = h2o_icen.x[i][j][k];
+                double h2sn_ijk   = h2sn.x[i][j][k];
+                double nh3n_ijk   = nh3n.x[i][j][k];
+                double nh3cn_ijk  = nh3_cloudn.x[i][j][k];
+                double nh3in_ijk  = nh3_icen.x[i][j][k];
+                double nh4shn_ijk = nh4shn.x[i][j][k];
+
+                // ----- RK stage 1 -----
+                cJupiterModel::RHSJup(i, j, k, geo);
+                double kt1     = rhs_t.x[i][j][k];
+                double ku1     = rhs_u.x[i][j][k];
+                double kv1     = rhs_v.x[i][j][k];
+                double kw1     = rhs_w.x[i][j][k];
+                double kc1     = rhs_h2o.x[i][j][k];
+                double kcloud1 = rhs_h2o_cloud.x[i][j][k];
+                double kice1   = rhs_h2o_ice.x[i][j][k];
+                double kh2s1   = rhs_h2s.x[i][j][k];
+                double knh31   = rhs_nh3.x[i][j][k];
+                double knh3c1  = rhs_nh3_cloud.x[i][j][k];
+                double knh3i1  = rhs_nh3_ice.x[i][j][k];
+                double knh4sh1 = rhs_nh4sh.x[i][j][k];
+
+                t.x[i][j][k]         = tn_ijk    + kt1     * 0.5 * dt;
+                u.x[i][j][k]         = un_ijk    + ku1     * 0.5 * dt;
+                v.x[i][j][k]         = vn_ijk    + kv1     * 0.5 * dt;
+                w.x[i][j][k]         = wn_ijk    + kw1     * 0.5 * dt;
+                h2o.x[i][j][k]       = h2on_ijk  + kc1     * 0.5 * dt;
+                h2o_cloud.x[i][j][k] = h2ocn_ijk + kcloud1 * 0.5 * dt;
+                h2o_ice.x[i][j][k]   = h2oin_ijk + kice1   * 0.5 * dt;
+                h2s.x[i][j][k]       = h2sn_ijk  + kh2s1   * 0.5 * dt;
+                nh3.x[i][j][k]       = nh3n_ijk  + knh31   * 0.5 * dt;
+                nh3_cloud.x[i][j][k] = nh3cn_ijk + knh3c1  * 0.5 * dt;
+                nh3_ice.x[i][j][k]   = nh3in_ijk + knh3i1  * 0.5 * dt;
+                nh4sh.x[i][j][k]     = nh4shn_ijk + knh4sh1 * 0.5 * dt;
+
+                // ----- RK stage 2 -----
+                cJupiterModel::RHSJup(i, j, k, geo);
+                double kt2     = rhs_t.x[i][j][k];
+                double ku2     = rhs_u.x[i][j][k];
+                double kv2     = rhs_v.x[i][j][k];
+                double kw2     = rhs_w.x[i][j][k];
+                double kc2     = rhs_h2o.x[i][j][k];
+                double kcloud2 = rhs_h2o_cloud.x[i][j][k];
+                double kice2   = rhs_h2o_ice.x[i][j][k];
+                double kh2s2   = rhs_h2s.x[i][j][k];
+                double knh32   = rhs_nh3.x[i][j][k];
+                double knh3c2  = rhs_nh3_cloud.x[i][j][k];
+                double knh3i2  = rhs_nh3_ice.x[i][j][k];
+                double knh4sh2 = rhs_nh4sh.x[i][j][k];
+
+                t.x[i][j][k]         = tn_ijk    + kt2     * 0.5 * dt;
+                u.x[i][j][k]         = un_ijk    + ku2     * 0.5 * dt;
+                v.x[i][j][k]         = vn_ijk    + kv2     * 0.5 * dt;
+                w.x[i][j][k]         = wn_ijk    + kw2     * 0.5 * dt;
+                h2o.x[i][j][k]       = h2on_ijk  + kc2     * 0.5 * dt;
+                h2o_cloud.x[i][j][k] = h2ocn_ijk + kcloud2 * 0.5 * dt;
+                h2o_ice.x[i][j][k]   = h2oin_ijk + kice2   * 0.5 * dt;
+                h2s.x[i][j][k]       = h2sn_ijk  + kh2s2   * 0.5 * dt;
+                nh3.x[i][j][k]       = nh3n_ijk  + knh32   * 0.5 * dt;
+                nh3_cloud.x[i][j][k] = nh3cn_ijk + knh3c2  * 0.5 * dt;
+                nh3_ice.x[i][j][k]   = nh3in_ijk + knh3i2  * 0.5 * dt;
+                nh4sh.x[i][j][k]     = nh4shn_ijk + knh4sh2 * 0.5 * dt;
+
+                // ----- RK stage 3 -----
+                cJupiterModel::RHSJup(i, j, k, geo);
+                double kt3     = rhs_t.x[i][j][k];
+                double ku3     = rhs_u.x[i][j][k];
+                double kv3     = rhs_v.x[i][j][k];
+                double kw3     = rhs_w.x[i][j][k];
+                double kc3     = rhs_h2o.x[i][j][k];
+                double kcloud3 = rhs_h2o_cloud.x[i][j][k];
+                double kice3   = rhs_h2o_ice.x[i][j][k];
+                double kh2s3   = rhs_h2s.x[i][j][k];
+                double knh33   = rhs_nh3.x[i][j][k];
+                double knh3c3  = rhs_nh3_cloud.x[i][j][k];
+                double knh3i3  = rhs_nh3_ice.x[i][j][k];
+                double knh4sh3 = rhs_nh4sh.x[i][j][k];
+
+                t.x[i][j][k]         = tn_ijk    + kt3     * dt;
+                u.x[i][j][k]         = un_ijk    + ku3     * dt;
+                v.x[i][j][k]         = vn_ijk    + kv3     * dt;
+                w.x[i][j][k]         = wn_ijk    + kw3     * dt;
+                h2o.x[i][j][k]       = h2on_ijk  + kc3     * dt;
+                h2o_cloud.x[i][j][k] = h2ocn_ijk + kcloud3 * dt;
+                h2o_ice.x[i][j][k]   = h2oin_ijk + kice3   * dt;
+                h2s.x[i][j][k]       = h2sn_ijk  + kh2s3   * dt;
+                nh3.x[i][j][k]       = nh3n_ijk  + knh33   * dt;
+                nh3_cloud.x[i][j][k] = nh3cn_ijk + knh3c3  * dt;
+                nh3_ice.x[i][j][k]   = nh3in_ijk + knh3i3  * dt;
+                nh4sh.x[i][j][k]     = nh4shn_ijk + knh4sh3 * dt;
+
+                // ----- RK stage 4 -----
+                cJupiterModel::RHSJup(i, j, k, geo);
+                double kt4     = rhs_t.x[i][j][k];
+                double ku4     = rhs_u.x[i][j][k];
+                double kv4     = rhs_v.x[i][j][k];
+                double kw4     = rhs_w.x[i][j][k];
+                double kc4     = rhs_h2o.x[i][j][k];
+                double kcloud4 = rhs_h2o_cloud.x[i][j][k];
+                double kice4   = rhs_h2o_ice.x[i][j][k];
+                double kh2s4   = rhs_h2s.x[i][j][k];
+                double knh34   = rhs_nh3.x[i][j][k];
+                double knh3c4  = rhs_nh3_cloud.x[i][j][k];
+                double knh3i4  = rhs_nh3_ice.x[i][j][k];
+                double knh4sh4 = rhs_nh4sh.x[i][j][k];
+
+                // ----- Final RK4 update -----
+                const double one_sixth = 1.0 / 6.0;
+                t.x[i][j][k]         = tn_ijk    + dt * (kt1     + 2.0*kt2     + 2.0*kt3     + kt4    ) * one_sixth;
+                u.x[i][j][k]         = un_ijk    + dt * (ku1     + 2.0*ku2     + 2.0*ku3     + ku4    ) * one_sixth;
+                v.x[i][j][k]         = vn_ijk    + dt * (kv1     + 2.0*kv2     + 2.0*kv3     + kv4    ) * one_sixth;
+                w.x[i][j][k]         = wn_ijk    + dt * (kw1     + 2.0*kw2     + 2.0*kw3     + kw4    ) * one_sixth;
+                h2o.x[i][j][k]       = std::max(0.0, h2on_ijk  + dt * (kc1     + 2.0*kc2     + 2.0*kc3     + kc4    ) * one_sixth);
+                h2o_cloud.x[i][j][k] = std::max(0.0, h2ocn_ijk + dt * (kcloud1 + 2.0*kcloud2 + 2.0*kcloud3 + kcloud4) * one_sixth);
+                h2o_ice.x[i][j][k]   = std::max(0.0, h2oin_ijk + dt * (kice1   + 2.0*kice2   + 2.0*kice3   + kice4  ) * one_sixth);
+                h2s.x[i][j][k]       = std::max(0.0, h2sn_ijk  + dt * (kh2s1   + 2.0*kh2s2   + 2.0*kh2s3   + kh2s4  ) * one_sixth);
+                nh3.x[i][j][k]       = std::max(0.0, nh3n_ijk  + dt * (knh31   + 2.0*knh32   + 2.0*knh33   + knh34  ) * one_sixth);
+                nh3_cloud.x[i][j][k] = std::max(0.0, nh3cn_ijk + dt * (knh3c1  + 2.0*knh3c2  + 2.0*knh3c3  + knh3c4 ) * one_sixth);
+                nh3_ice.x[i][j][k]   = std::max(0.0, nh3in_ijk + dt * (knh3i1  + 2.0*knh3i2  + 2.0*knh3i3  + knh3i4 ) * one_sixth);
+                nh4sh.x[i][j][k]     = std::max(0.0, nh4shn_ijk + dt * (knh4sh1 + 2.0*knh4sh2 + 2.0*knh4sh3 + knh4sh4) * one_sixth);
+            }
+        }
+    }
+
+    auto end = std::chrono::high_resolution_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
+    printf(" time measured: %.3f seconds for solveRungeKutta\n", elapsed.count() * 1e-9);
+
+    cout << "      ATJUP: RungeKuttaJup ended" << endl;
+    return;
+}
+/*
+*
+*/
