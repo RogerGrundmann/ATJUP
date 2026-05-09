@@ -10,9 +10,9 @@ void cJupiterModel::SetDefaultConfig() {
   paraview_panorama_vts_flag = true;
 
   // jupiter section
-  nm = 512;
-  checkpoint = 32;
-  panorama_print = 224;
+  nm = 224;
+  checkpoint = 8;
+  panorama_print = 32;
   Coriolis = 1;
   centrifugal = 1;
   buoyancy = 1;
@@ -54,4 +54,5 @@ void cJupiterModel::SetDefaultConfig() {
   h2s_tropopause = 0.0;
   nh3_tropopause = 0.0;
   nh4sh_tropopause = 0.0;
+  ch4_tropopause = 0.246;
 }

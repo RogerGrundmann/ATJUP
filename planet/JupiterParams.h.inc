@@ -53,3 +53,4 @@ double h2o_tropopause;
 double h2s_tropopause;
 double nh3_tropopause;
 double nh4sh_tropopause;
+double ch4_tropopause;

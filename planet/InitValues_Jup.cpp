@@ -259,6 +259,12 @@ void cJupiterModel::init_vapour_cloud_ice(std::string gas,
     double cloud_loc_pole      = 0.0;
     double magnus              = MAGNUS_COEFF;
 
+    if (gas == "CH4") {
+        r_max_equator      = r_ch4;
+        r_max_pole         = R_MAX_POLE_FRAC * r_ch4;
+        cloud_loc_equator  = 1.0;
+        cloud_loc_pole     = 0.0;
+    }
     if (gas == "H2O") {
         r_max_equator      = r_h2o;
         r_max_pole         = R_MAX_POLE_FRAC * r_h2o;

@@ -54,6 +54,7 @@ inline void BC_Jup::bcRadius()
 
     Array* fields[] = {
         &m.t, &m.u, &m.v, &m.w,
+        &m.ch4, &m.ch4_cloud, &m.ch4_ice,
         &m.h2o, &m.h2o_cloud, &m.h2o_ice,
         &m.h2s,
         &m.nh3, &m.nh3_cloud, &m.nh3_ice,
@@ -95,6 +96,7 @@ inline void BC_Jup::bcTheta()
     // All fields except v and w receive 2-point Neumann extrapolation at poles.
     Array* extrap_fields[] = {
         &m.t, &m.u,
+        &m.ch4, &m.ch4_cloud, &m.ch4_ice,
         &m.h2o, &m.h2o_cloud, &m.h2o_ice,
         &m.h2s,
         &m.nh3, &m.nh3_cloud, &m.nh3_ice,
@@ -112,6 +114,7 @@ inline void BC_Jup::bcTheta()
     // Flux fields that are singular-prone near poles: zero at pole boundary.
     Array* zero_at_poles[] = {
         &m.massflux_h2s, &m.massflux_nh3, &m.massflux_nh4sh,
+        &m.fluxlim_nh4sh,
         &m.difflux_h2s,  &m.difflux_nh3,  &m.difflux_nh4sh,
     };
     const int nz = (int)(sizeof(zero_at_poles) / sizeof(zero_at_poles[0]));
@@ -149,14 +152,16 @@ inline void BC_Jup::bcPhi()
 
     Array* fields[] = {
         &m.t, &m.u, &m.v, &m.w,
+        &m.ch4, &m.ch4_cloud, &m.ch4_ice,
         &m.h2o, &m.h2o_cloud, &m.h2o_ice,
         &m.h2s,
         &m.nh3, &m.nh3_cloud, &m.nh3_ice,
         &m.nh4sh,
-        &m.j_h2s,  &m.j_nh3,  &m.j_nh4sh,
-        &m.jT_h2s, &m.jT_nh3, &m.jT_nh4sh,
+        &m.j_h2s,  &m.j_nh3,
+        &m.jT_h2s, &m.jT_nh3,
         &m.w_h2s,  &m.w_nh3,  &m.w_nh4sh,
         &m.massflux_h2s,  &m.massflux_nh3,  &m.massflux_nh4sh,
+        &m.fluxlim_nh4sh,
         &m.difflux_h2s,   &m.difflux_nh3,   &m.difflux_nh4sh,
         &m.thermalmassflux,
         &m.CoriolisForce, &m.CentrifugalForce,
@@ -239,6 +244,7 @@ inline void BC_Jup::bcSolidGround()
     // is as valid as extrapolating the primary state variables.
     Array* scalars[] = {
         &m.t, &m.p_stat, &m.p_dyn,
+        &m.ch4, &m.ch4_cloud, &m.ch4_ice,
         &m.h2o, &m.h2o_cloud, &m.h2o_ice,
         &m.h2s,
         &m.nh3, &m.nh3_cloud, &m.nh3_ice,
@@ -247,6 +253,7 @@ inline void BC_Jup::bcSolidGround()
         &m.jT_h2s, &m.jT_nh3, &m.jT_nh4sh,
         &m.w_h2s,  &m.w_nh3,  &m.w_nh4sh,
         &m.massflux_h2s,  &m.massflux_nh3,  &m.massflux_nh4sh,
+        &m.fluxlim_nh4sh,
         &m.difflux_h2s,   &m.difflux_nh3,   &m.difflux_nh4sh,
         &m.thermalmassflux,
         &m.CoriolisForce, &m.CentrifugalForce,
@@ -438,11 +445,12 @@ inline void BC_Jup::bcScalarSurfSur()
     Array* scalars[] = {
         &m.u, &m.v, &m.w,
         &m.t, &m.p_stat,
+        &m.ch4, &m.ch4_cloud, &m.ch4_ice,
         &m.h2o, &m.h2o_cloud, &m.h2o_ice,
         &m.h2s, &m.j_h2s, &m.jT_h2s,
         &m.nh3, &m.nh3_cloud, &m.nh3_ice,
         &m.j_nh3, &m.jT_nh3,
-        &m.nh4sh,
+        &m.nh4sh, &m.j_nh4sh, &m.jT_nh4sh,
         &m.difflux_h2s, &m.difflux_nh3, &m.difflux_nh4sh, 
         &m.massflux_h2s, &m.massflux_nh3, &m.massflux_nh4sh, 
         &m.w_h2s, &m.w_nh3, &m.w_nh4sh, 
@@ -517,6 +525,9 @@ inline void BC_Jup::bcScalarSurfSur()
 
             m.t.x[0][j][k]         = m.t.x[i_surf][j][k];
             m.p_stat.x[0][j][k]    = m.p_stat.x[i_surf][j][k];
+            m.ch4.x[0][j][k]       = m.ch4.x[i_surf][j][k];
+            m.ch4_cloud.x[0][j][k] = m.ch4_cloud.x[i_surf][j][k];
+            m.ch4_ice.x[0][j][k]   = m.ch4_ice.x[i_surf][j][k];
             m.h2o.x[0][j][k]       = m.h2o.x[i_surf][j][k];
             m.h2o_cloud.x[0][j][k] = m.h2o_cloud.x[i_surf][j][k];
             m.h2o_ice.x[0][j][k]   = m.h2o_ice.x[i_surf][j][k];

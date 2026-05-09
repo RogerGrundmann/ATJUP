@@ -127,6 +127,9 @@ public:
 
         auto begin = chrono::high_resolution_clock::now();
 
+//        const double h2   = 0.74;
+//        const double he   = 0.24;
+
         const double DT_nh3   = m.mue_nh3   / (m.rg_nh3   * m.sc_nh3);
         const double DT_h2s   = m.mue_h2s   / (m.rg_h2s   * m.sc_h2s);
         const double DT_nh4sh = m.mue_nh4sh / (m.rg_nh4sh * m.sc_nh4sh);
@@ -138,9 +141,9 @@ public:
                               + m.X_h2o * m.m_h2o + m.X_h2s * m.m_h2s
                               + m.X_nh3 * m.m_nh3 + m.X_nh4sh * m.m_nh4sh;
 
-        const double L_nh3    = m.r_mix * m.cp_mix * D_nh3   / m.k_mix;
-        const double L_h2s    = m.r_mix * m.cp_mix * D_h2s   / m.k_mix;
-        const double L_nh4sh  = m.r_mix * m.cp_mix * D_nh4sh / m.k_mix;
+        const double L_nh3    = m.r_mix * m.cp_mix * D_nh3    / m.k_mix;
+        const double L_h2s    = m.r_mix * m.cp_mix * D_h2s    / m.k_mix;
+        const double L_nh4sh  = m.r_mix * m.cp_mix * D_nh4sh  / m.k_mix;
         const double LT_nh3   = m.r_mix * m.cp_mix * DT_nh3   / m.k_mix;
         const double LT_h2s   = m.r_mix * m.cp_mix * DT_h2s   / m.k_mix;
         const double LT_nh4sh = m.r_mix * m.cp_mix * DT_nh4sh / m.k_mix;
@@ -150,7 +153,7 @@ public:
         #endif
         for (int k = 1; k < m.km-1; k++) {
             for (int j = 1; j < m.jm-1; j++) {
-                const double sinthe = std::max(sin(m.the.z[j]), 0.4);  // matches sinthe_min in RungeKutta_Jup.cpp
+                const double sinthe = std::max(sin(m.the.z[j]), 0.4);   // matches sinthe_min in RungeKutta_Jup.cpp
                 for (int i = 1; i < m.im-1; i++) {
                     const double rm       = m.rad.z[i];
                     const double rmsinthe = rm * sinthe;
@@ -171,14 +174,19 @@ public:
                     derivative_1_order_boundary(i, j, k, dnh3dr,   dnh3dthe,   dnh3dphi,   m.nh3);
                     derivative_1_order_boundary(i, j, k, dnh4shdr, dnh4shdthe, dnh4shdphi, m.nh4sh);
 
-                    const double dt_div = dtdr + dtdthe / rm + dtdphi / rmsinthe;
+                    // Pole-symmetric sum of gradient components: dXdr and dXdphi are
+                    // pole-symmetric for symmetric inputs, dXdthe is pole-antisymmetric.
+                    // std::abs() on the theta term symmetrizes the resulting scalar.
+                    // (difflux_* below uses laplacian_spherical() which is already
+                    // pole-symmetric by construction via cosθ·∂c/∂θ; no fix needed there.)
+                    const double dt_div = dtdr + std::abs(dtdthe) / rm + dtdphi / rmsinthe;
                     m.jT_nh3.x[i][j][k]   = m.r_mix * LT_nh3   / m.t.x[i][j][k] * dt_div;
                     m.jT_h2s.x[i][j][k]   = m.r_mix * LT_h2s   / m.t.x[i][j][k] * dt_div;
                     m.jT_nh4sh.x[i][j][k] = m.r_mix * LT_nh4sh / m.t.x[i][j][k] * dt_div;
 
-                    const double dnh3_div   = dnh3dr   + dnh3dthe   / rm + dnh3dphi   / rmsinthe;
-                    const double dh2s_div   = dh2sdr   + dh2sdthe   / rm + dh2sdphi   / rmsinthe;
-                    const double dnh4sh_div = dnh4shdr + dnh4shdthe / rm + dnh4shdphi / rmsinthe;
+                    const double dnh3_div   = dnh3dr   + std::abs(dnh3dthe)   / rm + dnh3dphi   / rmsinthe;
+                    const double dh2s_div   = dh2sdr   + std::abs(dh2sdthe)   / rm + dh2sdphi   / rmsinthe;
+                    const double dnh4sh_div = dnh4shdr + std::abs(dnh4shdthe) / rm + dnh4shdphi / rmsinthe;
 
                     const double cM_nh3   = L_nh3   * m.nh3.x[i][j][k]   / m.r_mix;
                     const double cM_h2s   = L_h2s   * m.h2s.x[i][j][k]   / m.r_mix;
@@ -226,6 +234,114 @@ public:
         cout << "      ATJUP: DiffMassFluxJup ended" << endl;
     }
 
+    // -----------------------------------------------------------------------
+    // TVD flux limiter for NH4SH advection (Superbee by default).
+    // Total Variation Diminishing (TVD)
+    // Computes the correction:
+    //   fluxlim_nh4sh = transport_centered - transport_TVD
+    //
+    // Adding this to rhs_nh4sh in RHSNept replaces the centered-difference
+    // advection with the Superbee-limited upwind scheme, preventing spurious
+    // oscillations at the sharp NH4SH cloud-formation boundary.
+    //
+    // To switch limiter: replace superbee_phi() with van_leer_phi() below.
+    // -----------------------------------------------------------------------
+    void FluxLimiterNH4SH()
+    {
+        using namespace std;
+        cout << endl << "      ATJUP: FluxLimiterNH4SH" << endl;
+
+        auto begin = chrono::high_resolution_clock::now();
+
+        const int    im = m.im, jm = m.jm, km = m.km;
+        const double dr   = m.dr;
+        const double dthe = m.dthe;
+        const double dphi = m.dphi;
+        constexpr double sinthe_min = 0.4;
+        constexpr double eps = 1.0e-12;
+
+        #pragma omp parallel for collapse(3) schedule(static)
+        for(int k = 1; k < km-1; k++){
+            for(int j = 1; j < jm-1; j++){
+                for(int i = 1; i < im-1; i++){
+
+                    const double q    = m.nh4sh.x[i][j][k];
+                    const double q_rp = m.nh4sh.x[i+1][j][k];
+                    const double q_rm = m.nh4sh.x[i-1][j][k];
+                    const double q_tp = m.nh4sh.x[i][j+1][k];
+                    const double q_tm = m.nh4sh.x[i][j-1][k];
+                    const double q_pp = m.nh4sh.x[i][j][k+1];
+                    const double q_pm = m.nh4sh.x[i][j][k-1];
+
+                    const double u = m.u.x[i][j][k];
+                    const double v = m.v.x[i][j][k];
+                    const double w = m.w.x[i][j][k];
+
+                    const double rm           = m.rad.z[i];
+                    const double sinthe       = max(sinthe_min, abs(sin(m.the.z[j])));
+                    const double inv_rm       = 1.0 / rm;
+                    const double inv_rmsinthe = 1.0 / (rm * sinthe);
+
+                    double corr = 0.0;
+
+                    // ---- r-direction ----
+                    // antidiff = |u| * (q_{i+1} - 2q_i + q_{i-1}) / (2*dr)
+                    // correction = (1 - phi(r)) * antidiff
+                    {
+                        const double df   = q_rp - q;
+                        const double db   = q    - q_rm;
+                        const double denom = df + (df >= 0.0 ? eps : -eps);
+                        const double r = (u >= 0.0)
+                            ? db / denom
+                            : ((i+2 < im ? m.nh4sh.x[i+2][j][k] : q_rp) - q_rp) / denom;
+                        corr += (1.0 - superbee_phi(r)) * abs(u) * (df - db) / (2.0 * dr);
+                    }
+
+                    // ---- theta-direction ----
+                    // Pole-symmetric handling: at j = 1 with v >= 0, q_tm = q[i][0][k]
+                    // is the Neumann-extrapolated boundary value (c43*q - c13*q_tp),
+                    // giving db = df/3 -> r = 1/3 (limiter partially active).
+                    // The mirror case at j = jm-2 with v < 0 wants q[i][jm][k], which
+                    // is off-grid; mirror the same Neumann extrapolation here so the
+                    // limiter behaves symmetrically across the equator instead of
+                    // collapsing to r = 0 (full antidiffusion) only at the south pole.
+                    {
+                        const double df   = q_tp - q;
+                        const double db   = q    - q_tm;
+                        const double denom = df + (df >= 0.0 ? eps : -eps);
+                        const double q_far = (j+2 < jm)
+                            ? m.nh4sh.x[i][j+2][k]
+                            : (m.c43 * q_tp - m.c13 * q);   // Neumann extrap of q[jm]
+                        const double r = (v >= 0.0)
+                            ? db / denom
+                            : (q_far - q_tp) / denom;
+                        corr += (1.0 - superbee_phi(r)) * abs(v) * inv_rm * (df - db) / (2.0 * dthe);
+                    }
+
+                    // ---- phi-direction ----
+                    {
+                        const double df   = q_pp - q;
+                        const double db   = q    - q_pm;
+                        const double denom = df + (df >= 0.0 ? eps : -eps);
+                        const double r = (w >= 0.0)
+                            ? db / denom
+                            : ((k+2 < km ? m.nh4sh.x[i][j][k+2] : q_pp) - q_pp) / denom;
+                        corr += (1.0 - superbee_phi(r)) * abs(w) * inv_rmsinthe * (df - db) / (2.0 * dphi);
+                    }
+
+                    m.fluxlim_nh4sh.x[i][j][k] = corr;
+                }
+            }
+        }
+
+        auto end = chrono::high_resolution_clock::now();
+        auto elapsed = chrono::duration_cast<chrono::nanoseconds>(end - begin);
+        printf(" time measured: %.3f seconds for FluxLimiterNH4SH\n", elapsed.count() * 1e-9);
+
+        cout << "      ATJUP: FluxLimiterNH4SH ended" << endl;
+        return;
+    }
+
     void ThermalPropertiesJup()
     {
         using namespace std;
@@ -235,28 +351,38 @@ public:
 
         const double r_mixture = 1.326;                                 // [kg/m³]
 
-        m.rg_mix = m.rg_h2 + m.rg_he + m.rg_h2s + m.rg_nh3 + m.rg_nh4sh + m.rg_h2o;
-        m.r_mix  = m.r_h2  + m.r_he  + m.r_h2s  + m.r_nh3  + m.r_nh4sh  + m.r_h2o;
-        m.c_mix  = m.c_h2  + m.c_he  + m.c_h2s  + m.c_nh3  + m.c_nh4sh  + m.c_h2o;
+        m.rg_mix = m.rg_h2 + m.rg_he + m.rg_h2s + m.rg_nh3 + m.rg_nh4sh + m.rg_h2o + m.rg_ch4;
+        m.r_mix  = m.r_h2  + m.r_he  + m.r_h2s  + m.r_nh3  + m.r_nh4sh  + m.r_h2o  + m.r_ch4;
+        m.c_mix  = m.c_h2  + m.c_he  + m.c_h2s  + m.c_nh3  + m.c_nh4sh  + m.c_h2o  + m.c_ch4;
 
         const double M_mix = m.r_mix / m.c_mix;
 
         m.cp_mix  = (m.r_h2 * m.cp_h2 + m.r_h2s * m.cp_h2s
                   + m.r_he * m.cp_he  + m.r_nh3 * m.cp_nh3
-                  + m.r_nh4sh * m.cp_nh4sh + m.r_h2o * m.cp_h2o) / m.r_mix;
+                  + m.r_nh4sh * m.cp_nh4sh + m.r_h2o * m.cp_h2o
+                  + m.r_ch4 * m.cp_ch4) / m.r_mix;
 
         m.mue_mix = (m.r_h2 * m.mue_h2 + m.r_h2s * m.mue_h2s
                   + m.r_he * m.mue_he  + m.r_nh3 * m.mue_nh3
-                  + m.r_nh4sh * m.mue_nh4sh + m.r_h2o * m.mue_h2o) / m.r_mix;
+                  + m.r_nh4sh * m.mue_nh4sh + m.r_h2o * m.mue_h2o
+                  + m.r_ch4 * m.mue_ch4) / m.r_mix;
 
         m.k_mix   = (m.r_h2 * m.k_h2 + m.r_h2s * m.k_h2s
                   + m.r_he * m.k_he  + m.r_nh3 * m.k_nh3
-                  + m.r_nh4sh * m.k_nh4sh + m.r_h2o * m.k_h2o) / m.r_mix;
+                  + m.r_nh4sh * m.k_nh4sh + m.r_h2o * m.k_h2o
+                  + m.r_ch4 * m.k_ch4) / m.r_mix;
 
         m.R_mix   = (m.r_h2 * m.R_h2 + m.r_he * m.R_he + m.r_h2o * m.R_h2o
-                  +  m.r_h2s * m.R_h2s + m.r_nh3 * m.R_nh3 + m.r_nh4sh * m.R_nh4sh)
-                  / (m.r_h2 + m.r_he + m.r_h2o + m.r_h2s + m.r_nh3 + m.r_nh4sh);
-
+                  +  m.r_h2s * m.R_h2s + m.r_nh3 * m.R_nh3 + m.r_nh4sh * m.R_nh4sh
+                  +  m.r_ch4 * m.R_ch4)
+                  / (m.r_h2 + m.r_he + m.r_h2o + m.r_h2s + m.r_nh3 + m.r_nh4sh + m.r_ch4);
+/*
+        R_mix[i][j][k] = h2.x[i][j][k]  * R_h2                            // AI
+                       + he.x[i][j][k]  * R_he 
+                       + nh3.x[i][j][k] * R_nh3 
+                       + h2s.x[i][j][k] * R_h2s 
+                       + h2o.x[i][j][k] * R_h2o;
+*/
         cout.precision(10);
         cout.setf(ios::fixed);
         cout << endl
@@ -442,5 +568,15 @@ private:
              + d2cdthe2 / (rm * rm)
              + costhe / (rm * rmsinthe) * dcdthe
              + d2cdphi2 / (rmsinthe * rmsinthe);
+    }
+
+    // Superbee: most compressive TVD limiter — best for sharp cloud fronts.
+    static double superbee_phi(double r){
+        return std::max(0.0, std::max(std::min(2.0*r, 1.0), std::min(r, 2.0)));
+    }
+
+    // Van Leer: smooth, differentiable — good general-purpose alternative.
+    static double van_leer_phi(double r){
+        return (r + std::abs(r)) / (1.0 + std::abs(r));
     }
 };

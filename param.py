@@ -25,12 +25,12 @@ def main():
         'jupiter': [
 
 #            ('nm', 'the maximum number of iterations', 'int', 4),
-#            ('nm', 'the maximum number of iterations', 'int', 224),
-            ('nm', 'the maximum number of iterations', 'int', 512),
-#            ('checkpoint', "control when to write output files", 'int', 2),
+            ('nm', 'the maximum number of iterations', 'int', 224),
+#            ('nm', 'the maximum number of iterations', 'int', 512),
 #            ('checkpoint', "control when to write output files", 'int', 16),
-            ('checkpoint', "control when to write output files", 'int', 32),
-            ('panorama_print', "control when to write panorama files", 'int', 224),
+            ('checkpoint', "control when to write output files", 'int', 8),
+
+            ('panorama_print', "control when to write panorama files", 'int', 32),
 #            ('panorama_print', "control when to write panorama files", 'int', 256),
 
 
@@ -91,6 +91,7 @@ def main():
             ('h2s_tropopause', 'minimum water vapour at tropopause h2s_tropopause = 0.001 compares to 0.001 kg/kg', 'double', 0.0),
             ('nh3_tropopause', 'minimum rate nh3 at tropopause nh3_tropopause = 0.001 compares to 0.001 kg/kg', 'double', 0.0),
             ('nh4sh_tropopause', 'minimum rate nh4sh at tropopause nh4sh_tropopause = 0.001 compares to 0.001 kg/kg', 'double', 0.0),
+            ('ch4_tropopause', 'minimum ch4 at tropopause kg/kg', 'double', 0.246),
 
        ],
  

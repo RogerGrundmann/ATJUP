@@ -83,6 +83,7 @@ namespace ParaViewJupiter{
 void cJupiterModel::paraview_panorama_vts(int n){
     using namespace ParaViewJupiter;
     double x, y, z, dx, dy, dz;
+    double r_mix_plus = r_mix * 1e6;
     string Jupiter_panorama_vts_File_Name = output_path + "/Jupiter_panorama_" 
         + std::to_string(n) + ".vts";
     ofstream Jupiter_panorama_vts_File;
@@ -98,7 +99,7 @@ void cJupiterModel::paraview_panorama_vts(int n){
     Jupiter_panorama_vts_File <<  "<VTKFile type=\"StructuredGrid\" version=\"0.1\" byte_order=\"LittleEndian\">\n"  << endl;
     Jupiter_panorama_vts_File <<  " <StructuredGrid WholeExtent=\"" << 1 << " "<< im << " "<< 1 << " " << jm << " "<< 1 << " " << km << "\">\n"  << endl;
     Jupiter_panorama_vts_File <<  "  <Piece Extent=\"" << 1 << " "<< im << " "<< 1 << " " << jm << " "<< 1 << " " << km << "\">\n"  << endl;
-    Jupiter_panorama_vts_File <<  "   <PointData Vectors=\"Velocity\" Scalars=\"Temperature PressureDynamic PressureStatic NH3 NH3Cloud NH3Ice H2O H2OCloud H2OIce Q_Latent Q_Sensible BuoyancyForce \">\n"  << endl;
+    Jupiter_panorama_vts_File <<  "   <PointData Vectors=\"Velocity\" Scalars=\"Temperature PressureDynamic PressureStatic CH4 CH4Cloud CH4Ice NH3 NH3Cloud NH3Ice H2O H2OCloud H2OIce Q_Latent Q_Sensible BuoyancyForce \">\n"  << endl;
 
     Jupiter_panorama_vts_File <<  "    <DataArray type=\"Float32\" NumberOfComponents=\"3\" Name=\"Velocity\" format=\"ascii\">\n"  << endl;
     for(int k = 0; k < km; k++){
@@ -116,9 +117,7 @@ void cJupiterModel::paraview_panorama_vts(int n){
     for(int k = 0; k < km; k++){
         for(int j = 0; j < jm; j++){
             for(int i = 0; i < im; i++){
-//                Jupiter_panorama_vts_File << t.x[i][j][k] * t_ref - t_ref << endl;
-//                Jupiter_panorama_vts_File << t.x[i][j][k] * t_ref << endl;
-                Jupiter_panorama_vts_File << t.x[i][j][k] * t_ref/10.0 << endl;
+                Jupiter_panorama_vts_File << t.x[i][j][k] * 273.15 - 273.15 << endl;
             }
             Jupiter_panorama_vts_File <<  "\n"  << endl;
         }
@@ -139,6 +138,10 @@ void cJupiterModel::paraview_panorama_vts(int n){
 //    dump_array("BuoyancyForce", BuoyancyForce, 1.0, Jupiter_panorama_vts_File);
 //    dump_array("PresGradForce", PresGradForce, 1.0, Jupiter_panorama_vts_File);
 
+    dump_array("CH4", ch4, 1.0, Jupiter_panorama_vts_File);
+    dump_array("CH4Cloud", ch4_cloud, 1.0, Jupiter_panorama_vts_File);
+    dump_array("CH4Ice", ch4_ice, 1.0, Jupiter_panorama_vts_File);
+
     dump_array("H2O", h2o, 1.0, Jupiter_panorama_vts_File);
     dump_array("H2OCloud", h2o_cloud, 1.0, Jupiter_panorama_vts_File);
     dump_array("H2OIce", h2o_ice, 1.0, Jupiter_panorama_vts_File);
@@ -153,10 +156,8 @@ void cJupiterModel::paraview_panorama_vts(int n){
 //    dump_array("j_nh3", j_nh3, 1.0, Jupiter_panorama_vts_File);
 //    dump_array("jT_nh3", jT_nh3, 1.0, Jupiter_panorama_vts_File);
 
-    dump_array("NH4SH", nh4sh, 1.0, Jupiter_panorama_vts_File);
+    dump_array("NH4SH", nh4sh, r_mix_plus, Jupiter_panorama_vts_File);
 //    dump_array("w_nh4sh", w_nh4sh, 1.0, Jupiter_panorama_vts_File);
-//    dump_array("j_nh4sh", j_nh4sh, 1.0, Jupiter_panorama_vts_File);
-//    dump_array("jT_nh4sh", jT_nh4sh, 1.0, Jupiter_panorama_vts_File);
 
     dump_array("Q_Latent", Q_Latent, 1.0, Jupiter_panorama_vts_File);
 //    dump_array("Q_Sensible", Q_Sensible, 1.0, Jupiter_panorama_vts_File);
@@ -202,6 +203,7 @@ void cJupiterModel::paraview_panorama_vts(int n){
 void cJupiterModel::paraview_vtk_radial(int n, int i_radial){
     using namespace ParaViewJupiter;
     double x, y, z, dx, dy;
+    double r_mix_plus = r_mix * 1e6;
     string Jupiter_radial_File_Name = output_path + "/Jupiter_radial_" 
         + std::to_string(i_radial) + "_" + std::to_string(n) + ".vtk";
     ofstream Jupiter_vtk_radial_File;
@@ -242,11 +244,15 @@ void cJupiterModel::paraview_vtk_radial(int n, int i_radial){
     Jupiter_vtk_radial_File <<  "LOOKUP_TABLE default"  <<endl;
     for(int j = 0; j < jm; j++){
         for(int k = 0; k < km; k++){
-            Jupiter_vtk_radial_File << t.x[i_radial][j][k] * t_ref/10.0 << endl;
+            Jupiter_vtk_radial_File << t.x[i_radial][j][k] * 273.15 - 273.15 << endl;
         }
     }
 
     dump_radial("thermalmassflux", thermalmassflux, 1e-3, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("CH4", ch4, 1.0, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("CH4Cloud", ch4_cloud, 1.0, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("CH4Ice", ch4_ice, 1.0, i_radial, Jupiter_vtk_radial_File);
+
     dump_radial("H2O", h2o, 1.0, i_radial, Jupiter_vtk_radial_File);
     dump_radial("H2OCloud", h2o_cloud, 1.0, i_radial, Jupiter_vtk_radial_File);
     dump_radial("H2OIce", h2o_ice, 1.0, i_radial, Jupiter_vtk_radial_File);
@@ -267,16 +273,17 @@ void cJupiterModel::paraview_vtk_radial(int n, int i_radial){
     dump_radial("massflux_nh3", massflux_nh3, 1.0, i_radial, Jupiter_vtk_radial_File);
     dump_radial("difflux_nh3", difflux_nh3, 1.0, i_radial, Jupiter_vtk_radial_File);
 
-    dump_radial("NH4SH", nh4sh, 1.0, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("w_nh4sh", w_nh4sh, 1.0, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("j_nh4sh", j_nh4sh, 1.0, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("jT_nh4sh", jT_nh4sh, 1.0, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("massflux_nh4sh", massflux_nh4sh, 1.0, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("difflux_nh4sh", difflux_nh4sh, 1.0, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("NH4SH", nh4sh, r_mix_plus, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("w_nh4sh", w_nh4sh, r_mix_plus, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("massflux_nh4sh", massflux_nh4sh, r_mix_plus, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("j_nh4sh", j_nh4sh, r_mix_plus, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("jT_nh4sh", jT_nh4sh, r_mix_plus, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("difflux_nh4sh", difflux_nh4sh, r_mix_plus, i_radial, Jupiter_vtk_radial_File);
 
 
     dump_radial("PressureDyn", p_dyn, 1.0, i_radial, Jupiter_vtk_radial_File);
     dump_radial("PressureStat", p_stat, 1.0, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("rho_mix", rho_mix, 1.0, i_radial, Jupiter_vtk_radial_File);
 
     dump_radial("CoriolisForce", CoriolisForce, 1.0, i_radial, Jupiter_vtk_radial_File);
     dump_radial("CentrifugalForce", CentrifugalForce, 1.0, i_radial, Jupiter_vtk_radial_File);
@@ -304,6 +311,7 @@ void cJupiterModel::paraview_vtk_radial(int n, int i_radial){
 void cJupiterModel::paraview_vtk_zonal(int n, int k_zonal){
     using namespace ParaViewJupiter;
     double x, y, z, dx, dy;
+    double r_mix_plus = r_mix * 1e6;
     string Jupiter_zonal_File_Name = output_path + "/Jupiter_zonal_" 
         + std::to_string(k_zonal) + "_" + std::to_string(n) + ".vtk";
     ofstream Jupiter_vtk_zonal_File;
@@ -345,15 +353,17 @@ void cJupiterModel::paraview_vtk_zonal(int n, int k_zonal){
 
     for(int i = 0; i < im; i++){
         for(int j = 0; j < jm; j++){
-//            Jupiter_vtk_zonal_File << t.x[i][j][k_zonal] * t_ref - t_ref << endl;
-//            Jupiter_vtk_zonal_File << t.x[i][j][k_zonal] * t_ref << endl;
-            Jupiter_vtk_zonal_File << t.x[i][j][k_zonal] * t_ref/10.0 << endl;
+            Jupiter_vtk_zonal_File << t.x[i][j][k_zonal] * 273.15 - 273.15 << endl;
             aux.x[i][j][k_zonal] = get_layer_height(i);
         }
     }
     dump_zonal("thermalmassflux", thermalmassflux, 1e-3, k_zonal, Jupiter_vtk_zonal_File);
 
     dump_zonal("height", aux, 1.0, k_zonal, Jupiter_vtk_zonal_File);
+
+    dump_zonal("CH4", ch4, 1.0, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("CH4Cloud", ch4_cloud, 1.0, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("CH4Ice", ch4_ice, 1.0, k_zonal, Jupiter_vtk_zonal_File);
 
     dump_zonal("H2O", h2o, 1.0, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("H2OCloud", h2o_cloud, 1.0, k_zonal, Jupiter_vtk_zonal_File);
@@ -375,15 +385,16 @@ void cJupiterModel::paraview_vtk_zonal(int n, int k_zonal){
     dump_zonal("massflux_nh3", massflux_nh3, 1.0, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("difflux_nh3", difflux_nh3, 1.0, k_zonal, Jupiter_vtk_zonal_File);
 
-    dump_zonal("NH4SH", nh4sh, 1.0, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("w_nh4sh", w_nh4sh, 1.0, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("j_nh4sh", j_nh4sh, 1.0, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("jT_nh4sh", jT_nh4sh, 1.0, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("massflux_nh4sh", massflux_nh4sh, 1.0, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("difflux_nh4sh", difflux_nh4sh, 1.0, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("NH4SH", nh4sh, r_mix_plus, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("w_nh4sh", w_nh4sh, r_mix_plus, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("massflux_nh4sh", massflux_nh4sh, r_mix_plus, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("j_nh4sh", j_nh4sh, r_mix_plus, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("jT_nh4sh", jT_nh4sh, r_mix_plus, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("difflux_nh4sh", difflux_nh4sh, r_mix_plus, k_zonal, Jupiter_vtk_zonal_File);
 
     dump_zonal("PressureDyn", p_dyn, 1.0, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("PressureStat", p_stat, 1.0, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("rho_mix", rho_mix, 1.0, k_zonal, Jupiter_vtk_zonal_File);
 
     dump_zonal("CoriolisForce", CoriolisForce, 1.0, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("CentrifugalForce", CentrifugalForce, 1.0, k_zonal, Jupiter_vtk_zonal_File);
@@ -411,6 +422,7 @@ void cJupiterModel::paraview_vtk_zonal(int n, int k_zonal){
 void cJupiterModel::paraview_vtk_longal(int n, int j_longal){
     using namespace ParaViewJupiter;
     double x, y, z, dx, dz;
+    double r_mix_plus = r_mix * 1e6;
     string Jupiter_longal_File_Name = output_path + "/Jupiter_longal_" 
         + std::to_string(j_longal) + "_" + std::to_string(n) + ".vtk";
     ofstream Jupiter_vtk_longal_File;
@@ -455,9 +467,7 @@ void cJupiterModel::paraview_vtk_longal(int n, int j_longal){
 
     for(int i = 0; i < im; i++){
         for(int k = 0; k < km; k++){
-//            Jupiter_vtk_longal_File << t.x[i][j_longal][k] * t_ref - t_ref << endl;
-//            Jupiter_vtk_longal_File << t.x[i][j_longal][k] * t_ref << endl;
-            Jupiter_vtk_longal_File << t.x[i][j_longal][k] * t_ref/10.0 << endl;
+            Jupiter_vtk_longal_File << t.x[i][j_longal][k] * 273.15 - 273.15 << endl;
             aux.x[i][j_longal][k] = get_layer_height(i);
         }
     }
@@ -465,6 +475,10 @@ void cJupiterModel::paraview_vtk_longal(int n, int j_longal){
     dump_longal("thermalmassflux", thermalmassflux, 1e-3, j_longal, Jupiter_vtk_longal_File);
 
     dump_longal("height", aux, 1.0, j_longal, Jupiter_vtk_longal_File);
+
+    dump_longal("CH4", ch4, 1.0, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("CH4Cloud", ch4_cloud, 1.0, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("CH4Ice", ch4_ice, 1.0, j_longal, Jupiter_vtk_longal_File);
 
     dump_longal("H2O", h2o, 1.0, j_longal, Jupiter_vtk_longal_File);
     dump_longal("H2OCloud", h2o_cloud, 1.0, j_longal, Jupiter_vtk_longal_File);
@@ -488,16 +502,17 @@ void cJupiterModel::paraview_vtk_longal(int n, int j_longal){
     dump_longal("difflux_nh3", difflux_nh3, 1.0, j_longal, Jupiter_vtk_longal_File);
 //    dump_longal("cloudiness_nh3", cloudiness_nh3, 1.0, j_longal, Jupiter_vtk_longal_File);
 
-    dump_longal("NH4SH", nh4sh, 1.0, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("w_nh4sh", w_nh4sh, 1.0, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("j_nh4sh", j_nh4sh, 1.0, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("jT_nh4sh", jT_nh4sh, 1.0, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("massflux_nh4sh", massflux_nh4sh, 1.0, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("difflux_nh4sh", difflux_nh4sh, 1.0, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("NH4SH", nh4sh, r_mix_plus, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("w_nh4sh", w_nh4sh, r_mix_plus, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("massflux_nh4sh", massflux_nh4sh, r_mix_plus, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("j_nh4sh", j_nh4sh, r_mix_plus, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("jT_nh4sh", jT_nh4sh, r_mix_plus, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("difflux_nh4sh", difflux_nh4sh, r_mix_plus, j_longal, Jupiter_vtk_longal_File);
 
 
     dump_longal("PressureDyn", p_dyn, 1.0, j_longal, Jupiter_vtk_longal_File);
     dump_longal("PressureStat", p_stat, 1.0, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("rho_mix", rho_mix, 1.0, j_longal, Jupiter_vtk_longal_File);
 
     dump_longal("CoriolisForce", CoriolisForce, 1.0, j_longal, Jupiter_vtk_longal_File);
     dump_longal("CentrifugalForce", CentrifugalForce, 1.0, j_longal, Jupiter_vtk_longal_File);
@@ -526,6 +541,7 @@ void cJupiterModel::paraview_vtk_longal(int n, int j_longal){
 void cJupiterModel::paraview_sphere_vts(int n){
     using namespace ParaViewJupiter;
     double x, y, z, sinthe, sinphi, costhe, cosphi;
+    double r_mix_plus = r_mix * 1e6;
     string Jupiter_sphere_vts_File_Name = output_path + "/Jupiter_sphere_" 
         + std::to_string(n) + ".vts";
     ofstream Jupiter_sphere_vts_File;
@@ -540,7 +556,7 @@ void cJupiterModel::paraview_sphere_vts(int n){
     Jupiter_sphere_vts_File <<  "<VTKFile type=\"StructuredGrid\" version=\"0.1\" byte_order=\"LittleEndian\">\n"  << endl;
     Jupiter_sphere_vts_File <<  " <StructuredGrid WholeExtent=\"" << 1 << " "<< im << " "<< 1 << " " << jm << " "<< 1 << " " << km << "\">\n"  << endl;
     Jupiter_sphere_vts_File <<  "  <Piece Extent=\"" << 1 << " "<< im << " "<< 1 << " " << jm << " "<< 1 << " " << km << "\">\n"  << endl;
-    Jupiter_sphere_vts_File <<  "   <PointData Vectors=\"Velocity\" Scalars=\"Temperature PressureDyn PressureStat  H2S H2SCloud H2SIce NH3 NH3Cloud NH3Ice H2O H2OCloud H2OIce \">\n"  << endl;
+    Jupiter_sphere_vts_File <<  "   <PointData Vectors=\"Velocity\" Scalars=\"Temperature PressureDyn PressureStat  H2S H2SCloud H2SIce CH4 CH4Cloud CH4Ice NH3 NH3Cloud NH3Ice H2O H2OCloud H2OIce \">\n"  << endl;
     Jupiter_sphere_vts_File <<  "    <DataArray type=\"Float32\" NumberOfComponents=\"3\" Name=\"Velocity\" format=\"ascii\">\n"  << endl;
     for(int k = 0; k < km; k++){
         sinphi = sin( phi.z[k]);
@@ -565,8 +581,7 @@ void cJupiterModel::paraview_sphere_vts(int n){
     for(int k = 0; k < km; k++){
         for(int j = 0; j < jm; j++){
             for(int i = 0; i < im; i++){
-//                Jupiter_sphere_vts_File << t.x[i][j][k] * t_ref << endl;
-                Jupiter_sphere_vts_File << t.x[i][j][k] * t_ref/10.0 << endl;
+                Jupiter_sphere_vts_File << t.x[i][j][k] * 273.15 - 273.15 << endl;
             }
             Jupiter_sphere_vts_File <<  "\n"  << endl;
         }
@@ -640,7 +655,7 @@ void cJupiterModel::paraview_sphere_vts(int n){
     for(int k = 0; k < km; k++){
         for(int j = 0; j < jm; j++){
             for(int i = 0; i < im; i++){
-                Jupiter_sphere_vts_File << 1.0 * nh4sh.x[i][j][k] << endl;
+                Jupiter_sphere_vts_File << r_mix_plus * nh4sh.x[i][j][k] << endl;
             }
             Jupiter_sphere_vts_File <<  "\n"  << endl;
         }
@@ -704,6 +719,42 @@ void cJupiterModel::paraview_sphere_vts(int n){
     Jupiter_sphere_vts_File <<  "\n"  << endl;
 
 
+    Jupiter_sphere_vts_File <<  "    </DataArray>\n" << endl;
+    Jupiter_sphere_vts_File <<  "    <DataArray type=\"Float32\" Name=\"CH4\" format=\"ascii\">\n"  << endl;
+    for(int k = 0; k < km; k++){
+        for(int j = 0; j < jm; j++){
+            for(int i = 0; i < im; i++){
+                Jupiter_sphere_vts_File << 1.0 * ch4.x[i][j][k] << endl;
+            }
+            Jupiter_sphere_vts_File <<  "\n"  << endl;
+        }
+        Jupiter_sphere_vts_File <<  "\n"  << endl;
+    }
+    Jupiter_sphere_vts_File <<  "\n"  << endl;
+    Jupiter_sphere_vts_File <<  "    </DataArray>\n" << endl;
+    Jupiter_sphere_vts_File <<  "    <DataArray type=\"Float32\" Name=\"CH4Cloud\" format=\"ascii\">\n"  << endl;
+    for(int k = 0; k < km; k++){
+        for(int j = 0; j < jm; j++){
+            for(int i = 0; i < im; i++){
+                Jupiter_sphere_vts_File << 1.0 * ch4_cloud.x[i][j][k] << endl;
+            }
+            Jupiter_sphere_vts_File <<  "\n"  << endl;
+        }
+        Jupiter_sphere_vts_File <<  "\n"  << endl;
+    }
+    Jupiter_sphere_vts_File <<  "\n"  << endl;
+    Jupiter_sphere_vts_File <<  "    </DataArray>\n" << endl;
+    Jupiter_sphere_vts_File <<  "    <DataArray type=\"Float32\" Name=\"CH4Ice\" format=\"ascii\">\n"  << endl;
+    for(int k = 0; k < km; k++){
+        for(int j = 0; j < jm; j++){
+            for(int i = 0; i < im; i++){
+                Jupiter_sphere_vts_File << 1.0 * ch4_ice.x[i][j][k] << endl;
+            }
+            Jupiter_sphere_vts_File <<  "\n"  << endl;
+        }
+        Jupiter_sphere_vts_File <<  "\n"  << endl;
+    }
+    Jupiter_sphere_vts_File <<  "\n"  << endl;
     Jupiter_sphere_vts_File <<  "    </DataArray>\n" << endl;
     Jupiter_sphere_vts_File <<  "    <DataArray type=\"Float32\" Name=\"u-Component\" format=\"ascii\">\n"  << endl;
     for(int k = 0; k < km; k++){

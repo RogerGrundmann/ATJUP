@@ -69,6 +69,9 @@ void cJupiterModel::RungeKuttaJup(){
                 double nh3n_ijk   = nh3n.x[i][j][k];
                 double nh3cn_ijk  = nh3_cloudn.x[i][j][k];
                 double nh3in_ijk  = nh3_icen.x[i][j][k];
+                double ch4n_ijk   = ch4n.x[i][j][k];
+                double ch4cn_ijk  = ch4_cloudn.x[i][j][k];
+                double ch4in_ijk  = ch4_icen.x[i][j][k];
                 double nh4shn_ijk = nh4shn.x[i][j][k];
 
                 // ----- RK stage 1 -----
@@ -84,6 +87,9 @@ void cJupiterModel::RungeKuttaJup(){
                 double knh31   = rhs_nh3.x[i][j][k];
                 double knh3c1  = rhs_nh3_cloud.x[i][j][k];
                 double knh3i1  = rhs_nh3_ice.x[i][j][k];
+                double kch41   = rhs_ch4.x[i][j][k];
+                double kch4c1  = rhs_ch4_cloud.x[i][j][k];
+                double kch4i1  = rhs_ch4_ice.x[i][j][k];
                 double knh4sh1 = rhs_nh4sh.x[i][j][k];
 
                 t.x[i][j][k]         = tn_ijk    + kt1     * 0.5 * dt;
@@ -97,6 +103,9 @@ void cJupiterModel::RungeKuttaJup(){
                 nh3.x[i][j][k]       = nh3n_ijk  + knh31   * 0.5 * dt;
                 nh3_cloud.x[i][j][k] = nh3cn_ijk + knh3c1  * 0.5 * dt;
                 nh3_ice.x[i][j][k]   = nh3in_ijk + knh3i1  * 0.5 * dt;
+                ch4.x[i][j][k]       = ch4n_ijk  + kch41   * 0.5 * dt;
+                ch4_cloud.x[i][j][k] = ch4cn_ijk + kch4c1  * 0.5 * dt;
+                ch4_ice.x[i][j][k]   = ch4in_ijk + kch4i1  * 0.5 * dt;
                 nh4sh.x[i][j][k]     = nh4shn_ijk + knh4sh1 * 0.5 * dt;
 
                 // ----- RK stage 2 -----
@@ -112,6 +121,9 @@ void cJupiterModel::RungeKuttaJup(){
                 double knh32   = rhs_nh3.x[i][j][k];
                 double knh3c2  = rhs_nh3_cloud.x[i][j][k];
                 double knh3i2  = rhs_nh3_ice.x[i][j][k];
+                double kch42   = rhs_ch4.x[i][j][k];
+                double kch4c2  = rhs_ch4_cloud.x[i][j][k];
+                double kch4i2  = rhs_ch4_ice.x[i][j][k];
                 double knh4sh2 = rhs_nh4sh.x[i][j][k];
 
                 t.x[i][j][k]         = tn_ijk    + kt2     * 0.5 * dt;
@@ -125,6 +137,9 @@ void cJupiterModel::RungeKuttaJup(){
                 nh3.x[i][j][k]       = nh3n_ijk  + knh32   * 0.5 * dt;
                 nh3_cloud.x[i][j][k] = nh3cn_ijk + knh3c2  * 0.5 * dt;
                 nh3_ice.x[i][j][k]   = nh3in_ijk + knh3i2  * 0.5 * dt;
+                ch4.x[i][j][k]       = ch4n_ijk  + kch42   * 0.5 * dt;
+                ch4_cloud.x[i][j][k] = ch4cn_ijk + kch4c2  * 0.5 * dt;
+                ch4_ice.x[i][j][k]   = ch4in_ijk + kch4i2  * 0.5 * dt;
                 nh4sh.x[i][j][k]     = nh4shn_ijk + knh4sh2 * 0.5 * dt;
 
                 // ----- RK stage 3 -----
@@ -140,6 +155,9 @@ void cJupiterModel::RungeKuttaJup(){
                 double knh33   = rhs_nh3.x[i][j][k];
                 double knh3c3  = rhs_nh3_cloud.x[i][j][k];
                 double knh3i3  = rhs_nh3_ice.x[i][j][k];
+                double kch43   = rhs_ch4.x[i][j][k];
+                double kch4c3  = rhs_ch4_cloud.x[i][j][k];
+                double kch4i3  = rhs_ch4_ice.x[i][j][k];
                 double knh4sh3 = rhs_nh4sh.x[i][j][k];
 
                 t.x[i][j][k]         = tn_ijk    + kt3     * dt;
@@ -153,6 +171,9 @@ void cJupiterModel::RungeKuttaJup(){
                 nh3.x[i][j][k]       = nh3n_ijk  + knh33   * dt;
                 nh3_cloud.x[i][j][k] = nh3cn_ijk + knh3c3  * dt;
                 nh3_ice.x[i][j][k]   = nh3in_ijk + knh3i3  * dt;
+                ch4.x[i][j][k]       = ch4n_ijk  + kch43   * dt;
+                ch4_cloud.x[i][j][k] = ch4cn_ijk + kch4c3  * dt;
+                ch4_ice.x[i][j][k]   = ch4in_ijk + kch4i3  * dt;
                 nh4sh.x[i][j][k]     = nh4shn_ijk + knh4sh3 * dt;
 
                 // ----- RK stage 4 -----
@@ -168,6 +189,9 @@ void cJupiterModel::RungeKuttaJup(){
                 double knh34   = rhs_nh3.x[i][j][k];
                 double knh3c4  = rhs_nh3_cloud.x[i][j][k];
                 double knh3i4  = rhs_nh3_ice.x[i][j][k];
+                double kch44   = rhs_ch4.x[i][j][k];
+                double kch4c4  = rhs_ch4_cloud.x[i][j][k];
+                double kch4i4  = rhs_ch4_ice.x[i][j][k];
                 double knh4sh4 = rhs_nh4sh.x[i][j][k];
 
                 // ----- Final RK4 update -----
@@ -183,6 +207,9 @@ void cJupiterModel::RungeKuttaJup(){
                 nh3.x[i][j][k]       = std::max(0.0, nh3n_ijk  + dt * (knh31   + 2.0*knh32   + 2.0*knh33   + knh34  ) * one_sixth);
                 nh3_cloud.x[i][j][k] = std::max(0.0, nh3cn_ijk + dt * (knh3c1  + 2.0*knh3c2  + 2.0*knh3c3  + knh3c4 ) * one_sixth);
                 nh3_ice.x[i][j][k]   = std::max(0.0, nh3in_ijk + dt * (knh3i1  + 2.0*knh3i2  + 2.0*knh3i3  + knh3i4 ) * one_sixth);
+                ch4.x[i][j][k]       = std::max(0.0, ch4n_ijk  + dt * (kch41   + 2.0*kch42   + 2.0*kch43   + kch44  ) * one_sixth);
+                ch4_cloud.x[i][j][k] = std::max(0.0, ch4cn_ijk + dt * (kch4c1  + 2.0*kch4c2  + 2.0*kch4c3  + kch4c4 ) * one_sixth);
+                ch4_ice.x[i][j][k]   = std::max(0.0, ch4in_ijk + dt * (kch4i1  + 2.0*kch4i2  + 2.0*kch4i3  + kch4i4 ) * one_sixth);
                 nh4sh.x[i][j][k]     = std::max(0.0, nh4shn_ijk + dt * (knh4sh1 + 2.0*knh4sh2 + 2.0*knh4sh3 + knh4sh4) * one_sixth);
             }
         }

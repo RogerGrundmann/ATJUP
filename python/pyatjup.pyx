@@ -503,6 +503,15 @@ cdef class Jupiter:
             self._check_alive()
             self._thisptr.nh4sh_tropopause = <double> value
     
+    property ch4_tropopause:
+        def __get__(Jupiter self):
+            self._check_alive()
+            return self._thisptr.ch4_tropopause
+    
+        def __set__(Jupiter self, value):
+            self._check_alive()
+            self._thisptr.ch4_tropopause = <double> value
+    
 
 
     # The context manager protocol allows us to precisely

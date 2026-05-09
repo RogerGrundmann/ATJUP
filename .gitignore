@@ -32,3 +32,6 @@ Reaction_Papers/
 
 # ODT documents
 *.odt
+
+# Claude Code session data
+.claude/

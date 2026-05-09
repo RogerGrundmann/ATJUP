@@ -58,4 +58,5 @@
     Config::FillDoubleWithElement(elem_jupiter, "h2s_tropopause", h2s_tropopause);
     Config::FillDoubleWithElement(elem_jupiter, "nh3_tropopause", nh3_tropopause);
     Config::FillDoubleWithElement(elem_jupiter, "nh4sh_tropopause", nh4sh_tropopause);
+    Config::FillDoubleWithElement(elem_jupiter, "ch4_tropopause", ch4_tropopause);
   }

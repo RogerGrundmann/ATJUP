@@ -4,9 +4,9 @@
         <paraview_panorama_vts_flag>true</paraview_panorama_vts_flag>  <!-- flag to control if create paraview panorama (bool) -->
     </common>
     <jupiter>
-        <nm>512</nm>  <!-- the maximum number of iterations (int) -->
-        <checkpoint>32</checkpoint>  <!-- control when to write output files (int) -->
-        <panorama_print>224</panorama_print>  <!-- control when to write panorama files (int) -->
+        <nm>224</nm>  <!-- the maximum number of iterations (int) -->
+        <checkpoint>8</checkpoint>  <!-- control when to write output files (int) -->
+        <panorama_print>32</panorama_print>  <!-- control when to write panorama files (int) -->
         <Coriolis>1</Coriolis>  <!-- Coriolis force (double) -->
         <centrifugal>1</centrifugal>  <!-- centrifugal force (double) -->
         <buoyancy>1</buoyancy>  <!-- buoyancy force (double) -->
@@ -48,5 +48,6 @@
         <h2s_tropopause>0.0</h2s_tropopause>  <!-- minimum water vapour at tropopause h2s_tropopause = 0.001 compares to 0.001 kg/kg (double) -->
         <nh3_tropopause>0.0</nh3_tropopause>  <!-- minimum rate nh3 at tropopause nh3_tropopause = 0.001 compares to 0.001 kg/kg (double) -->
         <nh4sh_tropopause>0.0</nh4sh_tropopause>  <!-- minimum rate nh4sh at tropopause nh4sh_tropopause = 0.001 compares to 0.001 kg/kg (double) -->
+        <ch4_tropopause>0.246</ch4_tropopause>  <!-- minimum ch4 at tropopause kg/kg (double) -->
     </jupiter>
 </atjup>

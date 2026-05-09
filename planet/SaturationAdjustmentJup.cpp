@@ -114,8 +114,6 @@ void SaturationAdjustmentJup::run(
                 cloud.x[i][j][k] = q_c_b;
                 ice.x[i][j][k]   = q_i_b;
                 m.t.x[i][j][k]   = T / m.t_ref;
-                m.p_stat.x[i][j][k] = m.p_ref
-                    * std::pow(m.t.x[i][j][k], exp_pressure);
 
                 // Diagnostic capture for the reference reporting cell (equator, mid-atmosphere)
 //                if(cell_found && j == m.jm/2 && k == m.km/2 && i == m.im/2){

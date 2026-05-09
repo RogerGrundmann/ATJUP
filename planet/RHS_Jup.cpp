@@ -47,32 +47,38 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     double dh2odr, dh2ocdr, dh2oidr;
     double dh2sdr;
     double dnh3dr, dnh3cdr, dnh3idr, dnh4shdr;
+    double dch4dr, dch4cdr, dch4idr;
 
     double dudthe, dvdthe, dwdthe, dtdthe, dpdthe;
     double dh2odthe, dh2ocdthe, dh2oidthe;
     double dh2sdthe;
     double dnh3dthe, dnh3cdthe, dnh3idthe, dnh4shdthe;
+    double dch4dthe, dch4cdthe, dch4idthe;
 
     double dudphi, dvdphi, dwdphi, dtdphi, dpdphi;
     double dh2odphi, dh2ocdphi, dh2oidphi;
     double dh2sdphi;
     double dnh3dphi, dnh3cdphi, dnh3idphi, dnh4shdphi;
+    double dch4dphi, dch4cdphi, dch4idphi;
 
     // ---- Second-order derivative storage ----
     double d2udr2, d2vdr2, d2wdr2, d2tdr2;
     double d2h2odr2, d2h2ocdr2, d2h2oidr2;
     double d2h2sdr2;
     double d2nh3dr2, d2nh3cdr2, d2nh3idr2, d2nh4shdr2;
+    double d2ch4dr2, d2ch4cdr2, d2ch4idr2;
 
     double d2udthe2, d2vdthe2, d2wdthe2, d2tdthe2;
     double d2h2odthe2, d2h2ocdthe2, d2h2oidthe2;
     double d2h2sdthe2;
     double d2nh3dthe2, d2nh3cdthe2, d2nh3idthe2, d2nh4shdthe2;
+    double d2ch4dthe2, d2ch4cdthe2, d2ch4idthe2;
 
     double d2udphi2, d2vdphi2, d2wdphi2, d2tdphi2;
     double d2h2odphi2, d2h2ocdphi2, d2h2oidphi2;
     double d2h2sdphi2;
     double d2nh3dphi2, d2nh3cdphi2, d2nh3idphi2, d2nh4shdphi2;
+    double d2ch4dphi2, d2ch4cdphi2, d2ch4idphi2;
 
 
     // ===== R-direction derivatives (central differences) =====
@@ -93,6 +99,9 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     COMPUTE_DR(nh3,       dnh3dr,  d2nh3dr2)
     COMPUTE_DR(nh3_cloud, dnh3cdr, d2nh3cdr2)
     COMPUTE_DR(nh3_ice,   dnh3idr, d2nh3idr2)
+    COMPUTE_DR(ch4,       dch4dr,  d2ch4dr2)
+    COMPUTE_DR(ch4_cloud, dch4cdr, d2ch4cdr2)
+    COMPUTE_DR(ch4_ice,   dch4idr, d2ch4idr2)
     COMPUTE_DR(nh4sh,     dnh4shdr,d2nh4shdr2)
     dpdr = (p_dyn.x[i+1][j][k] - p_dyn.x[i-1][j][k]) * inv_2dr * exp_rm;
     #undef COMPUTE_DR
@@ -114,6 +123,9 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     COMPUTE_DTHE(nh3,       dnh3dthe,  d2nh3dthe2)
     COMPUTE_DTHE(nh3_cloud, dnh3cdthe, d2nh3cdthe2)
     COMPUTE_DTHE(nh3_ice,   dnh3idthe, d2nh3idthe2)
+    COMPUTE_DTHE(ch4,       dch4dthe,  d2ch4dthe2)
+    COMPUTE_DTHE(ch4_cloud, dch4cdthe, d2ch4cdthe2)
+    COMPUTE_DTHE(ch4_ice,   dch4idthe, d2ch4idthe2)
     COMPUTE_DTHE(nh4sh,     dnh4shdthe,d2nh4shdthe2)
     dpdthe = (p_dyn.x[i][j+1][k] - p_dyn.x[i][j-1][k]) * inv_2dthe;
     #undef COMPUTE_DTHE
@@ -135,6 +147,9 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     COMPUTE_DPHI(nh3,       dnh3dphi,  d2nh3dphi2)
     COMPUTE_DPHI(nh3_cloud, dnh3cdphi, d2nh3cdphi2)
     COMPUTE_DPHI(nh3_ice,   dnh3idphi, d2nh3idphi2)
+    COMPUTE_DPHI(ch4,       dch4dphi,  d2ch4dphi2)
+    COMPUTE_DPHI(ch4_cloud, dch4cdphi, d2ch4cdphi2)
+    COMPUTE_DPHI(ch4_ice,   dch4idphi, d2ch4idphi2)
     COMPUTE_DPHI(nh4sh,     dnh4shdphi,d2nh4shdphi2)
     dpdphi = (p_dyn.x[i][j][k+1] - p_dyn.x[i][j][k-1]) * inv_2dphi;
     #undef COMPUTE_DPHI
@@ -177,6 +192,10 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     double transport_nh3_cloud = u_ijk * dnh3cdr + v_invrm * dnh3cdthe + w_invrs * dnh3cdphi;
     double transport_nh3_ice   = u_ijk * dnh3idr + v_invrm * dnh3idthe + w_invrs * dnh3idphi;
 
+    double transport_ch4       = u_ijk * dch4dr  + v_invrm * dch4dthe  + w_invrs * dch4dphi;
+    double transport_ch4_cloud = u_ijk * dch4cdr + v_invrm * dch4cdthe + w_invrs * dch4cdphi;
+    double transport_ch4_ice   = u_ijk * dch4idr + v_invrm * dch4idthe + w_invrs * dch4idphi;
+
     double transport_nh4sh     = u_ijk * dnh4shdr + v_invrm * dnh4shdthe + w_invrs * dnh4shdphi;
 
 
@@ -218,6 +237,13 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     double diffusion_nh3_ice = d2nh3idr2 + dnh3idr * two_inv_rm + d2nh3idthe2 * inv_rm2
         + dnh3idthe * costhe_inv_rm2sinthe + d2nh3idphi2 * inv_rm2sinthe2;
 
+    double diffusion_ch4 = d2ch4dr2  + dch4dr  * two_inv_rm + d2ch4dthe2  * inv_rm2
+        + dch4dthe  * costhe_inv_rm2sinthe + d2ch4dphi2  * inv_rm2sinthe2;
+    double diffusion_ch4_cloud = d2ch4cdr2 + dch4cdr * two_inv_rm + d2ch4cdthe2 * inv_rm2
+        + dch4cdthe * costhe_inv_rm2sinthe + d2ch4cdphi2 * inv_rm2sinthe2;
+    double diffusion_ch4_ice = d2ch4idr2 + dch4idr * two_inv_rm + d2ch4idthe2 * inv_rm2
+        + dch4idthe * costhe_inv_rm2sinthe + d2ch4idphi2 * inv_rm2sinthe2;
+
     double diffusion_nh4sh = d2nh4shdr2 + dnh4shdr * two_inv_rm + d2nh4shdthe2 * inv_rm2
         + dnh4shdthe * costhe_inv_rm2sinthe + d2nh4shdphi2 * inv_rm2sinthe2;
 
@@ -234,12 +260,40 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
 
     rhs_u.x[i][j][k] =
         - dpdr_term
+//        + buoyancy * g * (p_stat.x[i][j][k] + p_dyn.x[i][j][k])
+//                      / (r_mix * R_mix * t.x[i][j][k] * t_ref)
         + buoyancy * g * (p_stat.x[i][j][k] + p_dyn.x[i][j][k])
                       / (r_mix * R_mix * t.x[i][j][k] * t_ref)
         - transport_u
         + diffusion_u / re
         - Coriolis    * Coriolis_rad
         - centrifugal * centrifugal_rad;
+
+
+/*
+    // 1. Lokale Einstein-Viskosität berechnen (dimensionslos)
+    // mu_base entspricht 1.0, da re bereits im Nenner des Gesamterms steht
+    double mu_eff_cell = 1.0 * (1.0 + 2.5 * rho_mix[i][j][k]/rg_nh4sh);
+
+    // 2. Diffusionsterm mit variabler Viskosität (harmonisch gemittelt)
+    // Hier wird mu_eff an den Flächen i+1/2 und i-1/2 berechnet
+    double mu_east = (2.0 * mu_eff[i][j][k] * mu_eff[i+1][j][k]) / (mu_eff[i][j][k] + mu_eff[i+1][j][k] + 1e-20);
+    double mu_west = (2.0 * mu_eff[i][j][k] * mu_eff[i-1][j][k]) / (mu_eff[i][j][k] + mu_eff[i-1][j][k] + 1e-20);
+
+    // Der neue Diffusionsterm (ersetzt dein altes diffusion_u / re)
+    double variable_diffusion = (mu_east * (u[i+1] - u[i]) - mu_west * (u[i] - u[i-1])) / (re * dx * dx);
+
+    // 3. RHS Zusammensetzung
+    rhs_u.x[i][j][k] = 
+        - dpdr_term 
+        + buoyancy_term
+        - transport_u 
+        + variable_diffusion  // <--- Das ist die Änderung
+        - Coriolis_term 
+        - centrifugal_term;
+
+*/
+
 
     rhs_v.x[i][j][k] =
         - dpdthe_term
@@ -284,10 +338,33 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
         - transport_nh3_ice
         + diffusion_nh3_ice / (sc_nh3 * re);
 
+    rhs_ch4.x[i][j][k] =
+        - transport_ch4
+        + diffusion_ch4 / (sc_ch4 * re);
+
+    rhs_ch4_cloud.x[i][j][k] =
+        - transport_ch4_cloud
+        + diffusion_ch4_cloud / (sc_ch4 * re);
+
+    rhs_ch4_ice.x[i][j][k] =
+        - transport_ch4_ice
+        + diffusion_ch4_ice / (sc_ch4 * re);
+
+    // Stokes terminal velocity for NH4SH crystals falling in the -r direction.
+    // v_stokes [m/s] = (2/9) * r_p² * (rho_crystal - rho_mix) * g / mue_mix
+    // Divided by u_0 to get the non-dimensional sedimentation velocity;
+    // positive sign because downward settling ≡ negative radial velocity,
+    // giving +v_sed * dq/dr in the concentration equation.
+    const double v_stokes_nh4sh =
+        (2.0 / 9.0) * r_p_nh4sh * r_p_nh4sh
+        * (rg_nh4sh - rho_mix.x[i][j][k]) * g / mue_mix;
+
     rhs_nh4sh.x[i][j][k] =
         - transport_nh4sh
+        + fluxlim_nh4sh.x[i][j][k]
         + diffusion_nh4sh / (sc_nh4sh * re)
-        + chemical_reaction * massflux_nh4sh.x[i][j][k];
+        + chemical_reaction * massflux_nh4sh.x[i][j][k]
+        + (v_stokes_nh4sh / u_0) * dnh4shdr;
 
     aux_u.x[i][j][k] = rhs_u.x[i][j][k] + dpdr_term;
     aux_v.x[i][j][k] = rhs_v.x[i][j][k] + dpdthe_term;

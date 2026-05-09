@@ -10,6 +10,9 @@ Great Red Spot was a storm and thought about a fixed icy body just below the top
 a wake flow behind such a body and which could fix it at its position. It looks that the code could provide such a 
 different view on Jupiters Great Red Spot.
 
+For all relevant data concerning planet Jupiter and its atmosphere the book Plantetary Sciences 
+by Imke de Pater and Jack J. Lissauer was inevitable.
+
 ---
 
 ## Physics & Numerics

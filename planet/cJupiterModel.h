@@ -162,9 +162,9 @@ private:
     const double c43 = 4.0/3.0, c13 = 1.0/3.0, c32 = 3.0/2.0, c42 = 4.0/2.0, c12 = 1.0/2.0;
     static const int im = 41, jm = 181, km = 361;
 
-    int i_max = 40;  // corresponds to about 125 km above 10e6 Pa pressure level, maximum hight of the tropopause at equator
-    int i_beg = 30;  // corresponds to about 100 km above 10e6 Pa pressure level, maximum hight of the tropopause at poles
-//    int i_beg = 40;  // corresponds to about 100 km above 10e6 Pa pressure level, maximum hight of the tropopause at poles
+    int i_max = 40;                                                     // corresponds to about 125 km above 10e6 Pa pressure level, maximum height of the tropopause at equator
+    int i_beg = 30;                                                     // corresponds to about 100 km above 10e6 Pa pressure level
+//    int i_beg = 40;                                                     // corresponds to about 100 km above 10e6 Pa pressure level
 
     double mue_mix, k_mix, cp_mix, rg_mix, r_mix, R_mix, c_mix, x_mix;
 
@@ -172,220 +172,264 @@ private:
 
 
 // temperatures at triple point and ice formation
-    double t_0_h2o = 273.15;  // in K == 0°C, triple point
-    double t_00_h2o = 210.15;  // in K == -67°C (Planetary Siences)
-//    double t_00_h2o = 241.15;  // in K == -32°C (COSMO)
-    double t_000 = 235.15;  // in K == -20°C (precipitation module)
+    double t_0_h2o = 273.15;                                            // in K == 0°C, triple point
+    double t_00_h2o = 210.15;                                           // in K == -67°C (Planetary Siences)
+//    double t_00_h2o = 241.15;                                           // in K == -32°C (COSMO)
+    double t_000 = 235.15;                                              // in K == -20°C (precipitation module)
 
-    double t_0_h2s = 187.66;  // in K == -53.15°C, triple point
-    double t_00_h2s = 220.0;  // in K == -85.5°C, h2s-ice cloud formation (Planetary Sciences, p. 96)
+    double t_0_h2s = 187.66;                                            // in K == -53.15°C, triple point
+    double t_00_h2s = 220.0;                                            // in K == -85.5°C, h2s-ice cloud formation (Planetary Sciences, p. 96)
 
-    double t_0_nh3 = 195.5;  // in K == -77.65°C, triple point, gas and liquid pase
-    double t_00_nh3 = 140.0;  // in K == -133.15°C, nh3-ice cloud formation (Planetary Sciences, p. 96)
-//    double t_00_nh3 = 220.0;  // WRONG: 220 K > t_0_nh3=195.5 K inverts Tao mixed-phase algorithm
-//    double t_00_nh3 = 120.0;  // in K == -153.15°C, nh3-ice cloud formation (Planetary Sciences, p. 96)
+    double t_0_nh3 = 195.5;                                             // in K == -77.65°C, triple point, gas and liquid pase
+    double t_00_nh3 = 140.0;                                            // in K == -133.15°C, nh3-ice cloud formation (Planetary Sciences, p. 96)
+//    double t_00_nh3 = 220.0;                                            // WRONG: 220 K > t_0_nh3=195.5 K inverts Tao mixed-phase algorithm
+//    double t_00_nh3 = 120.0;                                            // in K == -153.15°C, nh3-ice cloud formation (Planetary Sciences, p. 96)
 
-    double t_0_nh4sh = 230.0;  // in K == -43.15°C, nh4sh formation onset (Planetary Sciences, p. 96)
-    double t_00_nh4sh = 200.0;  // in K == -73.15°C, nh4sh formation end (Planetary Sciences, p. 96)
+    double t_0_nh4sh = 230.0;                                           // in K == -43.15°C, nh4sh formation onset (Planetary Sciences, p. 96)
+    double t_00_nh4sh = 200.0;                                          // in K == -73.15°C, nh4sh formation end (Planetary Sciences, p. 96)
 
 
 // pressures take from  Planetary Sciences, p. 96
-    double p_0_h2o = 2.0;  // in bar
-    double p_00_h2o = 5.1;  // in bar
+    double p_0_h2o = 2.0;                                               // in bar
+    double p_00_h2o = 5.1;                                              // in bar
 
-    double p_0_h2s = 1.3;  // in bar
-    double p_00_h2s = 2.2;  // in bar
+    double p_0_h2s = 1.3;                                               // in bar
+    double p_00_h2s = 2.2;                                              // in bar
 
-    double p_0_nh3 = 0.32;  // in bar
-    double p_00_nh3 = 2.2;  // in bar
+    double p_0_nh3 = 0.32;                                              // in bar
+    double p_00_nh3 = 2.2;                                              // in bar
 
-    double p_0_nh4sh = 1.3;  // in bar
-    double p_00_nh4sh = 2.2;  // in bar
+    double p_0_nh4sh = 1.3;                                             // in bar
+    double p_00_nh4sh = 2.2;                                            // in bar
 
 
 // constants for Clausius-Clapeyron law
-    double coeff_h2_A = -2000.0; // invented
-    double coeff_h2_B = 8.0; // invented
+    double coeff_h2_A = -2000.0;                                        // invented
+    double coeff_h2_B = 8.0;                                            // invented
+//    double coeff_h2_A = -125.0;                                         // AI solution
+//    double coeff_h2_B = 4.0;                                            // AI solution
 
-    double coeff_he_A = -3000.0; // invented
-    double coeff_he_B = 10.0; // invented
-
-
-    double coeff_h2o_A = -4961.04;  // from triple and critical point values for water
-    double coeff_h2o_B = 13.0662;  // from triple and critical point values for water
-
-    double coeff_h2o_A_i = -4961.04; // invented
-    double coeff_h2o_B_i = 13.0662; // invented
+    double coeff_he_A = -3000.0;                                        // invented
+    double coeff_he_B = 10.0;                                           // invented
 
 
-    double coeff_h2s_A = -2251.66;  // from triple and critical point values for hydrogen sulfide
-    double coeff_h2s_B = 10.5253;  // from triple and critical point values for hydrogen sulfide
+    double coeff_h2o_A = -4961.04;                                      // from triple and critical point values for water
+    double coeff_h2o_B = 13.0662;                                       // from triple and critical point values for water
 
-    double coeff_h2s_A_i = -2251.66; // invented
-    double coeff_h2s_B_i = 10.5253; // invented
-
-
-    double coeff_nh3_A = -2836.56;  // from triple and critical point values for ammonia
-    double coeff_nh3_B = 11.7271;  // from triple and critical point values for ammonia
-
-    double coeff_nh3_A_i = -2836.56; // invented
-    double coeff_nh3_B_i = 11.7271; // invented
+    double coeff_h2o_A_i = -4961.04;                                    // invented
+    double coeff_h2o_B_i = 13.0662;                                     // invented
 
 
-    double coeff_nh4sh_A = -2836.56;  // invented
-    double coeff_nh4sh_B = 11.7271; // invented
+    double coeff_h2s_A = -2251.66;                                      // from triple and critical point values for hydrogen sulfide
+    double coeff_h2s_B = 10.5253;                                       // from triple and critical point values for hydrogen sulfide
+
+    double coeff_h2s_A_i = -2251.66;                                    // invented
+    double coeff_h2s_B_i = 10.5253;                                     // invented
 
 
-// mass density (concentration) of species in g/cm³ == 10e6 g/m³ == 10e3 kg/m³                            Planetary sciences p. 90 2010
-    double rg_h2 = 0.408; // mass density of vapour
-    double rg_he = 0.1752; // mass density of vapour
-    double rg_nh3 = 0.7623; // mass density of vapour
-    double rg_nh4sh = 1170.0; // mass density of vapour
-    double rg_h2s = 1.5357; // mass density of vapour
-    double rg_h2o = 0.005; // mass density of vapour
+    double coeff_nh3_A = -2836.56;                                      // from triple and critical point values for ammonia
+    double coeff_nh3_B = 11.7271;                                       // from triple and critical point values for ammonia
+
+    double coeff_nh3_A_i = -2836.56;                                    // invented
+    double coeff_nh3_B_i = 11.7271;                                     // invented
+
+
+//    double coeff_nh4sh_A = -2836.56;                                    // invented
+//    double coeff_nh4sh_B = 11.7271;                                     // invented
+
+    double coeff_nh4sh_A = -10834.0;                                    // AI
+    double coeff_nh4sh_B = 34.12;                                       // AI
+
 
 // molecular weights
-    double m_h2 = 2.016;  // molecular weight of hydrogen in kg/Kmol (molar mass)
-    double m_he = 4.02602;  // molecular weight of helium in kg/Kmol
-    double m_nh3 = 17.03052;  // molecular weight of ammonia in kg/Kmol
-    double m_nh4sh = 51.1114;  // molecular weight of ammonium hydrosulfide in kg/Kmol
-    double m_h2s = 34.08088;  // molecular weight of hydrogen sulfide in kg/Kmol
-    double m_h2o = 18.01588;  // molecular weight of water in kg/Kmol
+    double m_h2 = 2.016;                                                // molecular weight of hydrogen in kg/Kmol (molar mass)
+    double m_he = 4.02602;                                              // molecular weight of helium in kg/Kmol
+    double m_nh3 = 17.03052;                                            // molecular weight of ammonia in kg/Kmol
+    double m_nh4sh = 51.1114;                                           // molecular weight of ammonium hydrosulfide in kg/Kmol
+    double m_h2s = 34.08088;                                            // molecular weight of hydrogen sulfide in kg/Kmol
+    double m_h2o = 18.01588;                                            // molecular weight of water in kg/Kmol
+
+// mass density (concentration) of species in g/cm³ == 10e6 g/m³ == 10e3 kg/m³                            Planetary sciences p. 90 2010
+/*
+    double rg_h2 = 0.408;                                               // mass density of vapour
+    double rg_he = 0.1752;                                              // mass density of vapour
+    double rg_nh3 = 0.7623;                                             // mass density of vapour
+    double rg_nh4sh = 1170.0;                                           // mass density of vapour
+    double rg_h2s = 1.5357;                                             // mass density of vapour
+    double rg_h2o = 0.005;                                              // mass density of vapour
+*/
+    double rg_h2 = 0.408;                                               // mass density of vapour
+    double rg_he = 0.1752;                                              // mass density of vapour
+    double rg_nh3 = 817.0;                                              // AI condensed phase
+    double rg_nh4sh = 1170.0;                                           // AI condensed phase
+    double rg_h2s = 949.0;                                              // AI condensed phase
+    double rg_h2o = 1000.0;                                             // AI condensed phase
+
+// NH4SH crystal radius for Stokes settling
+    double r_p_nh4sh = 1.0e-5;  // NH4SH crystal radius in m
 
 // vapour mass densities of gases                Planetary sciences p. 90 2010
-    double r_h2 = 0.864;  // density of hydrogen vapour in kg/m³
-    double r_he = 0.136;  // density of helium vapour  in kg/m³
-    double r_nh3 = 0.04;  // density of ammonia vapour in kg/m³
-    double r_h2s = 0.055;  // density of hydrogen sulfide vapour in kg/m³
-    double r_h2o = 0.09;  // density of water vapour in kg/m³
-//    double r_h2o = 55.0;  // density of water vapour in kg/m³
-    double r_nh4sh = 0.007;  // density of ammonium hydrosulfide vapour in kg/m³  assumption
-    double r_nh3_add = 0.09;  // density of ammonia vapour in kg/m³
+/*
+    double r_h2 = 0.864;                                                // density of hydrogen vapour in kg/m³
+    double r_he = 0.136;                                                // density of helium vapour  in kg/m³
+    double r_nh3 = 0.04;                                                // density of ammonia vapour in kg/m³
+    double r_h2s = 0.055;                                               // density of hydrogen sulfide vapour in kg/m³
+    double r_h2o = 0.09;                                                // density of water vapour in kg/m³
+    double r_nh4sh = 0.007;                                             // density of ammonium hydrosulfide vapour in kg/m³  assumption
+    double r_nh3_add = 0.09;                                            // density of ammonia vapour in kg/m³
+*/
+    double r_h2 = 0.864;                                                // density of hydrogen vapour in kg/m³
+    double r_he = 0.136;                                                // density of helium vapour  in kg/m³
+    double r_nh3 = 0.004;                                               // density of ammonia vapour in kg/m³
+    double r_h2s = 0.0004;                                              // density of hydrogen sulfide vapour in kg/m³
+    double r_h2o = 0.09;                                                // density of water vapour in kg/m³
+    double r_nh4sh = 0.000;                                             // density of ammonium hydrosulfide vapour in kg/m³  assumption
+    double r_nh3_add = 0.0001;                                          // density of ammonia vapour in kg/m³
 
 // vapour mass densities of clouds and ices               Planetary sciences p. 90 2010
-    double r_nh3_cloud = 0.004;  // density of ammonia cloud in kg/m³
-    double r_h2o_cloud = 0.009;  // density of water cloud in kg/m³
-    double r_nh3_ice = 0.0003;  // density of ammonia ice in kg/m³
-    double r_h2o_ice = 0.002;  // density of water ice in kg/m³
+    double r_nh3_cloud = 0.004;                                         // density of ammonia cloud in kg/m³
+    double r_h2o_cloud = 0.009;                                         // density of water cloud in kg/m³
+    double r_nh3_ice = 0.0003;                                          // density of ammonia ice in kg/m³
+    double r_h2o_ice = 0.002;                                           // density of water ice in kg/m³
 
 // vapour molar densities of gases
-    double c_h2 = r_h2/m_h2;  // density of hydrogen vapour in kmol/m³
-    double c_he = r_he/m_he;  // density of helium vapour  in kmol/m³
-    double c_nh3 = r_nh3/m_nh3;  // density of ammonia vapour in kmol/m³
-    double c_h2s = r_h2s/m_h2s;  // density of hydrogen sulfide vapour in kmol/m³
-    double c_h2o = r_h2o/m_h2o;  // density of water vapour in kmol/m³
-    double c_nh4sh = r_nh4sh/m_nh4sh;  // density of ammonium hydrosulfide vapour in kmol/m³  assumption
-
+    double c_h2 = r_h2/m_h2;                                            // density of hydrogen vapour in kmol/m³
+    double c_he = r_he/m_he;                                            // density of helium vapour  in kmol/m³
+    double c_nh3 = r_nh3/m_nh3;                                         // density of ammonia vapour in kmol/m³
+    double c_h2s = r_h2s/m_h2s;                                         // density of hydrogen sulfide vapour in kmol/m³
+    double c_h2o = r_h2o/m_h2o;                                         // density of water vapour in kmol/m³
+    double c_nh4sh = r_nh4sh/m_nh4sh;                                   // density of ammonium hydrosulfide vapour in kmol/m³  assumption
+/*
  // ratio of vapour molecular weight to mean molecular weight
     double X_h2 = 0.864;
     double X_he = 0.136;
-//    double X_h2o = 5.0e-5;
     double X_h2o = 1.7e-3;
     double X_nh3 = 2.0e-4;
     double X_h2s = 7.7e-5;
     double X_nh4sh = 3.6e-5;
+*/
+ // mass fraction
+    double X_h2 = 0.864;
+    double X_he = 0.136;
+    double X_h2o = 1.7e-3;                                              // AI
+    double X_nh3 = 2.0e-4;                                              // AI
+    double X_h2s = 7.7e-5;                                              // AI
+    double X_nh4sh = 0.0;                                               // AI
 
 // gas constants
-    double R_h2 = 4124.2; // gas constant of hydrogen in J/(kg*K)
-    double R_he = 2077.1; // gas constant of helium in J/(kg*K)
-    double R_nh3 = 488.21; // gas constant of ammoinia in J/(kg*K)
-    double R_nh4sh = 261.0; // gas constant of ammoinium hydrosulfide in J/(kg*K)   invented for the initial distribution of nh4sh
-    double R_h2s = 243.96; // gas constant of hydrogen sulfide inJ/(kg*K) 
-    double R_h2o = 461.52; // gas constant of water inJ/(kg*K)
-
+    double R_h2 = 4124.2;                                               // gas constant of hydrogen in J/(kg*K)
+    double R_he = 2077.1;                                               // gas constant of helium in J/(kg*K)
+    double R_nh3 = 488.21;                                              // gas constant of ammoinia in J/(kg*K)
+    double R_nh4sh = 162.67;                                            // gas constant of ammoinium hydrosulfide in J/(kg*K)   by AI
+    double R_h2s = 243.96;                                              // gas constant of hydrogen sulfide inJ/(kg*K) 
+    double R_h2o = 461.52;                                              // gas constant of water inJ/(kg*K)
+/*
 // dynamic viscosities
-    double mue_h2 = 0.84e-5; // dynamic viscosity of hydrogen in Ns/m²
-    double mue_he = 1.87e-5; // dynamic viscosity of helium in Ns/m²
-    double mue_nh3 = 0.92e-5; // dynamic viscosity of ammonia in Ns/m²
-    double mue_nh4sh = 0.99e-5; // dynamic viscosity of ammonium sulfide in Ns/m²
-    double mue_h2s = 1.3e-5; // dynamic viscosity of hydrogen sulfid in Ns/m²
-    double mue_h2o = 1.308e-3; // dynamic viscosity of water in Ns/m²
+    double mue_h2 = 0.84e-5;                                            // dynamic viscosity of hydrogen in Ns/m²
+    double mue_he = 1.87e-5;                                            // dynamic viscosity of helium in Ns/m²
+    double mue_nh3 = 0.92e-5;                                           // dynamic viscosity of ammonia in Ns/m²
+    double mue_nh4sh = 0.99e-5;                                         // dynamic viscosity of ammonium sulfide in Ns/m²
+    double mue_h2s = 1.3e-5;                                            // dynamic viscosity of hydrogen sulfid in Ns/m²
+    double mue_h2o = 1.308e-3;                                          // dynamic viscosity of water in Ns/m²
+*/
+// dynamic viscosities
+    double mue_h2 = 0.84e-5;                                            // dynamic viscosity of hydrogen in Ns/m²
+    double mue_he = 1.87e-5;                                            // dynamic viscosity of helium in Ns/m²
+    double mue_nh3 = 0.92e-5;                                           // dynamic viscosity of ammonia in Ns/m²
+    double mue_nh4sh = 0.0;                                             // dynamic viscosity of ammonium sulfide in Ns/m²
+    double mue_h2s = 1.3e-5;                                            // dynamic viscosity of hydrogen sulfid in Ns/m²
+    double mue_h2o = 0.9e-5;                                            // dynamic viscosity of water in Ns/m²   by AI
 
 // thermal conductivities
-    double k_h2 = 0.1317; // thermal conductivity of hydrogen in W/(m*K)
-    double k_he = 0.1193; // thermal conductivity of helium in W/(m*K)
-    double k_nh3 = 0.02102; // thermal conductivity of ammonia in W/(m*K)
-    double k_nh4sh = 0.02102; // thermal conductivity of ammonium hydrosulfide in W/(m*K)
-    double k_h2s = 0.013; // thermal conductivity of hydrogen sulfide in W/(m*K)
-    double k_h2o = 0.0187; // thermal conductivity of water in W/(m*K)
+    double k_h2 = 0.1317;                                               // thermal conductivity of hydrogen in W/(m*K)
+    double k_he = 0.1193;                                               // thermal conductivity of helium in W/(m*K)
+    double k_nh3 = 0.02102;                                             // thermal conductivity of ammonia in W/(m*K)
+    double k_nh4sh = 0.0;                                               // thermal conductivity of ammonium hydrosulfide in W/(m*K)
+    double k_h2s = 0.013;                                               // thermal conductivity of hydrogen sulfide in W/(m*K)
+    double k_h2o = 0.0187;                                              // thermal conductivity of water in W/(m*K)
 
 // specific heat capacities
-    double cp_h2 = 14.32e3;  // specific heat capacity of hydrogen in J/(kg*K)
-    double cp_he = 5.19e3;  // specific heat capacity of helium in J/(kg*K)
-    double cp_nh3 = 2.19e3;  // specific heat capacity of ammonia in J/(kg*K)
-    double cp_nh4sh = 2.00e3;  // specific heat capacity of ammonium hydrosulfide in J/(kg*K)
-    double cp_h2s = 2.24e3;  // specific heat capacity of hydrogen sulfid in J/(kg*K)
-    double cp_h2o = 1.93e3;  // specific heat capacity of water in J/(kg*K)
-
-// ratios of gas constants of dry gas to vapour or vapour molecular weight to mean atmospheric molecular weight or m/m_mix
-    double ep_h2 = 0.8572;  // ratio of the gas constants of dry air to h2 non-dimensional or m/m_mix
-    double ep_he = 1.7152;  // ratio of the gas constants of dry he to h2 non-dimensional
-    double ep_h2o = 8.1253;  // ratio of the gas constants of dry air to h2 non-dimensional
-    double ep_h2s = 14.5192;  // ratio of the gas constants of dry hydrogen sulfide to h2 non-dimensional
-    double ep_nh3 = 7.6752;  // ratio of the gas constants of dry ammonia to h2 non-dimensional
-    double ep_nh4sh = 21.7745;  // ratio of the gas constants of dry ammonia hydrosufide to h2 non-dimensional       invented
+    double cp_h2 = 14.32e3;                                             // specific heat capacity of hydrogen in J/(kg*K)
+    double cp_he = 5.19e3;                                              // specific heat capacity of helium in J/(kg*K)
+    double cp_nh3 = 2.19e3;                                             // specific heat capacity of ammonia in J/(kg*K)
+    double cp_nh4sh = 2.00e3;                                           // specific heat capacity of ammonium hydrosulfide in J/(kg*K)
+    double cp_h2s = 2.24e3;                                             // specific heat capacity of hydrogen sulfid in J/(kg*K)
+    double cp_h2o = 1.93e3;                                             // specific heat capacity of water in J/(kg*K)
 /*
 // ratios of gas constants of dry gas to vapour or vapour molecular weight to mean atmospheric molecular weight or m/m_mix
-    double ep_h2 = 0.8572;  // ratio of the gas constants of dry air to h2 non-dimensional or m/m_mix
-    double ep_he = 1.7152;  // ratio of the gas constants of dry he to h2 non-dimensional
-    double ep_h2o = 0.8715;  // ratio of the gas constants of dry air to h2 non-dimensional
-    double ep_h2s = 1.6410;  // ratio of the gas constants of dry hydrogen sulfide to h2 non-dimensional
-    double ep_nh3 = 0.8236;  // ratio of the gas constants of dry ammonia to h2 non-dimensional
-    double ep_nh4sh = 2.4180;  // ratio of the gas constants of dry ammonia hydrosufide to h2 non-dimensional       invented
+    double ep_h2 = 0.8572;                                              // ratio of the gas constants of dry air to h2 non-dimensional or m/m_mix
+    double ep_he = 1.7152;                                              // ratio of the gas constants of dry he to h2 non-dimensional
+    double ep_h2o = 8.1253;                                             // ratio of the gas constants of dry air to h2 non-dimensional
+    double ep_h2s = 14.5192;                                            // ratio of the gas constants of dry hydrogen sulfide to h2 non-dimensional
+    double ep_nh3 = 7.6752;                                             // ratio of the gas constants of dry ammonia to h2 non-dimensional
+    double ep_nh4sh = 21.7745;                                          // ratio of the gas constants of dry ammonia hydrosufide to h2 non-dimensional       invented
 */
+// ratios of gas constants of dry gas to vapour or vapour molecular weight to mean atmospheric molecular weight or m/m_mix
+    double ep_h2 = 0.908;                                               // ratio of the gas constants of dry air to h2 non-dimensional or m/m_mix
+    double ep_he = 1.803;                                               // ratio of the gas constants of dry he to h2 non-dimensional
+    double ep_h2o = 8.115;                                              // ratio of the gas constants of dry air to h2 non-dimensional
+    double ep_h2s = 15.35;                                              // ratio of the gas constants of dry hydrogen sulfide to h2 non-dimensional
+    double ep_nh3 = 7.671;                                              // ratio of the gas constants of dry ammonia to h2 non-dimensional
+    double ep_nh4sh = 23.02;                                            // ratio of the gas constants of dry ammonia hydrosufide to h2 non-dimensional       invented
+
 // latent heat of evaporation
-    double lv_h2o = 2.5009e6;  // latent heat of h2o evaporation at 0°C in J/kg
-    double lv_h2s = 3.5340e6;  // latent heat of h2s evaporation at -73°C in J/kg
-    double lv_nh3 = 1.3720e6;  // latent heat of nh3 evaporation at -33.33 in J/kg
+    double lv_h2o = 2.5009e6;                                           // latent heat of h2o evaporation at 0°C in J/kg
+    double lv_h2s = 3.5340e6;                                           // latent heat of h2s evaporation at -73°C in J/kg
+    double lv_nh3 = 1.3720e6;                                           // latent heat of nh3 evaporation at -33.33 in J/kg
 
 // latent heat of sublimation
-    double ls_h2o = 2.8339e6;  // latent heat of h2o sublimation at 0°C in J/kg
-    double ls_h2s = 7.4500e5;  // latent heat of h2s sublimation at -98°C in J/kg
-    double ls_nh3 = 1.8320e6;  // latent heat of nh3 sublimation at -93.15 in J/kg
+    double ls_h2o = 2.8339e6;                                           // latent heat of h2o sublimation at 0°C in J/kg
+    double ls_h2s = 7.4500e5;                                           // latent heat of h2s sublimation at -98°C in J/kg
+    double ls_nh3 = 1.8320e6;                                           // latent heat of nh3 sublimation at -93.15 in J/kg
+    double ls_nh4sh = 1.7e6;                                            // latent heat of nh3 sublimation at -93.15 in J/kg
 
 // Schmidt number
-    double sc_h2 = 0.20;  // Schmidt numbert of h2o, Sc = nue/D
-    double sc_he = 0.22;  // Schmidt numbert of h2o, Sc = nue/D
-    double sc_h2o = 0.61;  // Schmidt numbert of h2o, Sc = nue/D
-    double sc_h2s = 0.94;  // Schmidt number of h2s, Sc = nue/D 
-    double sc_nh3 = 0.61;  // Schmidt number of nh3, Sc = nue/D 
-    double sc_nh4sh = 0.7;  // Schmidt number of nh4sh, Sc = nue/D 
+    double sc_h2 = 0.20;                                                // Schmidt numbert of h2o, Sc = nue/D
+    double sc_he = 0.22;                                                // Schmidt numbert of h2o, Sc = nue/D
+    double sc_h2o = 0.61;                                               // Schmidt numbert of h2o, Sc = nue/D
+    double sc_h2s = 0.94;                                               // Schmidt number of h2s, Sc = nue/D 
+    double sc_nh3 = 0.61;                                               // Schmidt number of nh3, Sc = nue/D 
+    double sc_nh4sh = 0.7;                                              // Schmidt number of nh4sh, Sc = nue/D 
 
 // Prantl numbers
-    double Pr = 0.72;  // Prandtl-number 
-
+    double Pr = 0.72;                                                   // Prandtl-number 
+/*
 // diffusion coefficients
-    double D_nh3 = 1.5e-9; // ordinary diffusion coefficient of ammonia in m*m/s 
-    double D_h2s = 1.36e-9; // ordinary diffusion coefficient of hydrogen sulfid in m*m/s 
-    double D_nh4sh = 1.45e-9; // ordinary diffusion coefficient of ammonium hydrosulfide in m*m/s
-
+    double D_nh3 = 1.5e-9;                                              // ordinary diffusion coefficient of ammonia in m*m/s 
+    double D_h2s = 1.36e-9;                                             // ordinary diffusion coefficient of hydrogen sulfid in m*m/s 
+    double D_nh4sh = 1.45e-9;                                           // ordinary diffusion coefficient of ammonium hydrosulfide in m*m/s
+*/
+// diffusion coefficients
+    double D_nh3 = 1.0e-4;                                              // ordinary diffusion coefficient of ammonia in m*m/s 
+    double D_h2s = 1.0e-4;                                              // ordinary diffusion coefficient of hydrogen sulfid in m*m/s 
+    double D_nh4sh = 1.0e-4;                                            // ordinary diffusion coefficient of ammonium hydrosulfide in m*m/s
+/*
 // thermal diffusion coefficients
-    double DT_nh3 = 1.54e-9; // thermal diffusion coefficient of ammonia in kg/(s*m)                           unklar
-    double DT_h2s = 1.36e-9; // thermal diffusion coefficient of hydrogen sulfid in kg/(s*m)
-    double DT_nh4sh = 1.45e-9; // thermal diffusion coefficient of ammonium hydrosulfide in kg/(s*m)
+    double DT_nh3 = 1.54e-9;                                            // thermal diffusion coefficient of ammonia in kg/(s*m)     unklar
+    double DT_h2s = 1.36e-9;                                            // thermal diffusion coefficient of hydrogen sulfid in kg/(s*m)
+    double DT_nh4sh = 1.45e-9;                                          // thermal diffusion coefficient of ammonium hydrosulfide in kg/(s*m)
+*/
+// thermal diffusion coefficients
+    double DT_nh3 = 0.0;                                                // thermal diffusion coefficient of ammonia in kg/(s*m)     unklar
+    double DT_h2s = 0.0;                                                // thermal diffusion coefficient of hydrogen sulfid in kg/(s*m)
+    double DT_nh4sh = 0.0;                                              // thermal diffusion coefficient of ammonium hydrosulfide in kg/(s*m)
 
 // constants for saturation vapour pressure and latent heat from the original paper by Sanchez-Lavega, Perez-Hoyos and Huesco, p. 770
-    double C_h2o = 25.096;  //  in bar
-    double C_nh3 = 27.863;  //  in bar
-    double C_h2s = 17.064;  //  in bar
-    double C_nh4sh = 75.678;  //  in bar
+    double C_h2o = 25.096;                                              //  in bar
+    double C_nh3 = 27.863;                                              //  in bar
+    double C_h2s = 17.064;                                              //  in bar
+    double C_nh4sh = 75.678;                                            //  in bar
 
-    double L0_h2o = 3148.2;  //  in J/g
-    double L0_nh3 = 2016.0;  //  in J/g
-    double L0_h2s = 747.0;  //  in J/g
-    double L0_nh4sh = 2915.7;  //  in J/g
-/*
-    double L0_h2o = 2.8339e3;  //  in J/g
-    double L0_nh3 = 1.3720e3;  //  in J/g
-    double L0_h2s = 3.5340e3;  //  in J/g
-    double L0_nh4sh = 2.915e3;  //  in J/g
-*/
+    double L0_h2o = 3148.2;                                             //  in J/g
+    double L0_nh3 = 2016.0;                                             //  in J/g
+    double L0_h2s = 747.0;                                              //  in J/g
+    double L0_nh4sh = 2915.7;                                           //  in J/g
+
 // alf and bet are empirical constants for each phase
     double del_alf_h2o = 0.0;
     double del_bet_h2o = - 8.7e-3;
 
-//    double del_alf_nh3 = - 0.888;  // original paper by Sanchez-Lavega, Perez-Hoyos and Huesco, p. 770
-    double del_alf_nh3 = - 1.2;  // approximated
+    double del_alf_nh3 = - 0.888;                                       // original paper by Sanchez-Lavega, Perez-Hoyos and Huesco, p. 770
     double del_bet_nh3 = 0.0;
 
 // ice-phase (sublimation) Sanchez-Lavega SVP parameters — derived so that:
@@ -393,13 +437,13 @@ private:
 //   L0_ice = L0_liquid * (ls / lv)         (sublimation latent heat scales the slope)
 //   del_alf / del_bet kept equal to liquid  (same temperature-dependence structure)
 // Result: E_ice < E_liquid for all T < T_triple, as required by Tao mixed-phase scheme.
-    double C_h2o_ice    = 28.418;   // H2O ice SVP constant [bar]; calibrated at T_tp=273.16 K
-    double L0_h2o_ice   = 3567.3;   // H2O L0_ice = 3148.2*(ls/lv) = 3148.2*(2833.9/2500.9) [J/g]
+    double C_h2o_ice    = 28.418;                                       // H2O ice SVP constant [bar]; calibrated at T_tp=273.16 K
+    double L0_h2o_ice   = 3567.3;                                       // H2O L0_ice = 3148.2*(ls/lv) = 3148.2*(2833.9/2500.9) [J/g]
     double del_alf_h2o_ice = 0.0;
     double del_bet_h2o_ice = -8.7e-3;
 
-    double C_nh3_ice    = 34.948;   // NH3 ice SVP constant [bar]; calibrated at T_tp=195.4 K
-    double L0_nh3_ice   = 2692.5;   // NH3 L0_ice = 2016.0*(ls/lv) = 2016.0*(1832/1372) [J/g]
+    double C_nh3_ice    = 34.948;                                       // NH3 ice SVP constant [bar]; calibrated at T_tp=195.4 K
+    double L0_nh3_ice   = 2692.5;                                       // NH3 L0_ice = 2016.0*(ls/lv) = 2016.0*(1832/1372) [J/g]
     double del_alf_nh3_ice = -1.2;
     double del_bet_nh3_ice = 0.0;
 
@@ -408,7 +452,48 @@ private:
 
     double del_alf_nh4sh = - 1.760;
     double del_bet_nh4sh = 7.8e-4;
- 
+
+// ============================================================================
+// CH4 (methane) parameters — ported from ATNEPT
+// ============================================================================
+    double t_0_ch4  = 90.69;                                            // in K, triple point
+    double t_00_ch4 = 190.56;                                           // in K, ch4-ice cloud formation
+    double p_0_ch4  = 0.1;                                              // in bar
+    double p_00_ch4 = 1.1;                                              // in bar
+
+    double coeff_ch4_A   = -1033.3;                                     // Clausius-Clapeyron, methane
+    double coeff_ch4_B   = 6.3910;
+    double coeff_ch4_A_i = -1033.3;                                     // ice phase, invented
+    double coeff_ch4_B_i = 6.3910;
+
+    double rho_cond_ch4 = 0.657;                                        // liquid methane density [kg/m³]
+    double rg_ch4       = 0.657;                                        // mass density of ch4 vapour
+    double m_ch4        = 16.042;                                       // molecular weight of methane [kg/kmol]
+    double r_ch4        = 0.19;                                         // density of ch4 vapour [kg/m³]
+    double r_ch4_ice    = 0.0082;                                       // density of ch4 ice [kg/m³]
+    double c_ch4        = r_ch4 / m_ch4;                                // molar density of ch4 vapour [kmol/m³]
+    double X_ch4        = 3.6e-5;                                       // mass fraction
+    double R_ch4        = 518.28;                                       // gas constant of methane [J/(kg*K)]
+    double mue_ch4      = 1.107e-2;                                     // dynamic viscosity of methane [Ns/m²]
+    double k_ch4        = 0.0;                                          // thermal conductivity of methane [W/(m*K)]
+    double cp_ch4       = 2.232e3;                                      // specific heat capacity of methane [J/(kg*K)]
+    double ep_ch4       = 7.6752;                                       // R_h2/R_ch4 ratio
+    double lv_ch4       = 5.11e5;                                       // latent heat of evaporation [J/kg]
+    double ls_ch4       = 5.11e5;                                       // latent heat of sublimation [J/kg]
+    double sc_ch4       = 0.99;                                         // Schmidt number of ch4
+    double D_ch4        = 1.0e-4;                                       // ordinary diffusion coefficient [m²/s]
+    double DT_ch4       = 0.0;                                          // thermal diffusion coefficient [kg/(s*m)]
+    double C_ch4        = 1.627;                                        // SVP constant [bar]
+    double L0_ch4       = 553.1;                                        // SVP slope constant [J/g]
+    double del_alf_ch4  = 1.002;
+    double del_bet_ch4  = -4.1e-3;
+    // ATNEPT only specifies one CH4 SVP curve (ls_ch4 == lv_ch4); reuse the same
+    // parameters for the ice-phase calibration that SaturationAdjustmentJup expects.
+    double C_ch4_ice       = 1.627;
+    double L0_ch4_ice      = 553.1;
+    double del_alf_ch4_ice = 1.002;
+    double del_bet_ch4_ice = -4.1e-3;
+
     std::vector<std::vector<int> > j_ellipse;
     bool has_welcome_msg_printed;
     double out_maxValue() const;
@@ -575,6 +660,8 @@ private:
     Array v;                    // v-component velocity component in theta-direction
     Array w;                    // w-component velocity component in phi-direction
 
+    Array rho_mix;                    // density of mixture
+
     Array h2o;                    // water vapour
     Array h2o_cloud;                // cloud water
     Array h2o_ice;                    // cloud ice
@@ -582,6 +669,9 @@ private:
     Array nh3;                    // nh3-vapour
     Array nh3_cloud;            // nh3-cloud
     Array nh3_ice;                // nh3-ice
+    Array ch4;                    // ch4-vapour
+    Array ch4_cloud;            // ch4-cloud
+    Array ch4_ice;                // ch4-ice
     Array nh4sh;                    // nh4sh-vapour
 
     Array tn;                    // temperature new
@@ -595,6 +685,9 @@ private:
     Array nh3n;                    // nh3 new
     Array nh3_cloudn;            // nh3_cloud new
     Array nh3_icen;                 // nh3_ice new
+    Array ch4n;                    // ch4 new
+    Array ch4_cloudn;            // ch4_cloud new
+    Array ch4_icen;                 // ch4_ice new
     Array nh4shn;                    // nh4sh new
 
     Array massflux_h2s;   // mass flux h2s
@@ -625,7 +718,12 @@ private:
     Array rhs_nh3;                // auxilliar field RHS nh3
     Array rhs_nh3_cloud;        // auxilliar field RHS nh3_cloud
     Array rhs_nh3_ice;            // auxilliar field RHS nh3_ice
+    Array rhs_ch4;                // auxilliar field RHS ch4
+    Array rhs_ch4_cloud;        // auxilliar field RHS ch4_cloud
+    Array rhs_ch4_ice;            // auxilliar field RHS ch4_ice
     Array rhs_nh4sh;                // auxilliar field RHS nh4sh
+
+    Array fluxlim_nh4sh;  // TVD flux-limiter correction for nh4sh advection
 
     Array aux;                // auxilliar field u-velocity component
     Array aux_u;                // auxilliar field u-velocity component
@@ -648,9 +746,9 @@ private:
     Array j_h2s;                // ordinary-diffusion mass flux of h2s
     Array j_nh4sh;              // ordinary-diffusion mass flux of nh4sh
 
-    Array jT_nh3;                // thermo-diffusion mass flux of nh3
-    Array jT_h2s;                // thermo-diffusion mass flux of h2s
-    Array jT_nh4sh;              // thermo-diffusion mass flux of nh4sh
+    Array jT_nh3;               // thermo-diffusion mass flux of nh3
+    Array jT_h2s;               // thermo-diffusion mass flux of h2s
+    Array jT_nh4sh;             // thermo-diffusion mass flux of nh4sh
 };
 
 #endif

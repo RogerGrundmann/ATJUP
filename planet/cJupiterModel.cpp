@@ -159,7 +159,7 @@ void cJupiterModel::Run(){
     init_tropopause_layers();
     VelocityInitializerJup(*this).compute();                            // construction of zonal initial velocities from measurements
 
-    BC_Jup(*this).bcSeaMount();                                       // velocities close to surfaces, resembling a boundary layer
+    BC_Jup(*this).bcSeaMount();                                         // velocities close to surfaces, resembling a boundary layer
     BC_Jup(*this).bcVelSurfSur();                                       // velocities close to surfaces, resembling a boundary layer
 
     JupiterUtils::damp_wiggles(u, &i_topography, true, true, true);
@@ -192,10 +192,10 @@ void cJupiterModel::Run(){
 
 //    goto Printout;
 
-    init_vapour_cloud_ice("NH3", nh3_tropopause, 
-        coeff_nh3_A, coeff_nh3_B, 
-        coeff_nh3_A_i, coeff_nh3_B_i, 
-        t_0_nh3, t_00_nh3, 
+    init_vapour_cloud_ice("NH3", nh3_tropopause,
+        coeff_nh3_A, coeff_nh3_B,
+        coeff_nh3_A_i, coeff_nh3_B_i,
+        t_0_nh3, t_00_nh3,
         ep_nh3, r_nh3, m_nh3,
         C_nh3, L0_nh3, R_nh3, del_alf_nh3, del_bet_nh3,
         nh3, nh3_cloud, nh3_ice);
@@ -203,6 +203,18 @@ void cJupiterModel::Run(){
     JupiterUtils::damp_wiggles(nh3,       &i_topography, true, true, true);
     JupiterUtils::damp_wiggles(nh3_cloud, &i_topography, true, true, true);
     JupiterUtils::damp_wiggles(nh3_ice,   &i_topography, true, true, true);
+
+    init_vapour_cloud_ice("CH4", ch4_tropopause,
+        coeff_ch4_A, coeff_ch4_B,
+        coeff_ch4_A_i, coeff_ch4_B_i,
+        t_0_ch4, t_00_ch4,
+        ep_ch4, r_ch4, m_ch4,
+        C_ch4, L0_ch4, R_ch4, del_alf_ch4, del_bet_ch4,
+        ch4, ch4_cloud, ch4_ice);
+
+    JupiterUtils::damp_wiggles(ch4,       &i_topography, true, true, true);
+    JupiterUtils::damp_wiggles(ch4_cloud, &i_topography, true, true, true);
+    JupiterUtils::damp_wiggles(ch4_ice,   &i_topography, true, true, true);
 
 //    goto Printout;
 
@@ -252,13 +264,29 @@ void cJupiterModel::Run(){
     JupiterUtils::damp_wiggles(nh3_cloud, &i_topography, true, true, true);
     JupiterUtils::damp_wiggles(nh3_ice,   &i_topography, true, true, true);
 
+
+    SaturationAdjustmentJup(*this).run("CH4",
+        coeff_ch4_A, coeff_ch4_B, coeff_ch4_A_i, coeff_ch4_B_i,
+        t_0_ch4, t_00_ch4,
+        ep_ch4, lv_ch4, ls_ch4, cp_ch4, r_ch4,
+        C_ch4, L0_ch4, R_ch4, del_alf_ch4, del_bet_ch4, m_ch4,
+        C_ch4_ice, L0_ch4_ice, del_alf_ch4_ice, del_bet_ch4_ice,
+        ch4, ch4_cloud, ch4_ice);
+
+    JupiterUtils::damp_wiggles(ch4,       &i_topography, true, true, true);
+    JupiterUtils::damp_wiggles(ch4_cloud, &i_topography, true, true, true);
+    JupiterUtils::damp_wiggles(ch4_ice,   &i_topography, true, true, true);
+
+
 //    goto Printout;
 
     ChemistryJup(*this).ChemMassRateJup();
+    ChemistryJup(*this).FluxLimiterNH4SH();
 
     JupiterUtils::damp_wiggles(massflux_h2s,   &i_topography, true, true, true);
     JupiterUtils::damp_wiggles(massflux_nh3,   &i_topography, true, true, true);
     JupiterUtils::damp_wiggles(massflux_nh4sh, &i_topography, true, true, true);
+    JupiterUtils::damp_wiggles(fluxlim_nh4sh,  &i_topography, true, true, true);
 
     ChemistryJup(*this).DiffMassFluxJup();
 
@@ -320,6 +348,14 @@ void cJupiterModel::Run(){
             C_nh3_ice, L0_nh3_ice, del_alf_nh3_ice, del_bet_nh3_ice,
             nh3, nh3_cloud, nh3_ice);
 
+        SaturationAdjustmentJup(*this).run("CH4",
+            coeff_ch4_A, coeff_ch4_B, coeff_ch4_A_i, coeff_ch4_B_i,
+            t_0_ch4, t_00_ch4,
+            ep_ch4, lv_ch4, ls_ch4, cp_ch4, r_ch4,
+            C_ch4, L0_ch4, R_ch4, del_alf_ch4, del_bet_ch4, m_ch4,
+            C_ch4_ice, L0_ch4_ice, del_alf_ch4_ice, del_bet_ch4_ice,
+            ch4, ch4_cloud, ch4_ice);
+
         ChemistryJup(*this).DiffMassFluxJup();                          // must precede ChemMassRateJup: massflux = w - difflux
 
         // Smooth difflux and thermalmassflux BEFORE difflux enters massflux assembly.
@@ -329,11 +365,13 @@ void cJupiterModel::Run(){
         JupiterUtils::damp_wiggles(thermalmassflux, &i_topography, true, true, true);
 
         ChemistryJup(*this).ChemMassRateJup();
+        ChemistryJup(*this).FluxLimiterNH4SH();
 
         // Smooth the assembled massflux.
         JupiterUtils::damp_wiggles(massflux_h2s,   &i_topography, true, true, true);
         JupiterUtils::damp_wiggles(massflux_nh3,   &i_topography, true, true, true);
         JupiterUtils::damp_wiggles(massflux_nh4sh, &i_topography, true, true, true);
+        JupiterUtils::damp_wiggles(fluxlim_nh4sh,  &i_topography, true, true, true);
 
         Forces();
         Latent_Heat();
@@ -370,11 +408,6 @@ void cJupiterModel::Run(){
 
     cout << endl << "      Jupiter: run_3D_loop atm ended ..........................." << endl;
 
-/*
-    Printout:
-        printMinMax();
-        writeData();
-*/
 
 
     JupiterUtils::RunEnd("JupiterCM", start);
@@ -416,6 +449,9 @@ void cJupiterModel::resetArrays(){
     nh3.initArray(im, jm, km, 0.0);                 // nh3-vapour
     nh3_cloud.initArray(im, jm, km, 0.0);           // nh3-cloud
     nh3_ice.initArray(im, jm, km, 0.0);             // nh3-ice
+    ch4.initArray(im, jm, km, 0.0);                 // ch4-vapour
+    ch4_cloud.initArray(im, jm, km, 0.0);           // ch4-cloud
+    ch4_ice.initArray(im, jm, km, 0.0);             // ch4-ice
 
     nh4sh.initArray(im, jm, km, 0.0);                 // nh4sh-vapour
 
@@ -431,7 +467,12 @@ void cJupiterModel::resetArrays(){
     nh3n.initArray(im, jm, km, 0.0);                // nh3 new
     nh3_cloudn.initArray(im, jm, km, 0.0);            // nh3_cloud new
     nh3_icen.initArray(im, jm, km, 0.0);            // nh3_ice new
+    ch4n.initArray(im, jm, km, 0.0);                // ch4 new
+    ch4_cloudn.initArray(im, jm, km, 0.0);          // ch4_cloud new
+    ch4_icen.initArray(im, jm, km, 0.0);            // ch4_ice new
     nh4shn.initArray(im, jm, km, 0.0);                // nh4sh new
+
+    fluxlim_nh4sh.initArray(im, jm, km, 0.0);  // TVD flux-limiter correction
 
     massflux_h2s.initArray(im, jm, km, 0.0);   // mass flux h2s
     massflux_nh3.initArray(im, jm, km, 0.0);   // mass flux nh3
@@ -446,7 +487,9 @@ void cJupiterModel::resetArrays(){
     p_dyn.initArray(im, jm, km, pa);                // dynamic pressure
     p_dynn.initArray(im, jm, km, pa);               // dynamic pressure (n+1)
     p_stat.initArray(im, jm, km, 1.0);                // static pressure
-//    rho.initArray(im, jm, km, 1.0);                // density
+    rho_mix.initArray(im, jm, km, 0.0);          // local mixture density
+
+    rho_mix.initArray(im, jm, km, 1.0);                // density of mixture
 
     rhs_t.initArray(im, jm, km, 0.0);                // auxilliar field RHS temperature
     rhs_u.initArray(im, jm, km, 0.0);                // auxilliar field RHS u-velocity component
@@ -460,6 +503,9 @@ void cJupiterModel::resetArrays(){
     rhs_nh3.initArray(im, jm, km, 0.0);                // auxilliar field RHS nh3
     rhs_nh3_cloud.initArray(im, jm, km, 0.0);        // auxilliar field RHS nh3_cloud
     rhs_nh3_ice.initArray(im, jm, km, 0.0);            // auxilliar field RHS nh3_ice
+    rhs_ch4.initArray(im, jm, km, 0.0);                // auxilliar field RHS ch4
+    rhs_ch4_cloud.initArray(im, jm, km, 0.0);        // auxilliar field RHS ch4_cloud
+    rhs_ch4_ice.initArray(im, jm, km, 0.0);            // auxilliar field RHS ch4_ice
     rhs_nh4sh.initArray(im, jm, km, 0.0);                // auxilliar field RHS nh4sh
 
     aux.initArray(im, jm, km, 0.0);                // auxilliar field u-velocity component
@@ -481,11 +527,11 @@ void cJupiterModel::resetArrays(){
 
     j_nh3.initArray(im, jm, km, 0.0);                // ordinary-diffusion mass flux of nh3
     j_h2s.initArray(im, jm, km, 0.0);                // ordinary-diffusion mass flux of h2s
-    j_nh4sh.initArray(im, jm, km, 0.0);                // ordinary-diffusion mass flux of nh4sh
+    j_nh4sh.initArray(im, jm, km, 0.0);              // ordinary-diffusion mass flux of nh4sh
 
-    jT_nh3.initArray(im, jm, km, 0.0);                // thermo-diffusion mass flux of nh3
-    jT_h2s.initArray(im, jm, km, 0.0);                // thermo-diffusion mass flux of h2s
-    jT_nh4sh.initArray(im, jm, km, 0.0);                // thermo-diffusion mass flux of nh4sh
+    jT_nh3.initArray(im, jm, km, 0.0);               // thermo-diffusion mass flux of nh3
+    jT_h2s.initArray(im, jm, km, 0.0);               // thermo-diffusion mass flux of h2s
+    jT_nh4sh.initArray(im, jm, km, 0.0);             // thermo-diffusion mass flux of nh4sh
 
     auto end = std::chrono::high_resolution_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
@@ -509,19 +555,17 @@ void cJupiterModel::restoreVar(double coeff){
                 un.x[i][j][k] = coeff * u.x[i][j][k];
                 vn.x[i][j][k] = coeff * v.x[i][j][k];
                 wn.x[i][j][k] = coeff * w.x[i][j][k];
-//                h2n.x[i][j][k] = coeff * h2.x[i][j][k];
-//                hen.x[i][j][k] = coeff * he.x[i][j][k];
                 h2on.x[i][j][k] = coeff * h2o.x[i][j][k];
                 h2o_cloudn.x[i][j][k] = coeff * h2o_cloud.x[i][j][k];
                 h2o_icen.x[i][j][k] = coeff * h2o_ice.x[i][j][k];
                 h2sn.x[i][j][k] = coeff * h2s.x[i][j][k];
-//                h2s_cloudn.x[i][j][k] = coeff * h2s_cloud.x[i][j][k];
-//                h2s_icen.x[i][j][k] = coeff * h2s_ice.x[i][j][k];
                 nh3n.x[i][j][k] = coeff * nh3.x[i][j][k];
                 nh3_cloudn.x[i][j][k] = coeff * nh3_cloud.x[i][j][k];
                 nh3_icen.x[i][j][k] = coeff * nh3_ice.x[i][j][k];
+                ch4n.x[i][j][k] = coeff * ch4.x[i][j][k];
+                ch4_cloudn.x[i][j][k] = coeff * ch4_cloud.x[i][j][k];
+                ch4_icen.x[i][j][k] = coeff * ch4_ice.x[i][j][k];
                 nh4shn.x[i][j][k] = coeff * nh4sh.x[i][j][k];
-//                nh4sh_cloudn.x[i][j][k] = coeff * nh4sh_cloud.x[i][j][k];
             }
         }
     }
@@ -546,7 +590,6 @@ void cJupiterModel::restoreVar(double coeff){
 
     fft_gaussian_filter_3d(nh4sh,1);
 //    fft_gaussian_filter_3d(nh4sh_cloud,1);
-//    fft_gaussian_filter_3d(nh4sh_ice,1);
 
     fft_gaussian_filter_3d(h2s,1);
     fft_gaussian_filter_3d(h2s_cloud,1);

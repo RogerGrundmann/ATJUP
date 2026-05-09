@@ -18,10 +18,8 @@ void cJupiterModel::printMinMax(){
 
 
     cout << endl << endl << " Temperatures " << endl;
-//    searchMinMax_3D(" max 3D temperature ", " min 3D temperature ",
-//        "  degC", t, t_ref, [](double i)->double{return i - 273.15;}, true);
     searchMinMax_3D(" max 3D temperature ", " min 3D temperature ","  degC", 
-        t, t_ref, [](double i)->double{return i - 273.15;}, true);
+        t, t_ref, [](double i)->double{return i - 165.0;}, true);
     searchMinMax_3D(" max 3D thermalflux ", " min 3D thermalflux ", " kJ/(m5K)", thermalmassflux, 1e-3);
     cout << endl;
 
@@ -48,7 +46,7 @@ void cJupiterModel::printMinMax(){
     searchMinMax_3D(" max 3D j_h2s ", " min 3D j_h2s ", " kg/m4", j_h2s, 1.0);
     searchMinMax_3D(" max 3D jT_h2s ", " min 3D jT_h2s ", " kg/m4", jT_h2s, 1.0);
     searchMinMax_3D(" max 3D massflux_h2s ", " min 3D massflux_h2s ", " kg/m3s", massflux_h2s, r_mix);
-    searchMinMax_3D(" max 3D diff_h2s ", " min 3D diff_h2s ", " kg/(m3s)", difflux_h2s, 1.0);
+    searchMinMax_3D(" max 3D diff_h2s ", " min 3D diff_h2s ", " kg/m3s", difflux_h2s, 1.0);
     cout << endl;
 
     cout << endl << " Ammonia " << endl;
@@ -63,12 +61,12 @@ void cJupiterModel::printMinMax(){
     cout << endl;
 
     cout << endl << " Ammonia Hydrosulfide " << endl;
-    searchMinMax_3D(" max 3D nh4sh ",  " min 3D nh4sh ", " kg/m3", nh4sh, r_mix);
-    searchMinMax_3D(" max 3D w_nh4sh ", " min 3D w_nh4sh ", " kg/m3s", w_nh4sh, r_mix);
-    searchMinMax_3D(" max 3D j_nh4sh ", " min 3D j_nh4sh ", " kg/m4", j_nh4sh, 1.0);
-    searchMinMax_3D(" max 3D jT_nh4sh ", " min 3D jT_nh4sh ", " kg/m4", jT_nh4sh, 1.0);
-    searchMinMax_3D(" max 3D massflux_nh4sh ", " min 3D massflux_nh4sh ", " kg/m3s", massflux_nh4sh, r_mix);
-    searchMinMax_3D(" max 3D diff_nh4sh ", " min 3D diff_nh4sh ", " kg/(m3s)", difflux_nh4sh, 1.0);
+    searchMinMax_3D(" max 3D nh4sh ",  " min 3D nh4sh ", " g/m3", nh4sh, 1e3 * r_mix);
+    searchMinMax_3D(" max 3D w_nh4sh ", " min 3D w_nh4sh ", " g/m3s", w_nh4sh, 1e3 * r_mix);
+    searchMinMax_3D(" max 3D massflux_nh4sh ", " min 3D massflux_nh4sh ", " g/m3s", massflux_nh4sh, 1e3 * r_mix);
+    searchMinMax_3D(" max 3D j_nh4sh ", " min 3D j_nh4sh ", " g/m4", j_nh4sh, 1e3 * r_mix);
+    searchMinMax_3D(" max 3D jT_nh4sh ", " min 3D jT_nh4sh ", " g/m4", jT_nh4sh, 1e3 * r_mix);
+    searchMinMax_3D(" max 3D diff_nh4sh ", " min 3D diff_nh4sh ", " g/(m3s)", difflux_nh4sh, 1e3 * r_mix);
     cout << endl;
 
     cout << endl << " Forces " << endl;
