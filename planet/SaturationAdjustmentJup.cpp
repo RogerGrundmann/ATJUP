@@ -47,6 +47,22 @@ void SaturationAdjustmentJup::run(
                 const double t_u = m.t.x[i][j][k] * m.t_ref;
                 const double p_u = m.p_stat.x[i][j][k];
 
+                // Skip cells that carry no thermodynamic state: the solid SeaMount interior,
+                // where bcSolidGround sets t = p_stat = 0, and any cell that has lost a
+                // positive temperature or pressure.
+                //
+                // Both formulas below are singular there. saturation_vapour_pressure() forms
+                // -L0/T_K (= -inf at T=0) and del_alf*log(T_K) (= 0*-inf = NaN), and q_Rain_0
+                // divides by p_u. The existing `q_Rain_0 <= 0.0` skip cannot catch that: every
+                // comparison against NaN is false, so both that test and `c <= q_Rain_0` fail
+                // and the cell ran the full mixed-phase iteration on NaN, writing NaN back into
+                // c/cloud/ice — one of the two seeds of the domain-wide NaN (the other was the
+                // Magnus/Clausius-Clapeyron mix-up in Thermo_Jup.cpp::Latent_Heat).
+                //
+                // The test is written as !(x > 0.0) rather than (x <= 0.0) so that a NaN that
+                // has already arrived from elsewhere is skipped too instead of being propagated.
+                if(!(t_u > 0.0) || !(p_u > 0.0) || m.SeaMount.x[i][j][k] == 1.0) continue;
+
                 // Enforce physical bounds
                 if(t_u > t_0)              ice.x[i][j][k]   = 0.0;
                 if(c.x[i][j][k]     < 0.0) c.x[i][j][k]     = 0.0;

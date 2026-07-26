@@ -9,6 +9,8 @@
 */
 #include "cJupiterModel.h"
 #include "Utils.h"
+#include "SaturationAdjustmentJup.h"   // clausius_clapeyron(): the saturation formula that
+                                       // matches ATJUP's coeff_*_A/B pairs
 
 using namespace std;
 using namespace JupiterUtils;
@@ -64,15 +66,38 @@ void cJupiterModel::Latent_Heat(){
                 double t_u = t.x[i][j][k] * t_ref;
                 double p_u = p_stat.x[i][j][k];
 
-                double E_Rain = 1e3 * JupiterUtils::exp_func(t_u, coeff_h2o_A, coeff_h2o_B);  // saturation h2o vapour pressure for the water phase at t > 0°C in hPa
-                double E_Ice = 1e3 * JupiterUtils::exp_func(t_u, coeff_h2o_A_i, coeff_h2o_B_i);  // saturation h2o vapour pressure for the ice phase in hPa
-                double q_Rain = ep_h2o * E_Rain /(p_u - E_Rain);  // h2o vapour amount at saturation with water formation in kg/kg
-                double q_Ice = ep_h2o * E_Ice /(p_u - E_Ice);  // h2o vapour amount at saturation with ice formation in kg/kg
+                // Saturation vapour pressures [bar], Clausius-Clapeyron: E = exp(A/T + B).
+                //
+                // These used to call JupiterUtils::exp_func, which is ATOM's MAGNUS/TETENS form
+                //     exp(c1 * (T - 273.15) / (T - c2))
+                // and expects ATOM's terrestrial coefficient pair (c1 ~ 17.27, c2 ~ 35.86 K).
+                // ATJUP's coeff_*_A/B are Clausius-Clapeyron coefficients instead (A = -L/R_v:
+                // -4961.04 K for H2O, i.e. L = 2.29e6 J/kg; -2836.56 K for NH3), which is the
+                // pair SaturationAdjustmentJup::clausius_clapeyron() consumes. Feeding them to
+                // the Magnus form gave, at the Jovian t_u ~ 110 K of the upper layers,
+                //     -4961.04 * (110 - 273.15) / (110 - 13.07) = +8350   ->   exp(8350) = inf,
+                // and the mixing ratio below then evaluated inf/(p - inf) = inf/-inf = NaN.
+                // That was the FIRST invalid floating-point operation in the whole run (caught
+                // with feenableexcept(FE_INVALID) under gdb) and it poisoned Q_Latent.
+                //
+                // Units: exp(A/T + B) is in BAR (check: H2O at 273.15 K gives 6.1e-3 bar =
+                // 6.1 hPa, the textbook value; NH3 at its 195.5 K triple point gives 0.062 bar
+                // against the tabulated 0.0606 bar), and p_stat is in bar, so the 1e3 factor
+                // that used to convert to hPa has to go with it — the ratio E/p must be formed
+                // in one consistent unit.
+                double E_Rain = SaturationAdjustmentJup::clausius_clapeyron(t_u, coeff_h2o_A, coeff_h2o_B);
+                double E_Ice = SaturationAdjustmentJup::clausius_clapeyron(t_u, coeff_h2o_A_i, coeff_h2o_B_i);
+                // Saturation mixing ratio q = ep*E/(p - E). Guard the denominator: above the
+                // critical point, and in the solid SeaMount cells where p_stat is 0, p - E can
+                // vanish or go negative, which is not a physical state but must not produce
+                // inf/NaN. Clamp to a small positive residual pressure.
+                double q_Rain = ep_h2o * E_Rain / std::max(p_u - E_Rain, 1.0e-12);  // h2o vapour amount at saturation with water formation in kg/kg
+                double q_Ice = ep_h2o * E_Ice / std::max(p_u - E_Ice, 1.0e-12);  // h2o vapour amount at saturation with ice formation in kg/kg
 
-                double E_Rain_nh3 = 1e3 * JupiterUtils::exp_func(t_u, coeff_nh3_A, coeff_nh3_B);  // saturation nh3 vapour pressure for the water phase at t > 0°C in hPa
-                double E_Ice_nh3 = 1e3 * JupiterUtils::exp_func(t_u, coeff_nh3_A_i, coeff_nh3_B_i);  // saturation nh3 vapour pressure for the ice phase in hPa
-                double q_Rain_nh3 = ep_nh3 * E_Rain_nh3/(p_u - E_Rain_nh3);  // nh3 vapour amount at saturation with water formation in kg/kg
-                double q_Ice_nh3 = ep_nh3 * E_Ice_nh3/(p_u - E_Ice_nh3);  // nh3 vapour amount at saturation with ice formation in kg/kg
+                double E_Rain_nh3 = SaturationAdjustmentJup::clausius_clapeyron(t_u, coeff_nh3_A, coeff_nh3_B);
+                double E_Ice_nh3 = SaturationAdjustmentJup::clausius_clapeyron(t_u, coeff_nh3_A_i, coeff_nh3_B_i);
+                double q_Rain_nh3 = ep_nh3 * E_Rain_nh3 / std::max(p_u - E_Rain_nh3, 1.0e-12);  // nh3 vapour amount at saturation with water formation in kg/kg
+                double q_Ice_nh3 = ep_nh3 * E_Ice_nh3 / std::max(p_u - E_Ice_nh3, 1.0e-12);  // nh3 vapour amount at saturation with ice formation in kg/kg
 
                 double u_av = 0.5 * (u.x[i+1][j][k] + u.x[i-1][j][k]);
                 double v_av = 0.5 * (v.x[i+1][j][k] + v.x[i-1][j][k]);

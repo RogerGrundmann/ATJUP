@@ -352,12 +352,20 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
         + radiation_t
         + precip_t;
 
+    // Buoyancy from the ideal-gas density, rho = p/(R*T). The 1/t is guarded: this term was
+    // the direct route by which a single non-physical cell destroyed the momentum field —
+    // t = 0 gave +-inf in rhs_u, RK4 turned it into an infinite velocity, and the advection
+    // stencil of every neighbour then carried inf - inf = NaN outwards, roughly doubling the
+    // affected volume each iteration. A cell without a positive temperature has no density
+    // and therefore no buoyancy.
+    const double buoyancy_u = (t.x[i][j][k] > 0.0)
+        ? buoyancy * g * (p_stat.x[i][j][k] + p_dyn.x[i][j][k])
+                       / (r_mix * R_mix * t.x[i][j][k] * t_ref)
+        : 0.0;
+
     rhs_u.x[i][j][k] =
         - dpdr_term
-//        + buoyancy * g * (p_stat.x[i][j][k] + p_dyn.x[i][j][k])
-//                      / (r_mix * R_mix * t.x[i][j][k] * t_ref)
-        + buoyancy * g * (p_stat.x[i][j][k] + p_dyn.x[i][j][k])
-                      / (r_mix * R_mix * t.x[i][j][k] * t_ref)
+        + buoyancy_u
         - transport_u
         + diffusion_u * (1.0 / re + nue_t)
         - Coriolis    * Coriolis_rad

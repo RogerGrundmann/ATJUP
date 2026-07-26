@@ -153,10 +153,30 @@ public:
         #endif
         for (int k = 1; k < m.km-1; k++) {
             for (int j = 1; j < m.jm-1; j++) {
-                const double sinthe = std::max(sin(m.the.z[j]), 0.4);   // matches sinthe_min in RungeKutta_Jup.cpp
+                const double sinthe = std::max(sin(m.the.z[j]), 0.4);   // matches sinthe_min in RungeKutta_Jup_Turb.cpp
                 for (int i = 1; i < m.im-1; i++) {
                     const double rm       = m.rad.z[i];
                     const double rmsinthe = rm * sinthe;
+
+                    // The thermo-diffusion fluxes below divide by the local temperature, which
+                    // bcSolidGround sets to exactly 0 inside the SeaMount — 1/0 gave inf (or
+                    // NaN once dt_div was 0 as well) in every solid cell, and the inf then
+                    // spread through massflux_* into the species equations. Solid cells carry
+                    // no diffusive flux, so zero them and move on. !(t > 0.0) rather than
+                    // (t <= 0.0) so an incoming NaN is caught rather than propagated.
+                    if(!(m.t.x[i][j][k] > 0.0) || m.SeaMount.x[i][j][k] == 1.0){
+                        m.jT_nh3.x[i][j][k]   = 0.0;
+                        m.jT_h2s.x[i][j][k]   = 0.0;
+                        m.jT_nh4sh.x[i][j][k] = 0.0;
+                        m.j_nh3.x[i][j][k]    = 0.0;
+                        m.j_h2s.x[i][j][k]    = 0.0;
+                        m.j_nh4sh.x[i][j][k]  = 0.0;
+                        m.difflux_h2s.x[i][j][k]   = 0.0;
+                        m.difflux_nh3.x[i][j][k]   = 0.0;
+                        m.difflux_nh4sh.x[i][j][k] = 0.0;
+                        m.thermalmassflux.x[i][j][k] = 0.0;
+                        continue;
+                    }
 
                     double dtdr = 0.0, dtdthe = 0.0, dtdphi = 0.0;
                     double dnh3dr  = 0.0, dnh3dthe  = 0.0, dnh3dphi  = 0.0;
@@ -554,7 +574,7 @@ private:
         const double exp_2_rm = exp_rm * exp_rm;
         const double sinthe   = sin(m.the.z[j]);
         const double costhe   = cos(m.the.z[j]);
-        const double rmsinthe = rm * std::max(sinthe, 0.4);  // matches sinthe_min in RungeKutta_Jup.cpp
+        const double rmsinthe = rm * std::max(sinthe, 0.4);  // matches sinthe_min in RungeKutta_Jup_Turb.cpp
 
         const double d2cdr2   = (c.x[i+1][j][k] - 2.0*c.x[i][j][k] + c.x[i-1][j][k]) / (m.dr   * m.dr) * exp_2_rm;
         const double d2cdthe2 = (c.x[i][j+1][k] - 2.0*c.x[i][j][k] + c.x[i][j-1][k]) / (m.dthe * m.dthe);

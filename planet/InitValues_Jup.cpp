@@ -280,9 +280,14 @@ void cJupiterModel::Forces(){
                 CentrifugalForce.x[i][j][k] = centrifugal * r_mix
                     * omega * omega * rm * (1.0 + fabs(sinthe));
 
-                BuoyancyForce.x[i][j][k] = buoyancy
-                    * r_mix * g * (p_stat.x[i][j][k] + p_dyn.x[i][j][k])
-                    / (r_mix * R_mix * t.x[i][j][k] * t_ref) * 1e5;
+                // Guard the 1/t: a cell without a positive temperature has no density and
+                // hence no buoyancy. bcSolidGround no longer creates 0 K cells, so this is a
+                // second line of defence — one inf here used to spread through the whole
+                // field within a few iterations.
+                BuoyancyForce.x[i][j][k] = (t.x[i][j][k] > 0.0)
+                    ? buoyancy * r_mix * g * (p_stat.x[i][j][k] + p_dyn.x[i][j][k])
+                      / (r_mix * R_mix * t.x[i][j][k] * t_ref) * 1e5
+                    : 0.0;
 
                 PresGradForce.x[i][j][k] =
                     -sqrt((pow(dpdr, 2)

@@ -169,6 +169,15 @@ void cJupiterModel::LoadConfig(const char *filename){
 *
 */
 void cJupiterModel::Run(){
+    // ATJUP_FPE=1 turns the first invalid floating-point operation into a SIGFPE instead of a
+    // silently propagating NaN. Run the CLI under gdb to get the exact line:
+    //     cd jupiter && OMP_NUM_THREADS=1 ATJUP_FPE=1 gdb -batch -ex run -ex "bt 6"
+    //         -ex "info locals" --args ../cli/jup . config_atjup.xml
+    // (build with -g -O0 for line numbers). This is how the four NaN sources behind the
+    // domain-wide velocity blow-up were located; NaN is invisible to printMinMax, whose
+    // searchMinMax_3D compares with a bare > and so skips every non-finite cell.
+    // Off by default — trapping would abort on the first harmless inf in a diagnostic field.
+    if(getenv("ATJUP_FPE")) feenableexcept(FE_INVALID | FE_DIVBYZERO);
 
     #ifdef _OPENMP
         printf("\n\n   number of processors: %d\n\n", omp_get_num_procs());

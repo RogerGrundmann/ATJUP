@@ -483,6 +483,22 @@ inline void BC_Jup::bcSolidGround()
     const int ns = (int)(sizeof(scalars) / sizeof(scalars[0]));
     const double c43 = m.c43, c13 = m.c13;
 
+    // t and p_stat (entries 0 and 1 above) are THERMODYNAMIC STATE, not a transported
+    // quantity that can be "absent" in a solid. Zeroing them in the obstacle interior, as
+    // this loop used to do for every field, put T = 0 K and p = 0 bar into those cells, and
+    // every routine that forms a thermodynamic expression divides by one of them:
+    //   Forces()/rhs_u buoyancy   g*(p_stat+p_dyn) / (r_mix*R_mix*t*t_ref)  -> x/0 = inf
+    //   ChemistryJup::DiffMassFluxJup  LT_x / t                             -> x/0 = inf
+    //   SaturationAdjustmentJup   exp(-L0/T + ...) and E/p_u                -> inf, NaN
+    //   Thermo_Jup::Latent_Heat   E/(p_u - E)                               -> NaN
+    // A 0 K cell also puts a ~120 K artificial jump into the temperature Laplacian of any
+    // fluid cell touching the obstacle face, which is a physics error independent of the
+    // NaN. The interior of the obstacle never enters the flow solution (RungeKuttaJup skips
+    // SeaMount cells), so leaving t and p_stat at the ambient hydrostatic profile they were
+    // initialised with is both harmless and physically the right filler. Everything from
+    // p_dyn onwards is genuinely zero inside a solid and is still zeroed below.
+    const int n_state = 2;     // scalars[0] = t, scalars[1] = p_stat
+
     #pragma omp parallel for collapse(2) schedule(static)
     for(int j = 0; j < jm; j++){
         for(int k = 0; k < km; k++){
@@ -529,7 +545,8 @@ inline void BC_Jup::bcSolidGround()
                     !solid(i,j,k+1) || !solid(i,j,k-1);
 
                 if(!is_surface){
-                    for(int f = 0; f < ns; f++)
+                    // from n_state on: t and p_stat keep their ambient values (see above)
+                    for(int f = n_state; f < ns; f++)
                         scalars[f]->x[i][j][k] = 0.0;
                     continue;
                 }
@@ -550,8 +567,57 @@ inline void BC_Jup::bcSolidGround()
                 } else if(fluid(i,j,k-1) && fluid(i,j,k-2)){
                     extrap(i,j,k-1, i,j,k-2);
                 } else {
-                    for(int f = 0; f < ns; f++)
+                    // Thin spur cell with no usable fluid pair to extrapolate from: same
+                    // treatment as the interior, t and p_stat keep their ambient values.
+                    for(int f = n_state; f < ns; f++)
                         scalars[f]->x[i][j][k] = 0.0;
+                }
+            }
+        }
+    }
+
+    // ---- Final pass: bit-level sanitisation of the turbulence fields ----
+    // Ported from ATOM's BC_Atm.h "Pass 5". Now that k* and dis* are prognostic
+    // (rhs_tke / rhs_dis), a single non-finite cell anywhere in the closure propagates:
+    // TurbulenceJup::compute_vel_star reads v,w at the first fluid layer, and a non-finite
+    // velocity there makes u_tau infinite, which the ABL background floor k_bg then writes
+    // straight into k*. Observed at 87 deg N, i=1, iteration 2. Clip every turbulence array
+    // to a physically generous ceiling and reset non-finite values to a sane default, as the
+    // last operation before the next RK4 cycle reads them.
+    //
+    // Bit-level test rather than std::isfinite/std::max: with -ffast-math the compiler may
+    // assume the operands are finite, and ATOM measured k reaching 7e200 despite an RK4 cap
+    // for exactly that reason. Reading the IEEE-754 exponent field has no such hazard.
+    //
+    // This touches ONLY the turbulence arrays, which are identically zero unless ATJUP_TURB
+    // is set, so a run without the closure is bit-identical. The non-finite VELOCITY cell that
+    // triggers this at high latitude is a separate, pre-existing ATJUP problem and is
+    // deliberately not masked here.
+    {
+        const double tke_max_nd = 1000.0 / (m.u_0 * m.u_0);        // 1000 m2/s2, as in RK4
+        const double nue_max    = 1.0e5 / (m.u_0 * m.L_atm * 1.0e3); // ATJUP_NUE_MAX default
+        const double prod_max   = 1.0e4;                            // generous; real prod ~ 1
+        const double dis_max    = 1.0e6;                            // generous for omega*
+
+        auto safe_clamp = [](double v, double lo, double hi) -> double {
+            std::uint64_t bits;
+            std::memcpy(&bits, &v, sizeof(bits));
+            if((bits & 0x7FF0000000000000ULL) == 0x7FF0000000000000ULL) return lo;
+            return (v < lo) ? lo : ((v > hi) ? hi : v);
+        };
+
+        #pragma omp parallel for collapse(2) schedule(static)
+        for(int i = 0; i < im; i++){
+            for(int j = 0; j < jm; j++){
+                for(int k = 0; k < km; k++){
+                    m.tke.x[i][j][k]        = safe_clamp(m.tke.x[i][j][k],        0.0,       tke_max_nd);
+                    m.tken.x[i][j][k]       = safe_clamp(m.tken.x[i][j][k],       0.0,       tke_max_nd);
+                    m.dis.x[i][j][k]        = safe_clamp(m.dis.x[i][j][k],        1.0e-10,   dis_max);
+                    m.disn.x[i][j][k]       = safe_clamp(m.disn.x[i][j][k],       1.0e-10,   dis_max);
+                    m.nue.x[i][j][k]        = safe_clamp(m.nue.x[i][j][k],        0.0,       nue_max);
+                    m.prod.x[i][j][k]       = safe_clamp(m.prod.x[i][j][k],       0.0,       prod_max);
+                    m.tke_source.x[i][j][k] = safe_clamp(m.tke_source.x[i][j][k], -prod_max, prod_max);
+                    m.dis_source.x[i][j][k] = safe_clamp(m.dis_source.x[i][j][k], -prod_max, prod_max);
                 }
             }
         }
