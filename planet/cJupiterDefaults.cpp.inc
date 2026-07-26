@@ -18,6 +18,7 @@ void cJupiterModel::SetDefaultConfig() {
   buoyancy = 1;
   chemical_reaction = 1;
   coord_stretching = false;
+  turb_model = "k_omega_SST";
   L_atm = 140.0;
   tropopause_pole = 115.0;
   tropopause_equator = 125.0;

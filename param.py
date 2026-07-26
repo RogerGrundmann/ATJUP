@@ -41,6 +41,13 @@ def main():
 #            ('coord_stretching', 'vertical coordinate stretching: exp_rm=1/(r+1), exp_2_rm=exp_rm^2; false gives exp_rm=exp_2_rm=1', 'bool', True),
             ('coord_stretching', 'vertical coordinate stretching application', 'bool', False),
 
+# turbulence closure selection, mirroring ATOM. TurbulenceJup reads this; the whole module is
+# still gated by the ATJUP_TURB knob, and ATJUP_TURB_MODEL overrides this value at runtime.
+            ('turb_model', 'turbulence model: none, k_epsilon, k_omega, k_omega_SST', 'string', 'k_omega_SST'),
+#            ('turb_model', 'turbulence model: none, k_epsilon, k_omega, k_omega_SST', 'string', 'k_omega'),
+#            ('turb_model', 'turbulence model: none, k_epsilon, k_omega, k_omega_SST', 'string', 'k_epsilon'),
+#            ('turb_model', 'turbulence model: none, k_epsilon, k_omega, k_omega_SST', 'string', 'none'),
+
             ('L_atm', 'extension of the atmosphere shell in km, 120km/40 steps = 3.0km', 'double', 140.0),
 
             ('tropopause_pole', 'extension of the troposphere at the poles in km', 'double', 115.0),

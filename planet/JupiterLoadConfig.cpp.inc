@@ -22,6 +22,7 @@
     Config::FillDoubleWithElement(elem_jupiter, "buoyancy", buoyancy);
     Config::FillDoubleWithElement(elem_jupiter, "chemical_reaction", chemical_reaction);
     Config::FillBoolWithElement(elem_jupiter, "coord_stretching", coord_stretching);
+    Config::FillStringWithElement(elem_jupiter, "turb_model", turb_model);
     Config::FillDoubleWithElement(elem_jupiter, "L_atm", L_atm);
     Config::FillDoubleWithElement(elem_jupiter, "tropopause_pole", tropopause_pole);
     Config::FillDoubleWithElement(elem_jupiter, "tropopause_equator", tropopause_equator);

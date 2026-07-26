@@ -804,7 +804,8 @@ private:
     Array_2D vel_star;          // per-column friction velocity u_tau [m/s]
 
     double re_turb = 1.0;                       // = vel_star_ref*z_0/nue_air, set by TurbulenceJup
-    std::string turb_model = "k_omega_SST";     // "k_epsilon" | "k_omega" | "k_omega_SST"
+    // turb_model ("none" | "k_epsilon" | "k_omega" | "k_omega_SST") is declared by
+    // JupiterParams.h.inc from param.py, defaulting to k_omega_SST; ATJUP_TURB_MODEL overrides it.
     // Boundary-layer depth used by the ABL seeding profile and the eddy-viscosity taper.
     // ATOM's value is ~1500 m of terrestrial ABL. There is no Jovian surface boundary layer,
     // so on ATJUP this only has meaning as the depth of the shear layer above the SeaMount;

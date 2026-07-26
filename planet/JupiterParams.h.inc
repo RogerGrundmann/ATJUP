@@ -17,6 +17,7 @@ double centrifugal;
 double buoyancy;
 double chemical_reaction;
 bool coord_stretching;
+string turb_model;
 double L_atm;
 double tropopause_pole;
 double tropopause_equator;
