@@ -135,6 +135,21 @@ namespace JupiterUtils{
                       double strength = 1.0,
                       int passes = 1);
 
+    // 4th-order (higher-order) Shapiro wiggle-damping filter.
+    // f_new[n] = f[n] - strength*(1/16)*(f[n-2] - 4 f[n-1] + 6 f[n] - 4 f[n+1] + f[n+2])
+    // Response 1 - sin^4(kΔ/2): annihilates the 2Δ grid mode as completely as the
+    // 1-2-1, but preserves resolved shear far better (large scales are reduced only
+    // ~(Δ/λ)^4 per pass instead of ~(Δ/λ)^2). Use this for the velocity fields so the
+    // per-iteration filtering does not homogenise the banded zonal-jet shear (∂w/∂θ)
+    // and the GRS wake. Where the 5-point stencil is unavailable (next to a boundary
+    // or a solid cell) it falls back to the gentle 1-2-1. Same axis/surface/wrap
+    // conventions as damp_wiggles: k periodic, j clamped at poles, i clamped.
+    void damp_wiggles_ho(Array& field,
+                         const std::vector<std::vector<int>>* i_surface,
+                         bool along_i, bool along_j, bool along_k,
+                         double strength = 1.0,
+                         int passes = 1);
+
     // Extreme-peak removal: replaces isolated spikes with the local neighbour mean.
     void remove_peaks(Array& field,
                       const std::vector<std::vector<int>>* i_surface,
