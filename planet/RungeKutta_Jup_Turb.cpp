@@ -17,10 +17,57 @@
 
 using namespace std;
 
+// Boussinesq base state for the buoyancy term.
+//
+// ATJUP's rhs_u carried the ABSOLUTE buoyancy g*(p_stat+p_dyn)/(r_mix*R_mix*t*t_ref). That
+// quantity is positive in every cell and of order g, so the momentum equation received a
+// systematic upward acceleration everywhere, opposed only by the radial pressure gradient.
+// Any residual between the two accumulates, and it did: the vertical velocity grew monotonically
+// by roughly 1 m/s per iteration (max w = 130 m/s at iter 60, 209 at 150, 309 at 240, 423 at
+// 376) until the deepest three levels overflowed to NaN at iteration 366 and the whole field
+// collapsed. Values of several hundred m/s are unphysical for a Jovian vertical wind long
+// before that.
+//
+// The fix is ATOM's (cAtmosphereModel::computeLevelMeanTemperature + the (t - t_ref_level[i])
+// anomaly in RHS_Atm_Turb.cpp): subtract the horizontal mean at each height, so the body force
+// has ZERO mean at every level and only horizontal density contrasts drive vertical motion.
+// The mean is what hydrostatic balance carries, and it is not the flow's job to fight it.
+//
+// Unlike ATOM this keeps ATJUP's OWN expression and units rather than importing ATOM's
+// empirical g*dt/u_0 coefficient — the anomaly is formed from exactly the term that was there
+// before, so nothing needs recalibrating; only its horizontal mean is removed.
+//
+// The mean is area-weighted with sin(theta) (spherical area element) and taken over fluid
+// cells only; a level that is entirely inside the SeaMount gets 0, which leaves those cells
+// with their own value and is harmless since RungeKuttaJup skips them anyway.
+void cJupiterModel::computeBuoyancyRefLevel(){
+    if((int)buoy_ref_level.size() != im) buoy_ref_level.assign(im, 0.0);
+
+    #pragma omp parallel for schedule(static)
+    for(int i = 0; i < im; i++){
+        double sum = 0.0, wsum = 0.0;
+        for(int j = 0; j < jm; j++){
+            const double wgt = sin(the.z[j]);              // spherical area weight
+            for(int k = 0; k < km; k++){
+                if(SeaMount.x[i][j][k] == 1.0) continue;   // solid cell: no fluid state
+                if(!(t.x[i][j][k] > 0.0)) continue;        // also catches NaN
+                const double b = g * (p_stat.x[i][j][k] + p_dyn.x[i][j][k])
+                               / (r_mix * R_mix * t.x[i][j][k] * t_ref);
+                if(!std::isfinite(b)) continue;
+                sum  += wgt * b;
+                wsum += wgt;
+            }
+        }
+        buoy_ref_level[i] = (wsum > 0.0) ? sum / wsum : 0.0;
+    }
+}
+
 void cJupiterModel::RungeKuttaJup(){
     cout << endl << "      ATJUP: RungeKuttaJup" << endl;
 
     auto begin = std::chrono::high_resolution_clock::now();
+
+    computeBuoyancyRefLevel();   // refresh the buoyancy base state for this RK4 step
 
     // ---- k* ceiling, as in ATOM's turbulent RK4 ----
     // The k production term is linear in k while its sink beta*.k.omega is linear too, so an

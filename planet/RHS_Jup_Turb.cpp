@@ -656,15 +656,23 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
         + radiation_t
         + precip_t;
 
-    // Buoyancy from the ideal-gas density, rho = p/(R*T). The 1/t is guarded: this term was
-    // the direct route by which a single non-physical cell destroyed the momentum field —
-    // t = 0 gave +-inf in rhs_u, RK4 turned it into an infinite velocity, and the advection
-    // stencil of every neighbour then carried inf - inf = NaN outwards, roughly doubling the
-    // affected volume each iteration. A cell without a positive temperature has no density
-    // and therefore no buoyancy.
+    // Buoyancy from the ideal-gas density, rho = p/(R*T), as a BOUSSINESQ ANOMALY: the
+    // horizontal mean at this radial level (buoy_ref_level[i], refilled once per RK4 step by
+    // computeBuoyancyRefLevel) is subtracted, so the body force has zero mean at every height
+    // and only horizontal density contrasts accelerate the flow. Using the absolute value
+    // instead — as this line did — leaves a systematic upward acceleration in every cell that
+    // only the radial pressure gradient opposes, and the residual accumulated into a vertical
+    // velocity growing ~1 m/s per iteration until it overflowed. See the long note at the top
+    // of RungeKutta_Jup_Turb.cpp; this is ATOM's (t - t_ref_level[i]) treatment.
+    //
+    // The 1/t is guarded because a cell without a positive temperature has no density and
+    // hence no buoyancy: t = 0 used to give +-inf here, RK4 turned that into an infinite
+    // velocity, and the advection stencil of every neighbour then carried inf - inf = NaN
+    // outwards, roughly doubling the affected volume each iteration.
     const double buoyancy_u = (t.x[i][j][k] > 0.0)
-        ? buoyancy * g * (p_stat.x[i][j][k] + p_dyn.x[i][j][k])
-                       / (r_mix * R_mix * t.x[i][j][k] * t_ref)
+        ? buoyancy * (g * (p_stat.x[i][j][k] + p_dyn.x[i][j][k])
+                        / (r_mix * R_mix * t.x[i][j][k] * t_ref)
+                      - buoy_ref_level[i])
         : 0.0;
 
     rhs_u.x[i][j][k] =
