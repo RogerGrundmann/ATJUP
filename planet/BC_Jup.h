@@ -15,6 +15,8 @@
 #include <cmath>
 #include <chrono>
 #include <cstdio>
+#include <cstdint>
+#include <cstring>
 #include <iostream>
 
 class cJupiterModel;
@@ -141,7 +143,15 @@ inline void BC_Jup::bcRadius()
         &m.thermalmassflux,
         &m.CoriolisForce, &m.CentrifugalForce,
         &m.BuoyancyForce, &m.PresGradForce,
-        &m.Q_Latent, &m.Q_Sensible
+        &m.Q_Latent, &m.Q_Sensible,
+        // k* and dis* are prognostic (RHS_Jup_Turb.cpp), so their domain boundaries must be
+        // extrapolated like every other transported field — ATOM carries them in the same
+        // lists. Without this they stay frozen at the array initial values (k*=0, dis*=1e-10)
+        // while the interior runs at dis* ~ 16, and the resulting permanent Laplacian at
+        // i=0/im-1, the poles and the phi seam drains dis* to its floor within ~20 iterations.
+        // nue* = k*/omega* then saturates its ceiling and, with ATJUP_TURB_COUPLING on, the
+        // eddy viscosity destroys the momentum field.
+        &m.tke, &m.dis, &m.nue, &m.prod, &m.tke_source, &m.dis_source
     };
     const int nf = (int)(sizeof(fields) / sizeof(fields[0]));
 
@@ -247,7 +257,9 @@ inline void BC_Jup::bcTheta()
         &m.thermalmassflux,
         &m.CoriolisForce, &m.CentrifugalForce,
         &m.BuoyancyForce, &m.PresGradForce,
-        &m.Q_Latent, &m.Q_Sensible
+        &m.Q_Latent, &m.Q_Sensible,
+        // prognostic turbulence fields — see the note in bcRadius()
+        &m.tke, &m.dis, &m.nue, &m.prod, &m.tke_source, &m.dis_source
     };
     const int nf = (int)(sizeof(extrap_fields) / sizeof(extrap_fields[0]));
 
@@ -325,7 +337,9 @@ inline void BC_Jup::bcPhi()
         &m.thermalmassflux,
         &m.CoriolisForce, &m.CentrifugalForce,
         &m.BuoyancyForce, &m.PresGradForce,
-        &m.Q_Latent, &m.Q_Sensible
+        &m.Q_Latent, &m.Q_Sensible,
+        // prognostic turbulence fields — see the note in bcRadius()
+        &m.tke, &m.dis, &m.nue, &m.prod, &m.tke_source, &m.dis_source
     };
     const int nf = (int)(sizeof(fields) / sizeof(fields[0]));
 

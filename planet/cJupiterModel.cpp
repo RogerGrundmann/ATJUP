@@ -48,13 +48,16 @@ static int    radiation_enabled()  { static const int    v = [](){ const char* e
 // it converts is removed from the cloud/ice fields in place. That happens after the three
 // SaturationAdjustmentJup calls, so the removal persists and the next iteration must draw on
 // the vapour reservoir to rebuild cloud — which is what makes the rate self-limiting.
-// Q_precip only reaches rhs_t if ATJUP_PRECIP_COUPLING is also set (see RHS_Jup.cpp).
+// Q_precip only reaches rhs_t if ATJUP_PRECIP_COUPLING is also set (see RHS_Jup_Turb.cpp).
 // Turbulence knob (default off = bit-identical). Mirrors ATOM's TurbulenceAtm: all three models
 // (k_epsilon | k_omega | k_omega_SST) are available, selected by cJupiterModel::turb_model or
-// the ATJUP_TURB_MODEL environment variable. Fills tke/dis/nue/prod/tke_source/dis_source;
-// nothing in the RHS reads them yet, so it is diagnostic for now.
+// the ATJUP_TURB_MODEL environment variable. Fills tke/dis/nue/prod/tke_source/dis_source.
+// With it on, k* and dis* are prognostic: RHS_Jup_Turb.cpp assembles rhs_tke/rhs_dis and
+// RungeKutta_Jup_Turb.cpp integrates them, as in ATOM. nue* only reaches the momentum and
+// scalar equations if ATJUP_TURB_COUPLING is also set.
 static int    turb_enabled()       { static const int    v = [](){ const char* e = getenv("ATJUP_TURB");                 return e ? atoi(e) : 0;   }(); return v; }
 static int    precip_enabled()     { static const int    v = [](){ const char* e = getenv("ATJUP_PRECIP");               return e ? atoi(e) : 0;   }(); return v; }
+
 
 cJupiterModel* cJupiterModel::m_model = NULL;
 
@@ -603,6 +606,8 @@ void cJupiterModel::resetArrays(){
     rhs_ch4_cloud.initArray(im, jm, km, 0.0);        // auxilliar field RHS ch4_cloud
     rhs_ch4_ice.initArray(im, jm, km, 0.0);            // auxilliar field RHS ch4_ice
     rhs_nh4sh.initArray(im, jm, km, 0.0);                // auxilliar field RHS nh4sh
+    rhs_tke.initArray(im, jm, km, 0.0);                // auxilliar field RHS turbulent kinetic energy
+    rhs_dis.initArray(im, jm, km, 0.0);                // auxilliar field RHS dissipation
 
     aux.initArray(im, jm, km, 0.0);                // auxilliar field u-velocity component
     aux_u.initArray(im, jm, km, 0.0);                // auxilliar field u-velocity component
@@ -682,6 +687,11 @@ void cJupiterModel::restoreVar(double coeff){
                 ch4_cloudn.x[i][j][k] = coeff * ch4_cloud.x[i][j][k];
                 ch4_icen.x[i][j][k] = coeff * ch4_ice.x[i][j][k];
                 nh4shn.x[i][j][k] = coeff * nh4sh.x[i][j][k];
+                // k* and dis* are now prognostic in RungeKuttaJup (rhs_tke / rhs_dis), so their
+                // time-level-n copies have to be refreshed here exactly like every other
+                // transported variable — this is ATOM's UtilsAtm::storeIntermediateData3D.
+                tken.x[i][j][k] = coeff * tke.x[i][j][k];
+                disn.x[i][j][k] = coeff * dis.x[i][j][k];
             }
         }
     }

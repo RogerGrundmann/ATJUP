@@ -1,4 +1,19 @@
+/*
+ * Jupiter Atmosphere Circulation Model (ATJUP)
+ * 4th order Runge-Kutta integration of the prognostic fields assembled in RHS_Jup_Turb.cpp
+ *
+ * Renamed from RungeKutta_Jup.cpp when the turbulent kinetic energy k* and its dissipation
+ * dis* (epsilon* for k-epsilon, omega* for k-omega / SST) joined the integrated set, mirroring
+ * ATOM_Precipitation/atmosphere/RungeKutta_Atm_Turb.cpp. Previously TurbulenceJup::advance()
+ * integrated them on its own with a Patankar splitting and without any transport term; they are
+ * now two more scalars of this RK4 system, so they see the same advection, the same turbulent
+ * diffusion and the same four-stage time integration as temperature and the species.
+*/
+
 #include "cJupiterModel.h"
+
+#include <cstdint>
+#include <cstring>
 
 using namespace std;
 
@@ -6,6 +21,29 @@ void cJupiterModel::RungeKuttaJup(){
     cout << endl << "      ATJUP: RungeKuttaJup" << endl;
 
     auto begin = std::chrono::high_resolution_clock::now();
+
+    // ---- k* ceiling, as in ATOM's turbulent RK4 ----
+    // The k production term is linear in k while its sink beta*.k.omega is linear too, so an
+    // unbalanced production region can grow k exponentially; ATOM hit 1e98 m2/s2 at a single
+    // polar cell before capping. The cap is a runaway guard, deliberately far above anything
+    // physical: the closure's own Jovian equilibrium is k ~ 67 m2/s2 (see ParaView_Jup.cpp),
+    // and 1000 m2/s2 is above the strongest hurricane-core TKE on record. Override with
+    // ATJUP_TKE_MAX [m2/s2] if a storm study needs more headroom.
+    static const double tke_max_phys = [](){
+        const char* e = getenv("ATJUP_TKE_MAX"); return e ? atof(e) : 1000.0; }();
+    const double tke_max_nd = tke_max_phys / (u_0 * u_0);
+    constexpr double dis_min_nd = 1.0e-10;    // matches TurbulenceJup::dis_min
+
+    // NaN-safe clamp. std::min/std::max compare with unguarded `<`; under -ffast-math
+    // (-ffinite-math-only) the compiler may assume the operands are finite, so a NaN can slip
+    // through a plain clamp. Detect non-finite values from the IEEE-754 exponent bits instead
+    // and fall back to the lower bound. Same trick ATOM uses in RungeKutta_Atm_Turb.cpp.
+    auto safe_clamp = [](double v, double lo, double hi) -> double {
+        std::uint64_t bits;
+        std::memcpy(&bits, &v, sizeof(bits));
+        if((bits & 0x7FF0000000000000ULL) == 0x7FF0000000000000ULL) return lo;
+        return (v < lo) ? lo : ((v > hi) ? hi : v);
+    };
 
     // Precompute sin/cos tables — depend only on j
     // sinthe is clamped to a minimum to prevent 1/sin²θ blow-up near the poles.
@@ -74,6 +112,8 @@ void cJupiterModel::RungeKuttaJup(){
                 double ch4cn_ijk  = ch4_cloudn.x[i][j][k];
                 double ch4in_ijk  = ch4_icen.x[i][j][k];
                 double nh4shn_ijk = nh4shn.x[i][j][k];
+                double tken_ijk   = tken.x[i][j][k];
+                double disn_ijk   = disn.x[i][j][k];
 
                 // ----- RK stage 1 -----
                 cJupiterModel::RHSJup(i, j, k, geo);
@@ -92,6 +132,8 @@ void cJupiterModel::RungeKuttaJup(){
                 double kch4c1  = rhs_ch4_cloud.x[i][j][k];
                 double kch4i1  = rhs_ch4_ice.x[i][j][k];
                 double knh4sh1 = rhs_nh4sh.x[i][j][k];
+                double ktke1   = rhs_tke.x[i][j][k];
+                double kdis1   = rhs_dis.x[i][j][k];
 
                 t.x[i][j][k]         = tn_ijk    + kt1     * 0.5 * dt;
                 u.x[i][j][k]         = un_ijk    + ku1     * 0.5 * dt;
@@ -108,6 +150,11 @@ void cJupiterModel::RungeKuttaJup(){
                 ch4_cloud.x[i][j][k] = ch4cn_ijk + kch4c1  * 0.5 * dt;
                 ch4_ice.x[i][j][k]   = ch4in_ijk + kch4i1  * 0.5 * dt;
                 nh4sh.x[i][j][k]     = nh4shn_ijk + knh4sh1 * 0.5 * dt;
+                // k* is positive-definite and dis* strictly positive; clamp at every stage so a
+                // stiff intermediate can never feed a negative k or a zero omega back into the
+                // next RHS evaluation (nue* = k/omega would then be non-finite).
+                tke.x[i][j][k]       = safe_clamp(tken_ijk + ktke1 * 0.5 * dt, 0.0, tke_max_nd);
+                dis.x[i][j][k]       = std::max(dis_min_nd, disn_ijk + kdis1 * 0.5 * dt);
 
                 // ----- RK stage 2 -----
                 cJupiterModel::RHSJup(i, j, k, geo);
@@ -126,6 +173,8 @@ void cJupiterModel::RungeKuttaJup(){
                 double kch4c2  = rhs_ch4_cloud.x[i][j][k];
                 double kch4i2  = rhs_ch4_ice.x[i][j][k];
                 double knh4sh2 = rhs_nh4sh.x[i][j][k];
+                double ktke2   = rhs_tke.x[i][j][k];
+                double kdis2   = rhs_dis.x[i][j][k];
 
                 t.x[i][j][k]         = tn_ijk    + kt2     * 0.5 * dt;
                 u.x[i][j][k]         = un_ijk    + ku2     * 0.5 * dt;
@@ -142,6 +191,8 @@ void cJupiterModel::RungeKuttaJup(){
                 ch4_cloud.x[i][j][k] = ch4cn_ijk + kch4c2  * 0.5 * dt;
                 ch4_ice.x[i][j][k]   = ch4in_ijk + kch4i2  * 0.5 * dt;
                 nh4sh.x[i][j][k]     = nh4shn_ijk + knh4sh2 * 0.5 * dt;
+                tke.x[i][j][k]       = safe_clamp(tken_ijk + ktke2 * 0.5 * dt, 0.0, tke_max_nd);
+                dis.x[i][j][k]       = std::max(dis_min_nd, disn_ijk + kdis2 * 0.5 * dt);
 
                 // ----- RK stage 3 -----
                 cJupiterModel::RHSJup(i, j, k, geo);
@@ -160,6 +211,8 @@ void cJupiterModel::RungeKuttaJup(){
                 double kch4c3  = rhs_ch4_cloud.x[i][j][k];
                 double kch4i3  = rhs_ch4_ice.x[i][j][k];
                 double knh4sh3 = rhs_nh4sh.x[i][j][k];
+                double ktke3   = rhs_tke.x[i][j][k];
+                double kdis3   = rhs_dis.x[i][j][k];
 
                 t.x[i][j][k]         = tn_ijk    + kt3     * dt;
                 u.x[i][j][k]         = un_ijk    + ku3     * dt;
@@ -176,6 +229,8 @@ void cJupiterModel::RungeKuttaJup(){
                 ch4_cloud.x[i][j][k] = ch4cn_ijk + kch4c3  * dt;
                 ch4_ice.x[i][j][k]   = ch4in_ijk + kch4i3  * dt;
                 nh4sh.x[i][j][k]     = nh4shn_ijk + knh4sh3 * dt;
+                tke.x[i][j][k]       = safe_clamp(tken_ijk + ktke3 * dt, 0.0, tke_max_nd);
+                dis.x[i][j][k]       = std::max(dis_min_nd, disn_ijk + kdis3 * dt);
 
                 // ----- RK stage 4 -----
                 cJupiterModel::RHSJup(i, j, k, geo);
@@ -194,6 +249,8 @@ void cJupiterModel::RungeKuttaJup(){
                 double kch4c4  = rhs_ch4_cloud.x[i][j][k];
                 double kch4i4  = rhs_ch4_ice.x[i][j][k];
                 double knh4sh4 = rhs_nh4sh.x[i][j][k];
+                double ktke4   = rhs_tke.x[i][j][k];
+                double kdis4   = rhs_dis.x[i][j][k];
 
                 // ----- Final RK4 update -----
                 const double one_sixth = 1.0 / 6.0;
@@ -212,6 +269,10 @@ void cJupiterModel::RungeKuttaJup(){
                 ch4_cloud.x[i][j][k] = std::max(0.0, ch4cn_ijk + dt * (kch4c1  + 2.0*kch4c2  + 2.0*kch4c3  + kch4c4 ) * one_sixth);
                 ch4_ice.x[i][j][k]   = std::max(0.0, ch4in_ijk + dt * (kch4i1  + 2.0*kch4i2  + 2.0*kch4i3  + kch4i4 ) * one_sixth);
                 nh4sh.x[i][j][k]     = std::max(0.0, nh4shn_ijk + dt * (knh4sh1 + 2.0*knh4sh2 + 2.0*knh4sh3 + knh4sh4) * one_sixth);
+                tke.x[i][j][k]       = safe_clamp(tken_ijk + dt * (ktke1 + 2.0*ktke2 + 2.0*ktke3 + ktke4) * one_sixth,
+                                                  0.0, tke_max_nd);
+                dis.x[i][j][k]       = std::max(dis_min_nd,
+                                                disn_ijk + dt * (kdis1 + 2.0*kdis2 + 2.0*kdis3 + kdis4) * one_sixth);
             }
         }
     }

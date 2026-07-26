@@ -42,9 +42,12 @@
  *     than air's 1.5e-5 m2/s.
  *
  * Gated by ATJUP_TURB (default 0 = off, bit-identical). Like ATOM, this fills
- * tke/dis/nue/prod/tke_source/dis_source; nothing in ATJUP's RHS reads nue or the
- * source terms yet, so it is presently diagnostic — coupling them into the
- * momentum and scalar equations is the next step.
+ * tke/dis/nue/prod/tke_source/dis_source. nue* feeds the momentum and scalar equations
+ * (ATJUP_TURB_COUPLING), and — as in ATOM — the two turbulence transport equations are
+ * assembled in RHS_Jup_Turb.cpp and integrated by RungeKutta_Jup_Turb.cpp, which re-derive
+ * the P-Y balance from the current k* and dis* at every RK4 sub-stage. What stays here is the
+ * eddy viscosity itself, the friction velocity, the wall/ABL conditioning and the masking
+ * of the solid cells.
 */
 
 #pragma once
@@ -130,7 +133,6 @@ private:
     double L_atm_m() const;            // L_atm in METRES
 
     void compute_vel_star();
-    void advance();          // integrate tke/dis from the source terms (see run())
     void init_fields();
     void compute_sources();
     void zero_land_cells();
@@ -220,7 +222,9 @@ inline void TurbulenceJup::run(){
 
     compute_vel_star();
     compute_sources();
-    advance();
+    // No time integration here: k* and dis* are prognostic variables of the RK4 system
+    // (rhs_tke / rhs_dis in RHS_Jup_Turb.cpp), exactly as in ATOM. Integrating them here as
+    // well would advance the same source terms twice per iteration.
     apply_wall_bc();
     zero_land_cells();
     clamp_nue();
@@ -239,6 +243,20 @@ inline void TurbulenceJup::run(){
 inline void TurbulenceJup::compute_vel_star(){
     const double C_D          = 0.002;
     const double vel_star_min = 0.05;   // [m/s]
+    // Ceiling on u_tau, from the strongest horizontal wind Jupiter is known to sustain
+    // (~200 m/s in the equatorial jet, twice the model's velocity scale u_0):
+    //   u_tau_max = sqrt(C_D) * U_max.
+    // The reason this is needed at all: ATJUP's momentum field develops non-finite and
+    // absurd (1e150 m/s) cells near the pole and at the first fluid layer from iteration 1,
+    // with or without the closure — a pre-existing problem of the momentum solver. u_tau
+    // feeds k_bg, which compute_sources applies as a FLOOR on k*, so one such cell used to
+    // seed k* ~ 1e304 across the domain the moment k* became prognostic. Bounding u_tau
+    // keeps the closure's response to a locally failed momentum field finite and local; it
+    // is the counterpart of ATOM's velocity clamp in BC_Atm.h, done here so that ATJUP's
+    // momentum fields themselves are left untouched. Override with ATJUP_VEL_STAR_MAX [m/s].
+    static const double vel_star_max = [](){
+        const char* e = getenv("ATJUP_VEL_STAR_MAX");
+        return e ? atof(e) : std::sqrt(0.002) * 200.0; }();   // ~8.9 m/s
 
     #pragma omp parallel for collapse(2) schedule(static)
     for(int j = 0; j < m.jm; j++){
@@ -246,8 +264,20 @@ inline void TurbulenceJup::compute_vel_star(){
             const int i_surf = std::min(m.i_topography[j][k] + 1, m.im - 1);
             const double v_s = m.v.x[i_surf][j][k];
             const double w_s = m.w.x[i_surf][j][k];
-            const double U_horiz = m.u_0 * std::sqrt(v_s * v_s + w_s * w_s);
-            m.vel_star.y[j][k] = std::max(vel_star_min, std::sqrt(C_D) * U_horiz);
+            // A non-finite velocity in the sampled cell must not become a non-finite u_tau:
+            // k_bg in init_fields/compute_sources is proportional to u_tau^2 and is applied as
+            // a FLOOR on k*, so one infinite column would seed k* = inf and — now that k* is
+            // integrated by the RK4 — spread it. ATJUP does produce non-finite v,w at the first
+            // fluid layer near the pole from iteration 1 (also with the closure off: it is a
+            // pre-existing problem of the momentum solver, not of this model), so the guard is
+            // not hypothetical. Such a column falls back to the calm-air floor.
+            const double vw2 = v_s * v_s + w_s * w_s;
+            if(!std::isfinite(vw2)){
+                m.vel_star.y[j][k] = vel_star_min;
+                continue;
+            }
+            const double U_horiz = m.u_0 * std::sqrt(vw2);
+            m.vel_star.y[j][k] = clamp3(std::sqrt(C_D) * U_horiz, vel_star_min, vel_star_max);
         }
     }
 }
@@ -758,56 +788,10 @@ inline void TurbulenceJup::compute_k_omega_SST(int i, int j, int k,
 }
 
 // -----------------------------------------------------------------------
-// Advance tke and dis one step from the source terms.
-//
-// ATOM integrates k and omega in its own RK4, which carries rhs_tke/rhs_dis. ATJUP's
-// RungeKutta_Jup has no k/omega equations at all, so without this the source terms computed
-// above were discarded every iteration and k/omega stayed frozen at their init_fields values
-// forever — the closure produced numbers but nothing evolved. Integrating here keeps the port
-// self-contained and matches how RadiationJup and PrecipitationJup are operator-split into the
-// iteration loop.
-//
-// The update is a Patankar splitting: the source is divided into its positive part (treated
-// explicitly) and its negative part (treated as proportional to the variable, hence
-// implicitly). That is unconditionally POSITIVITY-PRESERVING, which matters because k and omega
-// must never go negative and the destruction terms (-beta*k*omega, -beta*omega^2) are stiff.
-// Time is the model's nondimensional dt, consistent with the source terms, which are d/dt* of
-// the dimensionless variables.
-//
-// NOTE what is still missing: turbulent TRANSPORT of k and omega. ATOM applies the diffusion
-// Laplacian in its RHS (deliberately excluded from tke_source/dis_source to avoid double
-// counting), so k/omega here evolve purely locally apart from the SST cross-diffusion term D_w
-// that is already inside dis_source. Adding rhs_tke/rhs_dis to RungeKutta_Jup would close that.
-inline void TurbulenceJup::advance(){
-    const double dt = m.dt;
-    const double dis_min_l = dis_min;
-
-    #pragma omp parallel for collapse(2) schedule(static)
-    for(int j = 1; j < m.jm - 1; j++){
-        for(int k = 1; k < m.km - 1; k++){
-            for(int i = 1; i < m.im - 1; i++){
-                if(is_land(i, j, k)) continue;
-
-                const double k_old  = std::max(0.0,       m.tke.x[i][j][k]);
-                const double om_old = std::max(dis_min_l, m.dis.x[i][j][k]);
-
-                const double Sk = m.tke_source.x[i][j][k];
-                const double Sw = m.dis_source.x[i][j][k];
-
-                // Patankar: positive part explicit, negative part linearised in the variable.
-                const double Sk_p = (Sk > 0.0) ? Sk : 0.0;
-                const double Sk_n = (Sk < 0.0) ? -Sk : 0.0;
-                const double Sw_p = (Sw > 0.0) ? Sw : 0.0;
-                const double Sw_n = (Sw < 0.0) ? -Sw : 0.0;
-
-                const double k_new  = (k_old  + dt * Sk_p) / (1.0 + dt * Sk_n / std::max(k_old,  1.0e-20));
-                const double om_new = (om_old + dt * Sw_p) / (1.0 + dt * Sw_n / std::max(om_old, 1.0e-20));
-
-                m.tke.x[i][j][k] = std::isfinite(k_new)  ? std::max(0.0,       k_new)  : k_old;
-                m.dis.x[i][j][k] = std::isfinite(om_new) ? std::max(dis_min_l, om_new) : om_old;
-                m.tken.x[i][j][k] = m.tke.x[i][j][k];
-                m.disn.x[i][j][k] = m.dis.x[i][j][k];
-            }
-        }
-    }
-}
+// HISTORY: this file used to carry an advance() that integrated k* and dis* from the source
+// terms with a Patankar splitting, because ATJUP's Runge-Kutta had no turbulence equations and
+// the sources computed above would otherwise have been discarded every iteration. That local
+// update could not transport k*/dis*: they evolved purely pointwise, apart from the SST
+// cross-diffusion term already inside dis_source. Both equations now live in RHS_Jup_Turb.cpp
+// with their advection and turbulent-diffusion terms and are integrated by
+// RungeKutta_Jup_Turb.cpp, which is ATOM's arrangement, so advance() has been removed.

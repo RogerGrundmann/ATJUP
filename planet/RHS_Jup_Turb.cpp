@@ -1,16 +1,24 @@
 /*
- * Atmosphere General Circulation Modell(ATJUP) applied to laminar flow
+ * Atmosphere General Circulation Modell(ATJUP) applied to turbulent flow
  * Program for the computation of geo-atmospherical circulating flows in a spherical shell
  * Finite difference scheme for the solution of the 3D Navier-Stokes equations
- * with 2 additional transport equations to describe the water vapour and nh3 concentration
+ * with additional transport equations for the condensable species and for the
+ * turbulent kinetic energy k* and its dissipation dis* (epsilon* or omega*)
  * 4. order Runge-Kutta scheme to solve 2. order differential equations
  *
  * class to combine the right hand sides of the differential equations for the Runge-Kutta scheme
+ *
+ * Renamed from RHS_Jup.cpp when k* and dis* became prognostic here, mirroring
+ * ATOM_Precipitation/atmosphere/RHS_Atm_Turb.cpp: the closure in TurbulenceJup.h now only
+ * supplies nue*, prod and the wall/ABL conditioning, while the two turbulence transport
+ * equations themselves are assembled below and integrated by RungeKutta_Jup_Turb.cpp.
 */
 
 #include "cJupiterModel.h"
+#include "TurbulenceJup.h"   // shares nue_max_phys() with the closure
 
 #include <cstdlib>   // getenv/atof for the radiative-coupling knob
+#include <string>
 
 using namespace std;
 
@@ -50,18 +58,21 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     double dh2sdr;
     double dnh3dr, dnh3cdr, dnh3idr, dnh4shdr;
     double dch4dr, dch4cdr, dch4idr;
+    double dtkedr, ddisdr;
 
     double dudthe, dvdthe, dwdthe, dtdthe, dpdthe;
     double dh2odthe, dh2ocdthe, dh2oidthe;
     double dh2sdthe;
     double dnh3dthe, dnh3cdthe, dnh3idthe, dnh4shdthe;
     double dch4dthe, dch4cdthe, dch4idthe;
+    double dtkedthe, ddisdthe;
 
     double dudphi, dvdphi, dwdphi, dtdphi, dpdphi;
     double dh2odphi, dh2ocdphi, dh2oidphi;
     double dh2sdphi;
     double dnh3dphi, dnh3cdphi, dnh3idphi, dnh4shdphi;
     double dch4dphi, dch4cdphi, dch4idphi;
+    double dtkedphi, ddisdphi;
 
     // ---- Second-order derivative storage ----
     double d2udr2, d2vdr2, d2wdr2, d2tdr2;
@@ -69,18 +80,21 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     double d2h2sdr2;
     double d2nh3dr2, d2nh3cdr2, d2nh3idr2, d2nh4shdr2;
     double d2ch4dr2, d2ch4cdr2, d2ch4idr2;
+    double d2tkedr2, d2disdr2;
 
     double d2udthe2, d2vdthe2, d2wdthe2, d2tdthe2;
     double d2h2odthe2, d2h2ocdthe2, d2h2oidthe2;
     double d2h2sdthe2;
     double d2nh3dthe2, d2nh3cdthe2, d2nh3idthe2, d2nh4shdthe2;
     double d2ch4dthe2, d2ch4cdthe2, d2ch4idthe2;
+    double d2tkedthe2, d2disdthe2;
 
     double d2udphi2, d2vdphi2, d2wdphi2, d2tdphi2;
     double d2h2odphi2, d2h2ocdphi2, d2h2oidphi2;
     double d2h2sdphi2;
     double d2nh3dphi2, d2nh3cdphi2, d2nh3idphi2, d2nh4shdphi2;
     double d2ch4dphi2, d2ch4cdphi2, d2ch4idphi2;
+    double d2tkedphi2, d2disdphi2;
 
 
     // ===== R-direction derivatives (central differences) =====
@@ -105,6 +119,8 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     COMPUTE_DR(ch4_cloud, dch4cdr, d2ch4cdr2)
     COMPUTE_DR(ch4_ice,   dch4idr, d2ch4idr2)
     COMPUTE_DR(nh4sh,     dnh4shdr,d2nh4shdr2)
+    COMPUTE_DR(tke,       dtkedr,  d2tkedr2)
+    COMPUTE_DR(dis,       ddisdr,  d2disdr2)
     dpdr = (p_dyn.x[i+1][j][k] - p_dyn.x[i-1][j][k]) * inv_2dr * exp_rm;
     #undef COMPUTE_DR
 
@@ -129,6 +145,8 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     COMPUTE_DTHE(ch4_cloud, dch4cdthe, d2ch4cdthe2)
     COMPUTE_DTHE(ch4_ice,   dch4idthe, d2ch4idthe2)
     COMPUTE_DTHE(nh4sh,     dnh4shdthe,d2nh4shdthe2)
+    COMPUTE_DTHE(tke,       dtkedthe,  d2tkedthe2)
+    COMPUTE_DTHE(dis,       ddisdthe,  d2disdthe2)
     dpdthe = (p_dyn.x[i][j+1][k] - p_dyn.x[i][j-1][k]) * inv_2dthe;
     #undef COMPUTE_DTHE
 
@@ -153,8 +171,59 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     COMPUTE_DPHI(ch4_cloud, dch4cdphi, d2ch4cdphi2)
     COMPUTE_DPHI(ch4_ice,   dch4idphi, d2ch4idphi2)
     COMPUTE_DPHI(nh4sh,     dnh4shdphi,d2nh4shdphi2)
+    COMPUTE_DPHI(tke,       dtkedphi,  d2tkedphi2)
+    COMPUTE_DPHI(dis,       ddisdphi,  d2disdphi2)
     dpdphi = (p_dyn.x[i][j][k+1] - p_dyn.x[i][j][k-1]) * inv_2dphi;
     #undef COMPUTE_DPHI
+
+
+    // ===== Neumann condition for k*/dis* at SeaMount faces =====
+    // The centered stencils above read the zeroed obstacle cells (zero_land_cells in
+    // TurbulenceJup.h sets tke = dis = 0 inside the SeaMount), which puts a large negative
+    // Laplacian on the fluid cell touching the obstacle and drags k* — and hence nue* — to
+    // zero exactly in the shear layer where the wake turbulence is generated. Replace the
+    // solid neighbour by the local value so the diffusive flux through a solid face is zero.
+    // Same treatment as ATOM's land-face branches in RHS_Atm_Turb.cpp, and identical to what
+    // TurbulenceJup::compute_sources() already does when it forms its own gradients.
+    {
+        const bool solid_im1 = (SeaMount.x[i-1][j][k] == 1.0);
+        const bool solid_ip1 = (SeaMount.x[i+1][j][k] == 1.0);
+        const bool solid_jm1 = (SeaMount.x[i][j-1][k] == 1.0);
+        const bool solid_jp1 = (SeaMount.x[i][j+1][k] == 1.0);
+        const bool solid_km1 = (SeaMount.x[i][j][k-1] == 1.0);
+        const bool solid_kp1 = (SeaMount.x[i][j][k+1] == 1.0);
+
+        if(solid_im1 || solid_ip1){
+            const double tke_im1 = solid_im1 ? tke.x[i][j][k] : tke.x[i-1][j][k];
+            const double tke_ip1 = solid_ip1 ? tke.x[i][j][k] : tke.x[i+1][j][k];
+            const double dis_im1 = solid_im1 ? dis.x[i][j][k] : dis.x[i-1][j][k];
+            const double dis_ip1 = solid_ip1 ? dis.x[i][j][k] : dis.x[i+1][j][k];
+            dtkedr   = (tke_ip1 - tke_im1) * inv_2dr * exp_rm;
+            d2tkedr2 = (tke_ip1 - 2.0*tke.x[i][j][k] + tke_im1) * inv_dr2 * exp_2_rm;
+            ddisdr   = (dis_ip1 - dis_im1) * inv_2dr * exp_rm;
+            d2disdr2 = (dis_ip1 - 2.0*dis.x[i][j][k] + dis_im1) * inv_dr2 * exp_2_rm;
+        }
+        if(solid_jm1 || solid_jp1){
+            const double tke_jm1 = solid_jm1 ? tke.x[i][j][k] : tke.x[i][j-1][k];
+            const double tke_jp1 = solid_jp1 ? tke.x[i][j][k] : tke.x[i][j+1][k];
+            const double dis_jm1 = solid_jm1 ? dis.x[i][j][k] : dis.x[i][j-1][k];
+            const double dis_jp1 = solid_jp1 ? dis.x[i][j][k] : dis.x[i][j+1][k];
+            dtkedthe   = (tke_jp1 - tke_jm1) * inv_2dthe;
+            d2tkedthe2 = (tke_jp1 - 2.0*tke.x[i][j][k] + tke_jm1) * inv_dthe2;
+            ddisdthe   = (dis_jp1 - dis_jm1) * inv_2dthe;
+            d2disdthe2 = (dis_jp1 - 2.0*dis.x[i][j][k] + dis_jm1) * inv_dthe2;
+        }
+        if(solid_km1 || solid_kp1){
+            const double tke_km1 = solid_km1 ? tke.x[i][j][k] : tke.x[i][j][k-1];
+            const double tke_kp1 = solid_kp1 ? tke.x[i][j][k] : tke.x[i][j][k+1];
+            const double dis_km1 = solid_km1 ? dis.x[i][j][k] : dis.x[i][j][k-1];
+            const double dis_kp1 = solid_kp1 ? dis.x[i][j][k] : dis.x[i][j][k+1];
+            dtkedphi   = (tke_kp1 - tke_km1) * inv_2dphi;
+            d2tkedphi2 = (tke_kp1 - 2.0*tke.x[i][j][k] + tke_km1) * inv_dphi2;
+            ddisdphi   = (dis_kp1 - dis_km1) * inv_2dphi;
+            d2disdphi2 = (dis_kp1 - 2.0*dis.x[i][j][k] + dis_km1) * inv_dphi2;
+        }
+    }
 
 
     // ===== Coriolis and centrifugal forces =====
@@ -199,6 +268,14 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     double transport_ch4_ice   = u_ijk * dch4idr + v_invrm * dch4idthe + w_invrs * dch4idphi;
 
     double transport_nh4sh     = u_ijk * dnh4shdr + v_invrm * dnh4shdthe + w_invrs * dnh4shdphi;
+
+    // Advective form only (v.grad k, v.grad dis) — the standard k-eps / k-omega derivation
+    // (Pope, Wilcox, Menter). ATOM once carried the conservative-form correction +k*div(v)
+    // and dropped it again: the model is compressible, so in a persistently convergent region
+    // (top of an updraft) that term grows k exponentially while its sink beta*.k.omega is only
+    // linear in k. Do not reintroduce it here.
+    double transport_tke       = u_ijk * dtkedr   + v_invrm * dtkedthe   + w_invrs * dtkedphi;
+    double transport_dis       = u_ijk * ddisdr   + v_invrm * ddisdthe   + w_invrs * ddisdphi;
 
 
     // ===== Diffusion terms =====
@@ -248,6 +325,11 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
 
     double diffusion_nh4sh = d2nh4shdr2 + dnh4shdr * two_inv_rm + d2nh4shdthe2 * inv_rm2
         + dnh4shdthe * costhe_inv_rm2sinthe + d2nh4shdphi2 * inv_rm2sinthe2;
+
+    double diffusion_tke = d2tkedr2 + dtkedr * two_inv_rm + d2tkedthe2 * inv_rm2
+        + dtkedthe * costhe_inv_rm2sinthe + d2tkedphi2 * inv_rm2sinthe2;
+    double diffusion_dis = d2disdr2 + ddisdr * two_inv_rm + d2disdthe2 * inv_rm2
+        + ddisdthe * costhe_inv_rm2sinthe + d2disdphi2 * inv_rm2sinthe2;
 
 
     // ===== RHS assembly =====
@@ -344,6 +426,228 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     const double nue_t   = (turb_coupling != 0.0 && std::isfinite(nue.x[i][j][k]))
                          ? turb_coupling * std::max(0.0, nue.x[i][j][k]) : 0.0;
     const double nue_t_s = nue_t / Pr_t;      // scalar (heat / species) eddy diffusivity
+
+
+    // ===== Turbulence closure: k* and dis* source terms and eddy diffusion coefficients =====
+    // This is the ATOM arrangement (RHS_Atm_Turb.cpp): k* and dis* are two more transported
+    // scalars of the Runge-Kutta system, so their production/destruction balance belongs here,
+    // recomputed from the CURRENT tke/dis at every RK4 sub-stage. TurbulenceJup::run() only
+    // executes on even iterations, so the stored tke_source/dis_source would otherwise be one
+    // outer iteration stale, and constant across the four stages of the stage-splitting.
+    //
+    // The formulae are those of TurbulenceJup.h (which mirrors ATOM's TurbulenceAtm.h) — the
+    // near-wall Chien damping of k-epsilon and the vorticity/strain correction of k-omega are
+    // carried over too, so nothing the closure knows is dropped by moving the balance here.
+    // What TurbulenceJup keeps is the eddy viscosity nue* itself, the friction velocity, the
+    // wall/ABL conditioning and the land masking; nue* is read (not rewritten) below.
+    //
+    // NOTE on the diffusion coefficient: ATOM writes 1/re_turb + nue*/sigma, its re_turb being
+    // the friction Reynolds number of the surface layer. ATJUP's RHS uses the model Reynolds
+    // number re for the molecular background of every other equation, so k*/dis* use it too —
+    // mixing the two would give the turbulence equations a molecular floor several orders of
+    // magnitude away from that of the momentum equations they are coupled to.
+    static const int turb_on = [](){ const char* e = getenv("ATJUP_TURB"); return e ? atoi(e) : 0; }();
+    // 0 = k-epsilon (Chien 1982), 1 = k-omega (Wilcox 1988), 2 = k-omega SST (Menter 1994).
+    // Same selection rule as TurbulenceJup: param.py's turb_model, overridable by ATJUP_TURB_MODEL,
+    // anything unrecognised (including "none") falling back to SST.
+    static const int turb_sel = [&](){
+        const char* e = getenv("ATJUP_TURB_MODEL");
+        const std::string s = e ? std::string(e) : turb_model;
+        if(s == "k_epsilon") return 0;
+        if(s == "k_omega")   return 1;
+        return 2;
+    }();
+
+    double diffusion_tke_re = 0.0;
+    double diffusion_dis_re = 0.0;
+    double tke_src          = 0.0;
+    double dis_src          = 0.0;
+
+    if(turb_on != 0){
+        constexpr double C_nue        = 0.028;      // C_mu, mirrors TurbulenceJup::C_nue
+        constexpr double dis_min      = 1.0e-10;    // mirrors TurbulenceJup::dis_min
+        constexpr double nue_gas_phys = 1.8e-5;     // kin. viscosity of the H2/He mix [m2/s]
+        const double L_m       = L_atm * 1.0e3;     // L_atm is in km here, ATOM's is in metres
+        const double nue_max   = TurbulenceJup::nue_max_phys() / (u_0 * L_m);
+        const double nue_here  = std::isfinite(nue.x[i][j][k])
+                               ? std::max(0.0, nue.x[i][j][k]) : 0.0;
+        const double tke_s     = std::max(tke.x[i][j][k], dis_min);
+        const double dis_s     = std::max(dis.x[i][j][k], dis_min);
+
+        // Physical (per-metre, per-radian-arc) velocity gradients: the r-derivatives already
+        // carry the stretching factor exp_rm from COMPUTE_DR, the angular ones still need the
+        // 1/rm and 1/(rm sin(theta)) metric factors — the convention of compute_sources().
+        const double dudr_s   = dudr;
+        const double dvdr_s   = dvdr;
+        const double dwdr_s   = dwdr;
+        const double dudthe_s = dudthe * inv_rm;
+        const double dvdthe_s = dvdthe * inv_rm;
+        const double dwdthe_s = dwdthe * inv_rm;
+        const double dudphi_s = dudphi * inv_rmsinthe;
+        const double dvdphi_s = dvdphi * inv_rmsinthe;
+        const double dwdphi_s = dwdphi * inv_rmsinthe;
+
+        const double dtkedthe_s = dtkedthe * inv_rm;
+        const double ddisdthe_s = ddisdthe * inv_rm;
+        const double dtkedphi_s = dtkedphi * inv_rmsinthe;
+        const double ddisdphi_s = ddisdphi * inv_rmsinthe;
+
+        // grad(k*) . grad(dis*), the cross-diffusion contraction shared by k-omega and SST
+        const double grad_dot = dtkedr * ddisdr
+                              + dtkedthe_s * ddisdthe_s
+                              + dtkedphi_s * ddisdphi_s;
+
+        // ---- production tensor contraction P_k ----
+        // cnue is rebuilt from the current tke/dis rather than read from nue.x, which lags a
+        // sub-stage behind; identical to what compute_sources() does for the same reason.
+        double cnue = (turb_sel == 0) ? C_nue * tke_s * tke_s / dis_s : tke_s / dis_s;
+        cnue = std::min(cnue, nue_max);
+
+        const double der = 0.66667 * (dudr_s + dvdthe_s + dwdphi_s);
+        const double P_full = std::max(0.0,
+              (cnue * (2.0 * dudr_s   - der) - 0.66667 * tke.x[i][j][k]) * dudr_s
+            + (cnue * (dudthe_s + dvdr_s))                               * dudthe_s
+            + (cnue * (dudphi_s + dwdr_s))                               * dudphi_s
+            + (cnue * (2.0 * dvdthe_s - der) - 0.66667 * tke.x[i][j][k]) * dvdthe_s
+            + (cnue * (dvdr_s + dudthe_s))                               * dvdr_s
+            + (cnue * (dvdphi_s + dwdthe_s))                             * dvdphi_s
+            + (cnue * (2.0 * dwdphi_s - der) - 0.66667 * tke.x[i][j][k]) * dwdphi_s
+            + (cnue * (dwdr_s + dudphi_s))                               * dwdr_s
+            + (cnue * (dwdthe_s + dvdphi_s))                             * dwdthe_s);
+        prod.x[i][j][k] = P_full;
+
+        // ---- wall distance above the local SeaMount surface, floored at one grid layer ----
+        // TurbulenceJup uses the same floor: the blending/damping functions divide by y_star,
+        // and the layer sitting on the surface has a wall distance of exactly zero.
+        const double y_mount  = (double)get_layer_height(i_topography[j][k]) * 1.0e3;   // [m]
+        const double dz_layer = std::max(1.0, layer_thickness_m(std::max(i - 1, 0)));
+        const double y_phys   = std::max((double)get_layer_height(i) * 1.0e3 - y_mount, dz_layer);
+        const double y_star   = y_phys / L_m;
+
+        if(turb_sel == 0){                                   // k-epsilon, Chien 1982
+            constexpr double sig_k   = 1.0;
+            constexpr double sig_w   = 1.3;
+            constexpr double C_eps_1 = 1.35;
+            constexpr double C_eps_2 = 1.80;
+
+            diffusion_tke_re = 1.0 / re + nue_here / sig_k;
+            diffusion_dis_re = 1.0 / re + nue_here / sig_w;
+
+            const double d_plus = y_phys * vel_star.y[j][k] / nue_gas_phys;
+            const double Re_T   = tke_s * tke_s * u_0 * L_m / (dis_s * nue_gas_phys);
+            const double f_2    = 1.0 - 0.4 / 1.8 * std::exp(-Re_T * Re_T / 36.0);
+
+            // Chien near-wall damping, kept from TurbulenceJup::compute_k_epsilon
+            const double y_star2 = y_star * y_star;
+            const double L_k = -2.0 * tke.x[i][j][k] / y_star2;
+            const double L_w = -2.0 * dis.x[i][j][k] / y_star2 * std::exp(-0.5 * d_plus);
+
+            const double P_k = P_full;
+            const double Y_k = dis.x[i][j][k];
+            const double P_w = C_eps_1 * dis.x[i][j][k] / tke_s * P_k;
+            const double Y_w = C_eps_2 * f_2 * dis.x[i][j][k] * dis.x[i][j][k] / tke_s;
+
+            tke_src = P_k - Y_k + L_k / re_turb;
+            dis_src = P_w - Y_w + L_w / re_turb;
+        }
+        else if(turb_sel == 1){                              // k-omega, Wilcox 1988/2006
+            constexpr double sig_k    = 0.6;
+            constexpr double sig_w    = 0.5;
+            constexpr double bet_star = 0.09;
+            constexpr double gam      = 0.52;
+            constexpr double bet_0    = 0.0708;
+            constexpr double C_lim    = 0.875;
+
+            // Wilcox multiplies by sigma where k-epsilon and SST divide — the standard form
+            // of each model, mirrored from ATOM.
+            diffusion_tke_re = 1.0 / re + sig_k * nue_here;
+            diffusion_dis_re = 1.0 / re + sig_w * nue_here;
+
+            const double S11 = dudr_s, S22 = dvdthe_s, S33 = dwdphi_s;
+            const double S12 = 0.5 * (dudthe_s + dvdr_s);
+            const double S13 = 0.5 * (dudphi_s + dwdr_s);
+            const double S23 = 0.5 * (dvdphi_s + dwdthe_s);
+            const double S_mag = std::sqrt(2.0 * (S11*S11 + S22*S22 + S33*S33
+                                                + 2.0*(S12*S12 + S13*S13 + S23*S23)));
+
+            const double W12 = dudthe_s - dvdr_s;
+            const double W13 = dudphi_s - dwdr_s;
+            const double W23 = dvdphi_s - dwdthe_s;
+            const double Omega = std::sqrt(W12*W12 + W13*W13 + W23*W23);
+
+            // Wilcox (2006) vorticity-strain correction of the omega destruction coefficient
+            const double chi_w  = std::fabs(Omega * Omega * S_mag
+                                / std::pow(bet_star * dis_s, 3));
+            const double f_bet  = (1.0 + 85.0 * chi_w) / (1.0 + 100.0 * chi_w);
+            const double bet_wc = bet_0 * f_bet;
+
+            const double sig_d = (grad_dot <= 0.0) ? 0.0 : 0.125;
+
+            const double P_k = std::min(P_full, 20.0 * bet_star * tke_s * dis_s);
+            const double Y_k = bet_star * tke_s * dis_s;
+            const double P_w = gam * dis_s / tke_s * P_k;
+            const double Y_w = bet_wc * dis_s * dis_s;
+            const double D_w = sig_d / dis_s * grad_dot;
+
+            tke_src = P_k - Y_k;
+            dis_src = P_w - Y_w + D_w;
+
+            // C_lim is the stress limiter of the 2006 revision; it acts on nue*, which
+            // TurbulenceJup owns, so it is only referenced here to keep the constant set
+            // complete and identical between the two files.
+            (void)C_lim;
+        }
+        else {                                               // k-omega SST, Menter 1994
+            constexpr double bet_star = 0.09;   // beta* destruction coefficient, NOT C_mu
+            constexpr double sig_k1   = 1.176;
+            constexpr double sig_k2   = 1.0;
+            constexpr double sig_w1   = 2.0;
+            constexpr double sig_w2   = 1.168;
+            constexpr double bet1     = 0.0333;
+            constexpr double bet2     = 0.0368;
+            constexpr double gam1     = 0.413;
+            constexpr double gam2     = 0.2;
+
+            const double nue_air_nd = nue_gas_phys / (u_0 * L_m);
+            const double CD_kw = std::max(2.0 * sig_w2 / dis_s * grad_dot, 1.0e-20);
+
+            // Menter's arg1: the molecular viscosity, not the turbulent one, enters the
+            // 500 nue/(y^2 omega) branch.
+            const double arg1 = std::min(
+                std::max(std::sqrt(std::max(tke.x[i][j][k], 0.0)) / (bet_star * dis_s * y_star),
+                         500.0 * nue_air_nd / (y_star * y_star * dis_s)),
+                4.0 * sig_w2 * tke_s / (CD_kw * y_star * y_star));
+            const double F1 = std::tanh(std::pow(arg1, 4));
+
+            // blend(inner, outer, F1) = F1*inner + (1-F1)*outer, as in TurbulenceJup
+            const double sig_k = F1 * sig_k1 + (1.0 - F1) * sig_k2;
+            const double sig_w = F1 * sig_w1 + (1.0 - F1) * sig_w2;
+            diffusion_tke_re = 1.0 / re + nue_here / sig_k;
+            diffusion_dis_re = 1.0 / re + nue_here / sig_w;
+
+            const double P_k = std::min(P_full, 20.0 * bet_star * tke_s * dis_s);
+            const double Y_k = bet_star * tke_s * dis_s;
+            const double P_w = (F1 * gam1 + (1.0 - F1) * gam2) * P_k * dis_s / tke_s;
+            const double Y_w = (F1 * bet1 + (1.0 - F1) * bet2) * dis_s * dis_s;
+            const double D_w = 2.0 * (1.0 - F1) * sig_w2 / dis_s * grad_dot;
+
+            tke_src = P_k - Y_k;
+            dis_src = P_w - Y_w + D_w;
+        }
+
+        // Same source caps as compute_sources(): they bound the P-Y balance and stop the
+        // 1/sin^2(theta) amplification of the cross-diffusion term blowing up at the poles.
+        const double tke_src_max = 20.0 * tke_s * dis_s;
+        const double dis_src_max = 20.0 * dis_s * dis_s;
+        if(!std::isfinite(tke_src)) tke_src = 0.0;
+        if(!std::isfinite(dis_src)) dis_src = 0.0;
+        tke_src = std::max(-tke_src_max, std::min(tke_src_max, tke_src));
+        dis_src = std::max(-dis_src_max, std::min(dis_src_max, dis_src));
+
+        // Publish for ParaView / printMinMax, exactly as ATOM's RHS does.
+        tke_source.x[i][j][k] = tke_src;
+        dis_source.x[i][j][k] = dis_src;
+    }
 
     rhs_t.x[i][j][k] =
         + pressure_t
@@ -467,6 +771,26 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
         + diffusion_nh4sh * (1.0 / (sc_nh4sh * re) + nue_t_s)
         + chemical_reaction * massflux_nh4sh.x[i][j][k]
         + (v_stokes_nh4sh / u_0) * dnh4shdr;
+
+    // ===== Turbulence transport equations =====
+    // dk*/dt   = -v.grad k*   + div((1/re + nue*/sigma_k) grad k*)   + (P_k - Y_k)
+    // ddis*/dt = -v.grad dis* + div((1/re + nue*/sigma_w) grad dis*) + (P_w - Y_w + D_w)
+    // With the closure off both are identically zero, so RungeKuttaJup leaves k*/dis* at their
+    // initial values and the run stays bit-identical to the pre-turbulence model.
+    if(turb_on != 0){
+        rhs_tke.x[i][j][k] =
+            - transport_tke
+            + diffusion_tke * diffusion_tke_re
+            + tke_src;
+
+        rhs_dis.x[i][j][k] =
+            - transport_dis
+            + diffusion_dis * diffusion_dis_re
+            + dis_src;
+    } else {
+        rhs_tke.x[i][j][k] = 0.0;
+        rhs_dis.x[i][j][k] = 0.0;
+    }
 
     aux_u.x[i][j][k] = rhs_u.x[i][j][k] + dpdr_term;
     aux_v.x[i][j][k] = rhs_v.x[i][j][k] + dpdthe_term;

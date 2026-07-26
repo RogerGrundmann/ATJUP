@@ -8,8 +8,8 @@ CFLAGS = -Wall -fPIC -std=c++11 -Ilib -Iplanet -Itinyxml2 -fopenmp -MMD -MP
 # Common files for the shared lib (libatjup.a)
 LIB_OBJ = lib/Array.o lib/Array_2D.o lib/Array_1D.o lib/Config.o lib/Utils.o lib/FFT.o
 
-ATJUP_OBJ = planet/cJupiterModel.o planet/PrintMsg_Jup.o planet/RungeKutta_Jup.o \
-planet/RHS_Jup.o planet/ParaView_Jup.o planet/Thermo_Jup.o \
+ATJUP_OBJ = planet/cJupiterModel.o planet/PrintMsg_Jup.o planet/RungeKutta_Jup_Turb.o \
+planet/RHS_Jup_Turb.o planet/ParaView_Jup.o planet/Thermo_Jup.o \
 planet/InitValues_Jup.o planet/SaturationAdjustmentJup.o \
 planet/FileIO_Jup.o
 

@@ -766,6 +766,8 @@ private:
     Array rhs_ch4_cloud;        // auxilliar field RHS ch4_cloud
     Array rhs_ch4_ice;            // auxilliar field RHS ch4_ice
     Array rhs_nh4sh;                // auxilliar field RHS nh4sh
+    Array rhs_tke;                // auxilliar field RHS turbulent kinetic energy k*
+    Array rhs_dis;                // auxilliar field RHS dissipation (epsilon* or omega*)
 
     Array fluxlim_nh4sh;  // TVD flux-limiter correction for nh4sh advection
 
