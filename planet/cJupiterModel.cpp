@@ -19,6 +19,7 @@
 #include "VelocityInitializerJup.h"
 #include "RadiationJup.h"
 #include "PrecipitationJup.h"
+#include "TurbulenceJup.h"
 
 #include <cstdlib>   // getenv/atof/atoi for the Shapiro velocity-filter knobs
 
@@ -48,6 +49,11 @@ static int    radiation_enabled()  { static const int    v = [](){ const char* e
 // SaturationAdjustmentJup calls, so the removal persists and the next iteration must draw on
 // the vapour reservoir to rebuild cloud — which is what makes the rate self-limiting.
 // Q_precip only reaches rhs_t if ATJUP_PRECIP_COUPLING is also set (see RHS_Jup.cpp).
+// Turbulence knob (default off = bit-identical). Mirrors ATOM's TurbulenceAtm: all three models
+// (k_epsilon | k_omega | k_omega_SST) are available, selected by cJupiterModel::turb_model or
+// the ATJUP_TURB_MODEL environment variable. Fills tke/dis/nue/prod/tke_source/dis_source;
+// nothing in the RHS reads them yet, so it is diagnostic for now.
+static int    turb_enabled()       { static const int    v = [](){ const char* e = getenv("ATJUP_TURB");                 return e ? atoi(e) : 0;   }(); return v; }
 static int    precip_enabled()     { static const int    v = [](){ const char* e = getenv("ATJUP_PRECIP");               return e ? atoi(e) : 0;   }(); return v; }
 
 cJupiterModel* cJupiterModel::m_model = NULL;
@@ -350,6 +356,11 @@ void cJupiterModel::Run(){
 //    BC_Jup(*this).bcScalarSurfSur();                                    // scalar variable at surfaces extrapolated by von Neumann
     BC_Jup(*this).bcSolidGround();                                      // values inside mountains
 
+    // Seed the turbulence fields from the ABL profile and prime the source terms once,
+    // mirroring ATOM's TurbulenceAtm::init(). Needs the velocity field, so it comes after
+    // the initial BCs.
+    if(turb_enabled()) TurbulenceJup(*this).init();
+
     restoreVar(1.0);
 
 //    goto Printout;
@@ -408,6 +419,10 @@ void cJupiterModel::Run(){
         // Must stay AFTER the SaturationAdjustmentJup calls: its condensate depletion is applied
         // in place, and running it before them would let the adjustment simply undo the removal.
         if(precip_enabled()) PrecipitationJup(*this).run();   // H2O+NH3 3-cat + NH4SH settling
+
+        // Turbulence closure. Reads the velocity field left by RK4 and the BCs, so it runs
+        // after them, exactly as ATOM calls TurbulenceAtm::run() from its own iteration loop.
+        if(turb_enabled()) TurbulenceJup(*this).run();
 
         ChemistryJup(*this).DiffMassFluxJup();                          // must precede ChemMassRateJup: massflux = w - difflux
 
@@ -598,6 +613,15 @@ void cJupiterModel::resetArrays(){
     P_nh3_graupel.initArray(im, jm, km, 0.0);        // NH3 graupel precipitation flux [kg/m2/s]
     P_nh4sh.initArray(im, jm, km, 0.0);              // NH4SH crystal sedimentation flux [kg/m2/s]
     Q_precip.initArray(im, jm, km, 0.0);             // latent heating rate from precip [W/m3]
+    tke.initArray(im, jm, km, 0.0);                   // turbulent kinetic energy k*
+    tken.initArray(im, jm, km, 0.0);                  // k* at time level n
+    dis.initArray(im, jm, km, 1.0e-10);               // epsilon* or omega*
+    disn.initArray(im, jm, km, 1.0e-10);              // dis at time level n
+    nue.initArray(im, jm, km, 0.0);                   // eddy viscosity nue*
+    prod.initArray(im, jm, km, 0.0);                  // production contraction P_k
+    tke_source.initArray(im, jm, km, 0.0);            // k source term
+    dis_source.initArray(im, jm, km, 0.0);            // dis source term
+    vel_star.initArray_2D(jm, km, 0.0);               // friction velocity u_tau [m/s]
     CoriolisForce.initArray(im, jm, km, 0.0);        // Coriolis force
     CentrifugalForce.initArray(im, jm, km, 0.0);             // centrifugal force
     BuoyancyForce.initArray(im, jm, km, 0.0);        // buoyancy force, Boussinesque approximation

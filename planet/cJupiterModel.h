@@ -60,6 +60,7 @@ class cJupiterModel{
     friend class VelocityInitializerJup;
     friend class RadiationJup;
     friend class PrecipitationJup;
+    friend class TurbulenceJup;
 
 public:
 
@@ -786,6 +787,29 @@ private:
     Array P_nh3_graupel;        // NH3 graupel precipitation flux [kg/m2/s]
     Array P_nh4sh;              // NH4SH crystal sedimentation flux [kg/m2/s]
     Array Q_precip;             // latent heating rate from precip phase changes [W/m3] (diagnostic)
+
+    // --- Turbulence closure (TurbulenceJup.h): k-epsilon / k-omega / k-omega SST ---
+    // Mirrors the array set of ATOM's TurbulenceAtm.h, and the same DIMENSIONLESS
+    // convention: k* = k/u_0^2, omega* = omega_phys*L_atm/u_0, eps* = eps_phys*L_atm/u_0^3,
+    // nue* = nue/(u_0*L_atm). NOTE ATJUP's L_atm is in KILOMETRES where ATOM's is in metres,
+    // so TurbulenceJup converts with L_atm*1e3 throughout — see its units note.
+    Array tke;                  // turbulent kinetic energy k*
+    Array tken;                 // k* at time level n
+    Array dis;                  // dissipation: epsilon* (k-eps) or omega* (k-omega, SST)
+    Array disn;                 // dis at time level n
+    Array nue;                  // turbulent (eddy) viscosity nue*
+    Array prod;                 // production tensor contraction P_k
+    Array tke_source;           // k  source: production - destruction
+    Array dis_source;           // dis source: production - destruction + cross-diffusion
+    Array_2D vel_star;          // per-column friction velocity u_tau [m/s]
+
+    double re_turb = 1.0;                       // = vel_star_ref*z_0/nue_air, set by TurbulenceJup
+    std::string turb_model = "k_omega_SST";     // "k_epsilon" | "k_omega" | "k_omega_SST"
+    // Boundary-layer depth used by the ABL seeding profile and the eddy-viscosity taper.
+    // ATOM's value is ~1500 m of terrestrial ABL. There is no Jovian surface boundary layer,
+    // so on ATJUP this only has meaning as the depth of the shear layer above the SeaMount;
+    // it is metres, and deliberately decoupled from the grid scale (as in ATOM).
+    double abl_height = 20000.0;                // [m]
     Array CoriolisForce;        // Coriolis force
     Array CentrifugalForce;             // centrifugal force
     Array BuoyancyForce;        // buoyancy force, Boussinesque approximation

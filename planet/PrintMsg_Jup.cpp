@@ -106,6 +106,16 @@ void cJupiterModel::printMinMax(){
     searchMinMax_3D(" max 3D Q_rad ", " min 3D Q_rad ", " W/m3", Q_rad, 1.0);
     searchMinMax_3D(" max 3D emissivity ", " min 3D emissivity ", " /", epsilon, 1.0);
 
+    // k-omega SST turbulence (physical units; zero unless ATJUP_TURB is set)
+    cout << endl << " Turbulence (dimensionless: k*, eps*/omega*, nue*) " << endl;
+    searchMinMax_3D(" max 3D tke ", " min 3D tke ", " /", tke, 1.0);
+    searchMinMax_3D(" max 3D dis ", " min 3D dis ", " /", dis, 1.0);
+    searchMinMax_3D(" max 3D nue ", " min 3D nue ", " /", nue, 1.0);
+    searchMinMax_3D(" max 3D prod ", " min 3D prod ", " /", prod, 1.0);
+    searchMinMax_3D(" max 3D tke_source ", " min 3D tke_source ", " /", tke_source, 1.0);
+    searchMinMax_3D(" max 3D dis_source ", " min 3D dis_source ", " /", dis_source, 1.0);
+    searchMinMax_2D(" max 2D vel_star ", " min 2D vel_star ", " m/s", vel_star, 1.0);
+
     // Equatorial column profile (j=jm/2, k=km/2), top -> bottom, for a direct
     // check of the radiation / Q_rad fields against the actual T(p).
     {
