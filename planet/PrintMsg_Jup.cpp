@@ -44,6 +44,18 @@ void cJupiterModel::printMinMax(){
     searchMinMax_3D(" max 3D h2o_ice ", " min 3D h2o_ice ", " kg/m3", h2o_ice, r_mix);
     cout << endl;
 
+    // CH4 was added to the transport, chemistry and saturation pipeline but never to this
+    // report, so the only place its fields showed up was ParaView. NOTE for reading the
+    // numbers: ch4_cloud and ch4_ice are expected to stay ZERO on Jupiter. Methane condenses
+    // near 80-90 K at these pressures and Jupiter's coldest level is ~110 K, so CH4 is a
+    // well-mixed non-condensing gas here (it condenses on Uranus and Neptune, not Jupiter) —
+    // hence the "NO saturation found in SaturationAdjustment of CH4" line each iteration.
+    cout << endl << " Methane " << endl;
+    searchMinMax_3D(" max 3D ch4 ", " min 3D ch4 ", " kg/m3", ch4, r_mix);
+    searchMinMax_3D(" max 3D ch4_cloud ", " min 3D ch4_cloud ", " kg/m3", ch4_cloud, r_mix);
+    searchMinMax_3D(" max 3D ch4_ice ", " min 3D ch4_ice ", " kg/m3", ch4_ice, r_mix);
+    cout << endl;
+
     cout << endl << " Hydrogen Sulfide " << endl;
     searchMinMax_3D(" max 3D h2s ",  " min 3D h2s ", " kg/m3", h2s, r_mix);
     searchMinMax_3D(" max 3D w_h2s ", " min 3D w_h2s ", " kg/m3s", w_h2s, r_mix);

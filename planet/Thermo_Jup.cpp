@@ -135,14 +135,19 @@ void cJupiterModel::Latent_Heat(){
 
 
 
-                if(nh3.x[i][j][k] >= q_Rain_nh3)  
-                    Q_Latent.x[i][j][k] = Q_Latent.x[i][j][k] + lv_nh3 
+                // The NH3 contribution ACCUMULATES onto the H2O one. These two branches used to
+                // read `else Q_Latent = 0.0` / `else Latency_Ice = 0.0`, which threw the H2O
+                // term away wherever NH3 happened to be subsaturated — and in the deep, warm
+                // layers NH3 always is (its saturation pressure at 325 K is ~20 bar against an
+                // ambient ~11 bar, so it cannot condense there at all). The result was a
+                // Q_Latent that was zero over most of the domain. A species that does not
+                // condense contributes nothing; it does not erase the species that does.
+                if(nh3.x[i][j][k] >= q_Rain_nh3)
+                    Q_Latent.x[i][j][k] = Q_Latent.x[i][j][k] + lv_nh3
                         * velocity_av * dnh3 * u_0/(L_atm * (im-1));
-                else  Q_Latent.x[i][j][k] = 0.0;
 
-                if(nh3.x[i][j][k] >= q_Ice_nh3)  
+                if(nh3.x[i][j][k] >= q_Ice_nh3)
                     Latency_Ice = Latency_Ice + ls_nh3 * velocity_av * dnh3 * u_0/(L_atm * (im-1));
-                else  Latency_Ice = 0.0;
 
 
 
