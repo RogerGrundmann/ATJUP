@@ -17,10 +17,38 @@
 #include "SaturationAdjustmentJup.h"
 #include "BC_Jup.h"
 #include "VelocityInitializerJup.h"
+#include "RadiationJup.h"
+#include "PrecipitationJup.h"
+
+#include <cstdlib>   // getenv/atof/atoi for the Shapiro velocity-filter knobs
 
 using namespace std;
 using namespace tinyxml2;
 using namespace JupiterUtils;
+
+// ----------------------------------------------------------------------------
+// Velocity Shapiro-filter knobs, read once from the environment.
+//   ATJUP_VEL_SHAPIRO_ORDER   2 = 1-2-1 (default, bit-identical) | 4 = shear-preserving
+//   ATJUP_SHAPIRO_STRENGTH    filter strength (default 1.0)
+//   ATJUP_VEL_SHAPIRO_INLOOP  per-iteration passes applied to u,v,w after RK4 (default 0 = off)
+// Defaults reproduce the previous behaviour bit-for-bit (order 2, strength 1, no in-loop pass).
+static int    shapiro_vel_order()  { static const int    v = [](){ const char* e = getenv("ATJUP_VEL_SHAPIRO_ORDER");  return e ? atoi(e) : 2;   }(); return v; }
+static double shapiro_strength()   { static const double v = [](){ const char* e = getenv("ATJUP_SHAPIRO_STRENGTH");   return e ? atof(e) : 1.0; }(); return v; }
+static int    shapiro_vel_inloop() { static const int    v = [](){ const char* e = getenv("ATJUP_VEL_SHAPIRO_INLOOP"); return e ? atoi(e) : 0;   }(); return v; }
+
+// Radiation scaffold knob (default off = bit-identical). When set, RadiationJup runs
+// each even iteration and fills the diagnostic radiation/epsilon/Q_rad arrays; it does
+// not yet feed the temperature equation.
+static int    radiation_enabled()  { static const int    v = [](){ const char* e = getenv("ATJUP_RADIATION");           return e ? atoi(e) : 0;   }(); return v; }
+
+// Precipitation microphysics knob (default off = bit-identical). When set, PrecipitationJup
+// runs once per iteration and fills the rain/snow/graupel fluxes for H2O and NH3 plus the
+// NH4SH settling flux, and the latent-heat field Q_precip. It DOES feed back: the condensate
+// it converts is removed from the cloud/ice fields in place. That happens after the three
+// SaturationAdjustmentJup calls, so the removal persists and the next iteration must draw on
+// the vapour reservoir to rebuild cloud — which is what makes the rate self-limiting.
+// Q_precip only reaches rhs_t if ATJUP_PRECIP_COUPLING is also set (see RHS_Jup.cpp).
+static int    precip_enabled()     { static const int    v = [](){ const char* e = getenv("ATJUP_PRECIP");               return e ? atoi(e) : 0;   }(); return v; }
 
 cJupiterModel* cJupiterModel::m_model = NULL;
 
@@ -87,6 +115,22 @@ PressureSolverJup& cJupiterModel::getPressureSolver(){
     if(!m_pressure)
         m_pressure = new PressureSolverJup(*this);
     return *m_pressure;
+}
+
+// Shapiro de-checkerboarding of the velocity fields. Order 4 preserves the resolved
+// zonal-jet shear (∂w/∂θ) and the GRS wake far better than the 1-2-1 (order 2) while
+// still annihilating the 2Δ grid mode; order 2 reproduces the previous behaviour.
+void cJupiterModel::dampVelocities(){
+    const double s = shapiro_strength();
+    if(shapiro_vel_order() == 4){
+        JupiterUtils::damp_wiggles_ho(u, &i_topography, true, true, true, s);
+        JupiterUtils::damp_wiggles_ho(v, &i_topography, true, true, true, s);
+        JupiterUtils::damp_wiggles_ho(w, &i_topography, true, true, true, s);
+    }else{
+        JupiterUtils::damp_wiggles(u, &i_topography, true, true, true, s);
+        JupiterUtils::damp_wiggles(v, &i_topography, true, true, true, s);
+        JupiterUtils::damp_wiggles(w, &i_topography, true, true, true, s);
+    }
 }
 
 
@@ -162,9 +206,7 @@ void cJupiterModel::Run(){
     BC_Jup(*this).bcSeaMount();                                         // velocities close to surfaces, resembling a boundary layer
     BC_Jup(*this).bcVelSurfSur();                                       // velocities close to surfaces, resembling a boundary layer
 
-    JupiterUtils::damp_wiggles(u, &i_topography, true, true, true);
-    JupiterUtils::damp_wiggles(v, &i_topography, true, true, true);
-    JupiterUtils::damp_wiggles(w, &i_topography, true, true, true);
+    dampVelocities();
 
 //    goto Printout;
 
@@ -314,6 +356,11 @@ void cJupiterModel::Run(){
 
     panorama_cnt = 0;
 
+    // One-time dump of the pristine initial state (iter=0), straight out of
+    // VelocityInitializerJup, so the initial cell rotations can be inspected.
+    iter_n = 0;
+    writeData();
+
     for(iter_n = 1; iter_n <= nm; iter_n++){
 
         auto begin = std::chrono::high_resolution_clock::now();
@@ -331,6 +378,8 @@ void cJupiterModel::Run(){
 
         PressureSolverJup(*this).run();
         JupiterUtils::damp_wiggles(p_dyn, &i_topography, true, true, true);
+
+        if(radiation_enabled()) RadiationJup(*this).run();
 
         SaturationAdjustmentJup(*this).run("H2O",
             coeff_h2o_A, coeff_h2o_B, coeff_h2o_A_i, coeff_h2o_B_i,
@@ -355,6 +404,10 @@ void cJupiterModel::Run(){
             C_ch4, L0_ch4, R_ch4, del_alf_ch4, del_bet_ch4, m_ch4,
             C_ch4_ice, L0_ch4_ice, del_alf_ch4_ice, del_bet_ch4_ice,
             ch4, ch4_cloud, ch4_ice);
+
+        // Must stay AFTER the SaturationAdjustmentJup calls: its condensate depletion is applied
+        // in place, and running it before them would let the adjustment simply undo the removal.
+        if(precip_enabled()) PrecipitationJup(*this).run();   // H2O+NH3 3-cat + NH4SH settling
 
         ChemistryJup(*this).DiffMassFluxJup();                          // must precede ChemMassRateJup: massflux = w - difflux
 
@@ -389,6 +442,15 @@ void cJupiterModel::Run(){
 
 //        RungeKuttaJup();
 
+        // Optional per-iteration velocity de-checkerboarding (opt-in; default off = bit-identical).
+        // Use the 4th-order filter so the zonal-jet shear is preserved across iterations.
+        if(shapiro_vel_inloop() > 0){
+            const double s = shapiro_strength();
+            JupiterUtils::damp_wiggles_ho(u, &i_topography, true, true, true, s, shapiro_vel_inloop());
+            JupiterUtils::damp_wiggles_ho(v, &i_topography, true, true, true, s, shapiro_vel_inloop());
+            JupiterUtils::damp_wiggles_ho(w, &i_topography, true, true, true, s, shapiro_vel_inloop());
+        }
+
         restoreVar(1.0);
 
         panorama_cnt++;
@@ -396,6 +458,12 @@ void cJupiterModel::Run(){
         if(iter_n % checkpoint == 0){
             printMinMax();
             writeData();
+        }
+
+        // Full 3D panorama .vts every 100 iterations (carries the radiation fields), independent
+        // of the checkpoint/panorama_print cadence.
+        if(paraview_panorama_vts_flag && iter_n % 100 == 0){
+            paraview_panorama_vts(iter_n);
         }
 
         if(panorama_cnt == panorama_print) panorama_cnt = 1;
@@ -427,6 +495,10 @@ void cJupiterModel::resetArrays(){
     Topography.initArray_2D(jm, km, 0.0); // topography
     LatentHeat.initArray_2D(jm, km, 0.0);            // areas of higher latent heat
     Precipitation.initArray_2D(jm, km, 0.0);         // areas of higher precipitation
+    precip_srf_total.initArray_2D(jm, km, 0.0);      // all-species surface precipitation [kg/m2/s]
+    precip_srf_h2o.initArray_2D(jm, km, 0.0);        // H2O   rain + snow + graupel
+    precip_srf_nh3.initArray_2D(jm, km, 0.0);        // NH3   rain + snow + graupel
+    precip_srf_nh4sh.initArray_2D(jm, km, 0.0);      // NH4SH settling crystals
     precipitable_water.initArray_2D(jm, km, 0.0);    // areas of precipitable water in the air
     nh3_total.initArray_2D(jm, km, 0.0);             // areas of higher nh3 concentration
     nh3_cloud_total.initArray_2D(jm, km, 0.0);       // areas of higher nh3_cloud concentration
@@ -515,6 +587,17 @@ void cJupiterModel::resetArrays(){
 
     Q_Latent.initArray(im, jm, km, 0.0);                // latent heat
     Q_Sensible.initArray(im, jm, km, 0.0);            // sensible heat
+    Q_rad.initArray(im, jm, km, 0.0);                // radiative heating rate [W/m3]
+    radiation.initArray(im, jm, km, 0.0);            // layer-centre net radiative flux [W/m2]
+    epsilon.initArray(im, jm, km, 0.0);                // layer emissivity
+    P_rain.initArray(im, jm, km, 0.0);               // H2O rain    precipitation flux [kg/m2/s]
+    P_snow.initArray(im, jm, km, 0.0);               // H2O snow    precipitation flux [kg/m2/s]
+    P_graupel.initArray(im, jm, km, 0.0);            // H2O graupel precipitation flux [kg/m2/s]
+    P_nh3_rain.initArray(im, jm, km, 0.0);           // NH3 rain    precipitation flux [kg/m2/s]
+    P_nh3_snow.initArray(im, jm, km, 0.0);           // NH3 snow    precipitation flux [kg/m2/s]
+    P_nh3_graupel.initArray(im, jm, km, 0.0);        // NH3 graupel precipitation flux [kg/m2/s]
+    P_nh4sh.initArray(im, jm, km, 0.0);              // NH4SH crystal sedimentation flux [kg/m2/s]
+    Q_precip.initArray(im, jm, km, 0.0);             // latent heating rate from precip [W/m3]
     CoriolisForce.initArray(im, jm, km, 0.0);        // Coriolis force
     CentrifugalForce.initArray(im, jm, km, 0.0);             // centrifugal force
     BuoyancyForce.initArray(im, jm, km, 0.0);        // buoyancy force, Boussinesque approximation

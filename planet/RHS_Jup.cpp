@@ -10,6 +10,8 @@
 
 #include "cJupiterModel.h"
 
+#include <cstdlib>   // getenv/atof for the radiative-coupling knob
+
 using namespace std;
 
 
@@ -253,10 +255,88 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     double dpdthe_term = dpdthe * inv_rm;
     double dpdphi_term = dpdphi * inv_rmsinthe;
 
+    // ===== Radiative heating source (step 4, opt-in) =====
+    // Convert the diagnostic radiative flux divergence Q_rad [W/m3] (RadiationJup) into a
+    // nondimensional temperature tendency and add it to rhs_t. Physically dT/dt = Q_rad/(rho*cp);
+    // nondimensionalised by the energy-equation scaling (radial length L_rad, velocity u_0,
+    // temperature t_ref):
+    //   radiation_t = rad_coupling * Q_rad * L_rad / (rho * cp_mix * u_0 * t_ref).
+    // rho is the LOCAL density from the ideal-gas law (essential so the thin, cold upper
+    // atmosphere — where Q_rad>0 heats — responds strongly and relaxes toward radiative
+    // equilibrium). Gated by ATJUP_RAD_COUPLING (default 0 = off, bit-identical); Q_rad is
+    // nonzero only when ATJUP_RADIATION is enabled.
+    //
+    // SCALING: rad_coupling = 1.0 is the PHYSICALLY CORRECT value — the expression above is the
+    // exact nondimensional form of dT/dt = Q/(rho*cp) under this model's scaling (lengths by
+    // L_rad, velocity u_0, temperature t_ref). Verified: Q_rad~5e-3 W/m3 at the cloud decks
+    // gives dT/dt = Q/(rho*cp) ~ 4.3e-6 K/s, and radiation_t*dt*t_ref reproduces that per step.
+    // Values >> 1 do NOT correct a scaling error; they are a deliberate ACCELERATION factor.
+    // The reason one is tempting: dt = 0.001 nondimensional is only dt*L_rad/u_0 ~ 1.4 s of
+    // Jupiter time, so a 100-iteration run spans ~140 s while the radiative relaxation time is
+    // ~1e7 s. At coupling=1 radiative equilibration therefore needs ~1e7/1.4 ~ 7e6 iterations;
+    // raising the knob buys that equilibration in fewer steps at the cost of a distorted ratio
+    // between the radiative and advective timescales. (An earlier +8 K/100-iter result at
+    // coupling=10 was mostly a units bug: Q_rad was computed with a layer thickness in km
+    // instead of m and so was 1000x too large, making the effective multiplier ~1e4.)
+    static const double rad_coupling = [](){ const char* e = getenv("ATJUP_RAD_COUPLING"); return e ? atof(e) : 0.0; }();
+    double radiation_t = 0.0;
+    if(rad_coupling != 0.0){
+        constexpr double R_H2He = 3600.0;                       // specific gas constant of the H2/He mix [J/(kg*K)]
+        const double T_phys = t.x[i][j][k] * t_ref;             // [K]
+        const double P_phys = p_stat.x[i][j][k] * 1.0e5;        // p_stat ~ bars -> [Pa]
+        const double rho    = (T_phys > 1.0) ? P_phys / (R_H2He * T_phys) : 0.0;  // [kg/m3]
+        const double L_rad  = L_atm * 1.0e3;                    // atmosphere thickness [m]
+        if(rho > 0.0 && cp_mix > 0.0){
+            radiation_t = rad_coupling * Q_rad.x[i][j][k] * L_rad
+                        / (rho * cp_mix * u_0 * t_ref);
+            // Explicit-scheme stability limiter: in a very low-density cell (thin upper
+            // atmosphere / deep polar corner) the 1/rho factor can make the tendency blow up
+            // and destabilise the pole. Guard non-finite first (the cap's >/< tests are both
+            // false for NaN and would let it through), then cap — normal top-of-atmosphere
+            // values are ~0.05, so this only bites on the runaway, preserving the heating sign.
+            constexpr double rad_t_max = 0.5;
+            if(!std::isfinite(radiation_t)) radiation_t = 0.0;
+            else if(radiation_t >  rad_t_max) radiation_t =  rad_t_max;
+            else if(radiation_t < -rad_t_max) radiation_t = -rad_t_max;
+        }
+    }
+
+    // ===== Latent-heat source from precipitation microphysics (phase 2c, opt-in) =====
+    // Same conversion as the radiative term: Q_precip [W/m3] (PrecipitationJup, summed over
+    // H2O/NH3/NH4SH) -> nondimensional temperature tendency via dT/dt = Q/(rho*cp), scaled by
+    // L_rad/(u_0*t_ref). Positive where riming/freezing release fusion heat, negative where
+    // melting or rain evaporation absorb it. Gated by ATJUP_PRECIP_COUPLING (default 0 =
+    // bit-identical); Q_precip is nonzero only when ATJUP_PRECIP is enabled.
+    // NOTE the density used here is r_mix, NOT the local ideal-gas density used by the
+    // radiative term. Q_rad comes from real radiative fluxes, so dividing it by the local
+    // density is correct. Q_precip instead derives from the condensate fields, which
+    // SaturationAdjustmentJup defines as mixing ratios scaled by the REFERENCE density r_mix
+    // (and whose own latent heat it converts with /(cp_mix*r_mix)). The r_mix therefore
+    // cancels, leaving the true mixing-ratio tendency; using the local density here would
+    // instead inflate the heating by r_mix/rho_local (~13x at the cloud decks).
+    static const double precip_coupling = [](){ const char* e = getenv("ATJUP_PRECIP_COUPLING"); return e ? atof(e) : 0.0; }();
+    double precip_t = 0.0;
+    if(precip_coupling != 0.0){
+        const double L_rad = L_atm * 1.0e3;                     // atmosphere thickness [m]
+        if(r_mix > 0.0 && cp_mix > 0.0){
+            precip_t = precip_coupling * Q_precip.x[i][j][k] * L_rad
+                     / (r_mix * cp_mix * u_0 * t_ref);
+            // Same explicit-scheme guard as the radiative term. r_mix is a constant here so
+            // there is no 1/rho blow-up, but latent heating is a stiff, locally concentrated
+            // source (it switches on hard at the freezing level), so keep the limiter.
+            constexpr double precip_t_max = 0.5;
+            if(!std::isfinite(precip_t)) precip_t = 0.0;
+            else if(precip_t >  precip_t_max) precip_t =  precip_t_max;
+            else if(precip_t < -precip_t_max) precip_t = -precip_t_max;
+        }
+    }
+
     rhs_t.x[i][j][k] =
         + pressure_t
         - transport_t
-        + diffusion_t / (re * pr);
+        + diffusion_t / (re * pr)
+        + radiation_t
+        + precip_t;
 
     rhs_u.x[i][j][k] =
         - dpdr_term

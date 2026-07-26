@@ -8,6 +8,7 @@
 #include "cJupiterModel.h"
 #include "Utils.h"
 #include "SaturationAdjustmentJup.h"
+#include <cstdlib>   // getenv/atoi/atof for the tropopause-clamp knobs
 
 using namespace std;
 using namespace JupiterUtils;
@@ -96,6 +97,18 @@ void cJupiterModel::init_temperature(){
     const double d_j_half  = (double)j_half;
     const double t_h2_eff  = t_pole - t_equator;
 
+    // Tropopause clamp (see the block comment below). ATJUP_IC_TROPO_CLAMP=0 restores the old
+    // unbounded lapse rate for A/B; ATJUP_T_TROPOPAUSE_MIN overrides the 110 K floor, which is
+    // Jupiter's observed tropopause minimum near the 0.1 bar level.
+    static const bool   tropo_clamp_on     = [](){ const char* e = getenv("ATJUP_IC_TROPO_CLAMP");  return e ? atoi(e) != 0 : true;  }();
+    static const double t_tropopause_min   = [](){ const char* e = getenv("ATJUP_T_TROPOPAUSE_MIN"); return e ? atof(e) : 110.0; }();
+
+    // Local copies: im/jm/km are static const members declared without an out-of-line
+    // definition, so binding them to the vector constructor's const& would odr-use them and
+    // fail to link.
+    const int im_v = im, jm_v = jm, km_v = km;
+    i_strato_base.assign(jm_v, std::vector<int>(km_v, im_v));
+
     // ========================================================================
     // Latitudinal surface temperature + vertical lapse-rate profile
     // ========================================================================
@@ -110,11 +123,38 @@ void cJupiterModel::init_temperature(){
             double ratio = (double)j / d_j_half;
             t.x[0][j][k] = (t_h2_eff * JupiterUtils::parabola(ratio) + t_pole) / t_ref;
 
-            // Linear lapse-rate profile upward from surface
+            // Linear lapse-rate profile upward from surface, CLAMPED at the tropopause.
+            //
+            // The unclamped form ran the tropospheric lapse rate over the whole domain:
+            // T(lid) = T(0) - gam*L_atm = T(0) - 2.0*140 = T(0) - 280 K, which put the model top
+            // near 56 K against a real Jovian 110-140 K. That was the origin of the cold top —
+            // measured, not inferred: the lid drifted only +1.2 K over 100 iterations, so it was
+            // never a boundary-condition artifact.
+            //
+            // Clamping at t_tropopause_min gives an isothermal stratosphere above the level where
+            // the adiabat reaches that temperature, which is the standard idealised construction
+            // (and the "IC isothermal-floor" ATOM's lid pin refers to). gam is deliberately NOT
+            // retuned: it also sets the pressure exponent g/(gam*R_ref) used here and in
+            // SaturationAdjustmentJup, so changing it would move the whole p_stat profile and the
+            // cloud bases with it.
+            //
+            // The clamp height follows latitude for free: z_c = (T(0) - t_tropopause_min)/gam, and
+            // T(0) is largest at the equator, so the tropopause sits higher there. That reproduces
+            // the sense of initTropopauseLayers() (125 km equator / 115 km pole) without coupling
+            // to it — with the default 110 K the crossing lands near 113 km.
+            const int i_clamp_none = im;
+            int i_clamp = i_clamp_none;
             for (int i = 1; i < im; i++) {
                 const double height = get_layer_height(i);
-                t.x[i][j][k] = -gam * height / t_ref + t.x[0][j][k];
+                const double t_lapse = -gam * height + t.x[0][j][k] * t_ref;   // [K]
+                if (tropo_clamp_on && t_lapse < t_tropopause_min) {
+                    t.x[i][j][k] = t_tropopause_min / t_ref;
+                    if (i_clamp == i_clamp_none) i_clamp = i;
+                } else {
+                    t.x[i][j][k] = t_lapse / t_ref;
+                }
             }
+            i_strato_base[j][k] = i_clamp;
         }
     }
 
@@ -154,12 +194,42 @@ void cJupiterModel::init_PressureStatic(){
 
     const double exp_pressure = g / (gam * R_ref);
 
+    // p_stat ~ (T/t_ref)^(g/(gam*R_ref)) is the POLYTROPIC relation: it assumes the lapse rate is
+    // exactly gam. That holds through the troposphere, but init_temperature now clamps the profile
+    // to an isothermal stratosphere above i_strato_base, and there the polytropic form would hold
+    // p_stat CONSTANT with height — pressure would stop decreasing, which is unphysical and would
+    // corrupt every p_stat consumer (CIA opacity ~ P^2/T, cloud bases, saturation ratios).
+    //
+    // So above the clamp switch to the isothermal hydrostatic law,
+    //   p(z) = p_c * exp(-(z - z_c)/H),   H = R_spec*T_iso/g,
+    // anchored on the last adiabatic layer. R_ref is in kJ/(kg K) (g/(gam*R_ref) = 25.92/(2*3.75)
+    // = 3.456 only works out with gam in K/km and R_ref in kJ/(kg K)), so the specific gas
+    // constant is R_ref*1e3 = 3750 J/(kg K); with T_iso = 110 K that gives H ~ 15.9 km.
+    //
+    // Below the clamp the analytic formula is kept untouched, so the troposphere — and every
+    // calibration already tuned against it — is bit-identical.
+    const double R_spec = R_ref * 1.0e3;               // [J/(kg K)]
+
     #pragma omp parallel for collapse(2) schedule(static)
     for (int j = 0; j < jm; j++) {
         for (int k = 0; k < km; k++) {
-            for (int i = 0; i < im; i++) {
+            const int isb = (i_strato_base.empty() ? im : i_strato_base[j][k]);
+
+            const int i_adiabatic_end = (isb < im) ? isb : im;
+            for (int i = 0; i < i_adiabatic_end; i++) {
                 const double t_u = t.x[i][j][k] * t_ref;
                 p_stat.x[i][j][k] = p_ref * pow(t_u / t_ref, exp_pressure);
+            }
+
+            if (isb < im && isb > 0) {
+                const double t_iso = t.x[isb][j][k] * t_ref;                  // [K]
+                const double H     = R_spec * t_iso / g;                      // [m]
+                const double p_c   = p_stat.x[isb-1][j][k];                   // anchor
+                const double z_c   = (double)get_layer_height(isb-1) * 1.0e3; // [m]
+                for (int i = isb; i < im; i++) {
+                    const double z = (double)get_layer_height(i) * 1.0e3;     // [m]
+                    p_stat.x[i][j][k] = p_c * exp(-(z - z_c) / H);
+                }
             }
         }
     }

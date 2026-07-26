@@ -30,7 +30,7 @@ void cJupiterModel::writeData(){
 
     if (paraview_panorama_vts_flag && panorama_cnt == panorama_print) {
         paraview_panorama_vts(iter_n);
-        paraview_sphere_vts(iter_n);
+//        paraview_sphere_vts(iter_n);
     }
 
     JupiterPlotData();
@@ -181,12 +181,17 @@ void cJupiterModel::writeResults(){
 // surface values of precipitation and precipitable water
     for(int k = 0; k < km; k++){
         for(int j = 0; j < jm; j++){
-            Precipitation.y[j][k] = coeff_prec * (P_rain.x[0][j][k] + P_snow.x[0][j][k]);
+            // All-species surface total (H2O + NH3 + NH4SH), computed by PrecipitationJup at the
+            // base of each column. This used to be H2O rain+snow only, read at i=0 and clipped at
+            // 25 mm/d — an Earth-rainfall convention that ignored graupel, the whole NH3 deck and
+            // the NH4SH crystals. The clip is dropped: the flux is already bounded by
+            // PrecipitationJup's P_max_flux, and Jupiter's energy budget puts the physical values
+            // near 1 mm/d, so a 25 mm/d ceiling only ever hid a runaway.
+            Precipitation.y[j][k] = coeff_prec * precip_srf_total.y[j][k];
             // 60 s * 60 min * 24 h = 86400 s == 1 d
-            // Precipitation, P_rain and P_snow in kg/ ( m² * s ) = mm/s
+            // precip_srf_total in kg/ ( m² * s ) = mm/s
             // Precipitation in 86400. * kg/ ( m² * d ) = 86400 mm/d
             // kg/ ( m² * s ) == mm/s ( Kraus, p. 94 )
-            if(Precipitation.y[j][k] >= 25.)  Precipitation.y[j][k] = 25.;
             if(Precipitation.y[j][k] <= 0)  Precipitation.y[j][k] = 0.;
         }
     }

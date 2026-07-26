@@ -45,6 +45,80 @@ private:
 // Inline implementation  (header-only, like ATOM's BC_Atm.h)
 // -----------------------------------------------------------------------
 #include "cJupiterModel.h"
+#include <cstdlib>   // getenv/atoi for the boundary-hardening knobs
+
+// ---------------------------------------------------------------------------
+// Boundary-hardening knobs, ported from ATOM_Precipitation's BC_Atm.h after a
+// side-by-side comparison. Set any knob to 0 to A/B against the old behaviour.
+//
+// Defaults reflect how well each is actually supported in ATJUP:
+//   rigid_lid  1  — required for well-posedness (closed shell + all-Neumann Poisson),
+//                   though measured effect at 100 iters was negligible.
+//   top_taper  1  — MEASURED: moves the w maximum off the lid (133 -> 126 km) and
+//                   restores the IC's intent. The one clear win of the four.
+//   pole_copy  1  — numerically strictly better at the sin(theta) -> 0 singularity;
+//                   no ATJUP symptom observed yet, kept as insurance.
+//   seam_damp  0  — no ATJUP evidence of a seam mode; see its note below.
+//
+// A NOTE ON EVIDENCE, so nobody repeats the mistake: the clustering of printMinMax
+// extrema at "0/1 deg E" and "90 deg N" is NOT evidence of boundary trouble. It is
+// a tie-breaking artifact — searchMinMax_3D uses a strict > and scans k before i,
+// so for any zonally near-uniform field (which the IC is, by construction) the max
+// is reported at the smallest k that attains it, i.e. k = 0 or 1, and at j = 0.
+// Verified: enabling the pole and seam treatments below changed that clustering not
+// at all (28 -> 29 seam, 17 -> 17 polar out of 46). Judge these knobs with direct
+// field diagnostics, not with extremum locations.
+// ---------------------------------------------------------------------------
+namespace BCJupKnobs {
+    inline int env_int(const char* name, int dflt){
+        const char* e = getenv(name);
+        return e ? atoi(e) : dflt;
+    }
+    // (1) u = 0 at i=0 and i=im-1 (no flow through either radial wall).
+    inline int rigid_lid()  { static const int v = env_int("ATJUP_BC_RIGID_LID", 1); return v; }
+    // (2) taper v,w to zero over the top three layers.
+    inline int top_taper()  { static const int v = env_int("ATJUP_BC_TOP_TAPER", 1); return v; }
+    // (3) plain copy instead of (4/3,-1/3) extrapolation at the poles.
+    inline int pole_copy()  { static const int v = env_int("ATJUP_BC_POLE_COPY", 1); return v; }
+    // (4) number of 1-2-1 Shapiro passes across the phi seam. DEFAULT 0 (off): unlike the
+    // others this one is NOT supported by ATJUP evidence. A direct zonal-roughness measurement
+    // at iteration 100 found the seam SMOOTHER than the interior wherever real dynamics exist
+    // (mean |d2w/dphi2| ratio seam:interior = 0.01-0.04 at 0, -22, -45 deg); it only stands out
+    // at 45 deg N, where the field is nearly zonally uniform and the absolute amplitude is
+    // ~1e-4 m/s. So there is no live seam instability to damp here, and leaving a filter that
+    // perturbs u,v,w every iteration switched on would only confound later experiments.
+    // Set to 2 if a long run ever shows zonal energy accumulating at k = 0/1/km-2.
+    inline int seam_damp()  { static const int v = env_int("ATJUP_BC_SEAM_DAMP", 0); return v; }
+
+    // (6) Lid temperature pin. DEFAULT 0 (off) — and the reason is worth recording, because the
+    // motivation for porting this from ATOM turned out not to apply to ATJUP.
+    //
+    // ATOM pins t at i=im-1 because its cubic lid extrapolation projected interior curvature
+    // onto the lid and its stratospheric top drifted upward within ~20 iterations, corrupting an
+    // otherwise steady initial state. MEASURED in ATJUP instead (j=87, k=180): the lid is 56.34 K
+    // in the initial condition and 57.53 K after 100 iterations — a drift of +1.2 K, negligible,
+    // and in the direction we WANT. ATJUP's lid is not drifting.
+    //
+    // So the model's anomalously cold top (~57 K against a real 110-140 K) is NOT a boundary
+    // artifact: it is the initial condition. init_temperature (InitValues_Jup.cpp) applies an
+    // unbounded linear lapse rate, t = -gam*height/t_ref + t[0], with gam = 2.0 K/km over the
+    // full L_atm = 140 km, i.e. T(lid) = T(0) - 280 K. There is no tropopause floor and no
+    // stratospheric inversion, even though initTropopauseLayers() below computes a tropopause at
+    // 125 km (equator) / 115 km (pole) that VelocityInitializerJup already honours when it ramps
+    // v,w. The temperature IC simply ignores it.
+    //
+    // Pinning to the IC snapshot would therefore FREEZE the top at 56 K and stop the radiation
+    // coupling from ever warming it — the opposite of what is wanted. Two useful modes are
+    // nevertheless provided:
+    //   ATJUP_BC_T_LID_PIN=1                  hold the lid at its IC value (ATOM parity; use to
+    //                                         isolate lid drift, not to fix the cold top).
+    //   ATJUP_BC_T_LID_PIN=1 ATJUP_BC_T_LID_K=115
+    //                                         hold the lid at a PRESCRIBED physical temperature
+    //                                         in kelvin, which is the version that actually
+    //                                         serves the warm-top goal.
+    inline int    t_lid_pin() { static const int    v = env_int("ATJUP_BC_T_LID_PIN", 0); return v; }
+    inline double t_lid_K()   { static const double v = [](){ const char* e = getenv("ATJUP_BC_T_LID_K"); return e ? atof(e) : 0.0; }(); return v; }
+}
 
 
 inline void BC_Jup::bcRadius()
@@ -75,6 +149,26 @@ inline void BC_Jup::bcRadius()
     // The 3-point cubic (3f[a]-3f[b]+f[c]) amplifies alternating errors by 7x
     // per call and blows up near the SeaMount contour (same reason bcSolidGround
     // was switched to the 2-point formula; bcRadius had the same latent bug).
+    const int iml = im - 1;
+    const bool do_lid   = BCJupKnobs::rigid_lid()  != 0;
+    const bool do_taper = BCJupKnobs::top_taper()  != 0;
+
+    // --- (6) Lid temperature pin (opt-in; see the knob note above for why it is off by
+    // default and why ATJUP's cold top is an IC problem, not a boundary one). ---
+    // The snapshot is taken on the FIRST call, before the extrapolation below overwrites
+    // t.x[iml]: the first bcRadius() runs after all initialisation, so this captures the
+    // initial condition. Done serially, outside the parallel region.
+    const bool   do_t_pin = BCJupKnobs::t_lid_pin() != 0;
+    const double t_lid_K  = BCJupKnobs::t_lid_K();
+    if(do_t_pin && (int)m.t_top_init.size() != jm){
+        m.t_top_init.assign(jm, std::vector<double>(km, 0.0));
+        for(int j = 0; j < jm; j++)
+            for(int k = 0; k < km; k++)
+                m.t_top_init[j][k] = (t_lid_K > 0.0) ? (t_lid_K / m.t_ref)
+                                                     : m.t.x[iml][j][k];
+    }
+    const bool pin_t_top = do_t_pin && ((int)m.t_top_init.size() == jm);
+
     #pragma omp parallel for schedule(static)
     for(int j = 0; j < jm; j++){
         for(int k = 0; k < km; k++){
@@ -82,6 +176,52 @@ inline void BC_Jup::bcRadius()
                 Array& F = *fields[f];
                 F.x[0][j][k]    = c43*F.x[1][j][k]    - c13*F.x[2][j][k];
                 F.x[im-1][j][k] = c43*F.x[im-2][j][k] - c13*F.x[im-3][j][k];
+            }
+
+            // --- (1) Rigid walls on the RADIAL velocity u at both radial boundaries. ---
+            // u is the wall-normal component there, and the modelled shell is closed: no mass
+            // crosses the lid, and none crosses the deep bottom either (RadiationJup injects the
+            // interior heat flux F_int as ENERGY at i=0, not as mass). The Neumann extrapolation
+            // just written is correct only for the TANGENTIAL v,w — applied to u it overshoots an
+            // increasing radial profile and feeds back through the i=im-2 d/dr stencil, ratcheting
+            // the vertical velocity up every step (ATOM measured u: 0 -> 17 m/s by iter 300 before
+            // adding this; ATJUP currently reaches |u| ~ 33-38 m/s at 73-94 km, which is enormous
+            // for a radial velocity in a 140 km shell).
+            //
+            // It also makes the pressure problem well posed: PressureSolverJup is all-Neumann, so
+            // without u = 0 at both ends the column-mean vertical velocity is an undetermined,
+            // freely drifting constant. Only u is pinned — v,w keep their Neumann (mirror) values,
+            // which is the free-slip tangential condition.
+            //
+            // un is NOT written here: restoreVar(1.0) copies u -> un after all BCs run
+            // (cJupiterModel.cpp), so the next RK4 step already starts from the wall value.
+            if(do_lid){
+                m.u.x[0][j][k]   = 0.0;
+                m.u.x[iml][j][k] = 0.0;
+            }
+
+            // (6) Override the lid temperature extrapolation with the pinned value.
+            if(pin_t_top) m.t.x[iml][j][k] = m.t_top_init[j][k];
+
+            // --- (2) Taper the HORIZONTAL velocities to a quiet grid ceiling. ---
+            // VelocityInitializerJup ramps v,w linearly to zero between the tropopause and the
+            // model top, but the Neumann extrapolation above copies the interior value straight
+            // to i=im-1 and so drags the zonal jet back up to the lid, undoing the IC ("stretched
+            // up" jets). Symptom: ATJUP's w maximum sits at 133 km, i.e. i=38 of 40, right at the
+            // lid where the IC intended zero. Ramping the top three layers by 2/3, 1/3, 0 restores
+            // a quiet lid without the one-cell shear shock a hard zero would create.
+            //
+            // No runaway compounding: RK4 integrates i=1..im-2, so v,w at iml-1 and iml-2 are
+            // recomputed from tendencies every iteration and the factor is re-applied to a fresh
+            // value rather than to an already-tapered one. i=iml is outside the RK4 range, so
+            // setting it to zero is a clean Dirichlet condition.
+            if(do_taper){
+                m.v.x[iml][j][k]    = 0.0;
+                m.w.x[iml][j][k]    = 0.0;
+                m.v.x[iml-1][j][k] *= (1.0/3.0);
+                m.w.x[iml-1][j][k] *= (1.0/3.0);
+                m.v.x[iml-2][j][k] *= (2.0/3.0);
+                m.w.x[iml-2][j][k] *= (2.0/3.0);
             }
         }
     }
@@ -118,6 +258,7 @@ inline void BC_Jup::bcTheta()
         &m.difflux_h2s,  &m.difflux_nh3,  &m.difflux_nh4sh,
     };
     const int nz = (int)(sizeof(zero_at_poles) / sizeof(zero_at_poles[0]));
+    const bool pole_copy = BCJupKnobs::pole_copy() != 0;
 
     #pragma omp parallel for schedule(static)
 //    for(int k = 1; k < km-1; k++){
@@ -129,10 +270,28 @@ inline void BC_Jup::bcTheta()
             m.w.x[i][0][k]    = 0.0;
             m.w.x[i][jm-1][k] = 0.0;
 
-            for(int f = 0; f < nf; f++){
-                Array& F = *extrap_fields[f];
-                F.x[i][0][k]    = c43*F.x[i][1][k]    - c13*F.x[i][2][k];
-                F.x[i][jm-1][k] = c43*F.x[i][jm-2][k] - c13*F.x[i][jm-3][k];
+            // --- (3) Pole boundary: plain copy, not (4/3,-1/3) extrapolation. ---
+            // At the spherical singularity sin(theta) -> 0 any extrapolation amplifies grid
+            // noise: the (4/3,-1/3) form by 4/3 per call, the 3-point cubic by ~7. With a
+            // strong bulk flow that is washed out, but with a weak or spinning-up velocity
+            // field the amplified noise dominates — ATOM reached NaN at the pole within ~150
+            // iterations before switching to a plain copy. A copy has amplification exactly
+            // 1.0 and is the axisymmetric-pole assumption to first order, which is what the
+            // pole physically is. Note this is justified on numerical grounds only — no ATJUP
+            // diagnostic currently shows polar noise growth at 100 iterations, so treat it as
+            // insurance for long / weakly-forced runs rather than a fix for an observed problem.
+            if(pole_copy){
+                for(int f = 0; f < nf; f++){
+                    Array& F = *extrap_fields[f];
+                    F.x[i][0][k]    = F.x[i][1][k];
+                    F.x[i][jm-1][k] = F.x[i][jm-2][k];
+                }
+            } else {
+                for(int f = 0; f < nf; f++){
+                    Array& F = *extrap_fields[f];
+                    F.x[i][0][k]    = c43*F.x[i][1][k]    - c13*F.x[i][2][k];
+                    F.x[i][jm-1][k] = c43*F.x[i][jm-2][k] - c13*F.x[i][jm-3][k];
+                }
             }
 
             for(int f = 0; f < nz; f++){
@@ -178,6 +337,67 @@ inline void BC_Jup::bcPhi()
                 double lo = c43*F.x[i][j][1]    - c13*F.x[i][j][2];
                 double hi = c43*F.x[i][j][km-2] - c13*F.x[i][j][km-3];
                 F.x[i][j][0] = F.x[i][j][km-1] = 0.5*(lo + hi);
+            }
+        }
+    }
+
+    // --- (4) Shapiro damping across the phi seam. ---
+    // k=0 and k=km-1 are the SAME physical longitude and are not evolved by the RK4 (its phi
+    // loop runs k=1..km-2); the reconstruction above pins them to 0.5*(x[1]+x[km-2]). Because
+    // that slaves the seam value to its own neighbours, the discrete d2/dphi2 self-damping at
+    // the seam-adjacent cells k=1 and k=km-2 drops from -2 to -1.5 — a 25% loss of numerical
+    // zonal diffusion exactly at the seam. Combined with the 1/sin^2(theta) metric that leaves
+    // an under-damped zonal mode that runs away in ATOM. In ATJUP no such mode is present yet
+    // (see the seam_damp() note above), which is why this defaults to 0 passes.
+    //
+    // One explicit 1-2-1 pass with coefficient 0.25 fully removes the 2*dphi mode in steady
+    // state; two passes extend the reach to ~4*dphi, which is needed when a jet crossing the
+    // seam regenerates seam energy faster than a single pass absorbs it. Only u,v,w are damped
+    // (restoreVar copies them to un,vn,wn after all BCs, so the n-level follows automatically),
+    // and solid SeaMount cells act as no-flux: a solid neighbour contributes the cell's own
+    // value, relaxing it toward the seam rather than dragging it toward zero.
+    const int npass = BCJupKnobs::seam_damp();
+    if(npass > 0){
+        constexpr double seam_coeff = 0.25;
+        const int km2 = km - 2;
+        const int km3 = km - 3;
+
+        #pragma omp parallel for schedule(static)
+        for(int i = 0; i < im; i++){
+            for(int j = 0; j < jm; j++){
+                auto is_fluid = [&](int kk){ return m.SeaMount.x[i][j][kk] != 1.0; };
+
+                auto smooth_seam = [&](Array& F){
+                    const double f_km2 = F.x[i][j][km2];
+                    const double f_0   = F.x[i][j][0];
+                    const double f_1   = F.x[i][j][1];
+
+                    const bool fl_km2 = is_fluid(km2);
+                    const bool fl_0   = is_fluid(0);
+                    const bool fl_1   = is_fluid(1);
+
+                    // Periodic neighbours; substitute the cell's own value at a solid neighbour.
+                    const double w_km2 = is_fluid(km3) ? F.x[i][j][km3] : f_km2;
+                    const double e_km2 = fl_0 ? f_0   : f_km2;   // east of km-2 is the seam
+                    const double w_0   = fl_km2 ? f_km2 : f_0;   // west of the seam is km-2
+                    const double e_0   = fl_1 ? f_1   : f_0;     // east of the seam is k=1
+                    const double w_1   = fl_0 ? f_0   : f_1;     // west of k=1 is the seam
+                    const double e_1   = is_fluid(2) ? F.x[i][j][2] : f_1;
+
+                    if(fl_km2)
+                        F.x[i][j][km2] = f_km2 + seam_coeff*(w_km2 - 2.0*f_km2 + e_km2);
+                    if(fl_0)
+                        F.x[i][j][0] = F.x[i][j][km-1] =
+                            f_0 + seam_coeff*(w_0 - 2.0*f_0 + e_0);
+                    if(fl_1)
+                        F.x[i][j][1] = f_1 + seam_coeff*(w_1 - 2.0*f_1 + e_1);
+                };
+
+                for(int p = 0; p < npass; p++){
+                    smooth_seam(m.u);
+                    smooth_seam(m.v);
+                    smooth_seam(m.w);
+                }
             }
         }
     }

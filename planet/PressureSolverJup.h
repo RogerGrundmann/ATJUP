@@ -5,6 +5,7 @@
 
 #include <vector>
 #include <cstdint>
+#include <cstdlib>   // getenv/atoi for the ATJUP_BC_RIGID_LID knob
 #include <cmath>
 #include <chrono>
 #include <cstdio>
@@ -33,8 +34,15 @@ public:
         std::vector<double> sinthe_table(m.jm);
         for (int j = 0; j < m.jm; j++) {
             sinthe_table[j] = sin(m.the.z[j]);
-            if (sinthe_table[j] < 0.4) sinthe_table[j] = 0.4;
+            if (sinthe_table[j] < 0.55) sinthe_table[j] = 0.55;   // metric floor ~57° (ATOM parity); keep in sync with RungeKutta_Jup
         }
+
+        // Divergence-source clamp for the p_dyn update (ported from ATOM PressureSolverAtm).
+        // Bounds each cell's source contribution to p_dyn (discrete max principle) so a velocity
+        // spike — steep GRS SeaMount, or a low-density polar/top cell driven by the radiative
+        // coupling — cannot drive p_dyn unbounded and NaN at the converging-meridian pole.
+        // Tunable via ATJUP_PDYN_CAP; normal p_dyn ~0.03 bar so 0.2 is a generous backstop.
+        static const double p_dyn_cap = [](){ const char* e = getenv("ATJUP_PDYN_CAP"); return e ? atof(e) : 0.2; }();
 
         // Precompute land mask — eliminates repeated function call overhead
         // Allocate flat mask: 1 = land, 0 = air
@@ -51,8 +59,20 @@ public:
         #pragma omp parallel for collapse(2)
         for (int j = 1; j < m.jm-1; j++) {
             for (int k = 1; k < m.km-1; k++) {
-                m.aux_u.x[0][j][k]      = m.c43 * m.aux_u.x[1][j][k]      - m.c13 * m.aux_u.x[2][j][k];
-                m.aux_u.x[m.im-1][j][k] = m.c43 * m.aux_u.x[m.im-2][j][k] - m.c13 * m.aux_u.x[m.im-3][j][k];
+                // Radial walls: aux_u is the wall-NORMAL intermediate velocity, and it feeds
+                // du_dr in the Poisson divergence below (one-sided stencil at i=0/im-1), so it
+                // must carry the same rigid-wall condition bcRadius applies to u. Extrapolating
+                // it instead re-injects a wall-normal flux into the projection and leaves the
+                // column mass budget open, which is exactly what the rigid lid is there to close.
+                // Knob name matches ATJUP_BC_RIGID_LID in BC_Jup.h — keep the two in step.
+                static const bool rigid_lid = [](){ const char* e = getenv("ATJUP_BC_RIGID_LID"); return e ? atoi(e) != 0 : true; }();
+                if(rigid_lid){
+                    m.aux_u.x[0][j][k]      = 0.0;
+                    m.aux_u.x[m.im-1][j][k] = 0.0;
+                } else {
+                    m.aux_u.x[0][j][k]      = m.c43 * m.aux_u.x[1][j][k]      - m.c13 * m.aux_u.x[2][j][k];
+                    m.aux_u.x[m.im-1][j][k] = m.c43 * m.aux_u.x[m.im-2][j][k] - m.c13 * m.aux_u.x[m.im-3][j][k];
+                }
                 m.aux_v.x[0][j][k]      = m.c43 * m.aux_v.x[1][j][k]      - m.c13 * m.aux_v.x[2][j][k];
                 m.aux_v.x[m.im-1][j][k] = m.c43 * m.aux_v.x[m.im-2][j][k] - m.c13 * m.aux_v.x[m.im-3][j][k];
                 m.aux_w.x[0][j][k]      = m.c43 * m.aux_w.x[1][j][k]      - m.c13 * m.aux_w.x[2][j][k];
@@ -197,14 +217,22 @@ public:
                     if (!phi_flag)
                         dw_dphi = (m.aux_w.x[i][j][k+1] - m.aux_w.x[i][j][k-1]) * inv_2dphi;
 
-                    // pressure update
+                    // pressure update — clamp the divergence source (discrete max principle,
+                    // ported from ATOM) and guard against a non-finite source, so p_dyn cannot
+                    // run away to NaN at the pole.
+                    double div_src = du_dr   * geo.exp_rm
+                                   + dv_dthe * geo.inv_rm
+                                   + dw_dphi * geo.inv_rmsinthe;
+                    const double src_max = denom * p_dyn_cap;
+                    if      (!std::isfinite(div_src)) div_src = 0.0;
+                    else if (div_src >  src_max)      div_src =  src_max;
+                    else if (div_src < -src_max)      div_src = -src_max;
+
                     m.p_dyn.x[i][j][k] =
                         ((m.p_dyn.x[i+1][j][k] + m.p_dyn.x[i-1][j][k]) * num1
                        + (m.p_dyn.x[i][j+1][k] + m.p_dyn.x[i][j-1][k]) * num2
                        + (m.p_dyn.x[i][j][k+1] + m.p_dyn.x[i][j][k-1]) * num3
-                       - du_dr   * geo.exp_rm
-                       - dv_dthe * geo.inv_rm
-                       - dw_dphi * geo.inv_rmsinthe) * inv_denom;
+                       - div_src) * inv_denom;
                 } // k
             } // j
         } // i

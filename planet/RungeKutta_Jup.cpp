@@ -11,8 +11,9 @@ void cJupiterModel::RungeKuttaJup(){
     // sinthe is clamped to a minimum to prevent 1/sin²θ blow-up near the poles.
     // The sequential k-loop in the RK creates an asymmetric phi Laplacian whose
     // error is amplified by inv_rm2sinthe2; clamping keeps the amplification < 1.
-    // PressureSolverJup uses the same threshold (0.4).
-    constexpr double sinthe_min = 0.4;
+    // PressureSolverJup uses the same threshold. Raised 0.4 -> 0.55 (ATOM parity, metric
+    // floor ~57°) to curb the polar 1/sin²θ amplification that seeded a long-run pole blow-up.
+    constexpr double sinthe_min = 0.55;
     std::vector<double> sinthe_tbl(jm), costhe_tbl(jm);
     for(int j = 0; j < jm; j++){
         sinthe_tbl[j] = std::max(sinthe_min, std::abs(sin(the.z[j])));

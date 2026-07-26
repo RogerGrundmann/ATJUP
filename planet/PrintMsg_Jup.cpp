@@ -18,8 +18,12 @@ void cJupiterModel::printMinMax(){
 
 
     cout << endl << endl << " Temperatures " << endl;
-    searchMinMax_3D(" max 3D temperature ", " min 3D temperature ","  degC", 
-        t, t_ref, [](double i)->double{return i - 165.0;}, true);
+    // t*t_ref is the physical temperature in K (t_ref = 165, the scale SaturationAdjustmentJup
+    // and RadiationJup compare against), so degC needs -273.15. This used to subtract 165.0,
+    // i.e. it printed the offset from t_ref while labelling it degC — every temperature in the
+    // log read ~108 K too high. Solid/masked cells (t = 0) now show as -273.15 degC.
+    searchMinMax_3D(" max 3D temperature ", " min 3D temperature ","  degC",
+        t, t_ref, [](double i)->double{return i - 273.15;}, true);
     searchMinMax_3D(" max 3D thermalflux ", " min 3D thermalflux ", " kJ/(m5K)", thermalmassflux, 1e-3);
     cout << endl;
 
@@ -79,6 +83,43 @@ void cJupiterModel::printMinMax(){
     cout << endl << " Energies " << endl;
     searchMinMax_3D(" max 3D sensible heat ", " min 3D sensible heat ", " W/m3", Q_Sensible, 1.0);
     searchMinMax_3D(" max 3D latent heat ", " min 3D latent heat ", " W/m3", Q_Latent, 1.0);
+    cout << endl;
+
+    cout << endl << " Precipitation " << endl;
+    searchMinMax_3D(" max 3D P_rain ", " min 3D P_rain ", " kg/m2/s", P_rain, 1.0);
+    searchMinMax_3D(" max 3D P_snow ", " min 3D P_snow ", " kg/m2/s", P_snow, 1.0);
+    searchMinMax_3D(" max 3D P_graupel ", " min 3D P_graupel ", " kg/m2/s", P_graupel, 1.0);
+    searchMinMax_3D(" max 3D P_nh3_rain ", " min 3D P_nh3_rain ", " kg/m2/s", P_nh3_rain, 1.0);
+    searchMinMax_3D(" max 3D P_nh3_snow ", " min 3D P_nh3_snow ", " kg/m2/s", P_nh3_snow, 1.0);
+    searchMinMax_3D(" max 3D P_nh4sh ", " min 3D P_nh4sh ", " kg/m2/s", P_nh4sh, 1.0);
+    searchMinMax_3D(" max 3D Q_precip ", " min 3D Q_precip ", " W/m3", Q_precip, 1.0);
+    // All-species surface map, in mm/day so it can be compared against the ~1 mm/d that
+    // Jupiter's energy budget allows (see the calibration note in PrecipitationJup.h).
+    searchMinMax_2D(" max 2D precip surface total ", " min 2D precip surface total ", " mm/d", precip_srf_total, 86400.0);
+    searchMinMax_2D(" max 2D precip surface H2O ",   " min 2D precip surface H2O ",   " mm/d", precip_srf_h2o,   86400.0);
+    searchMinMax_2D(" max 2D precip surface NH3 ",   " min 2D precip surface NH3 ",   " mm/d", precip_srf_nh3,   86400.0);
+    searchMinMax_2D(" max 2D precip surface NH4SH ", " min 2D precip surface NH4SH ", " mm/d", precip_srf_nh4sh, 86400.0);
+    cout << endl;
+
+    cout << endl << " Radiation " << endl;
+    searchMinMax_3D(" max 3D net radiation ", " min 3D net radiation ", " W/m2", radiation, 1.0);
+    searchMinMax_3D(" max 3D Q_rad ", " min 3D Q_rad ", " W/m3", Q_rad, 1.0);
+    searchMinMax_3D(" max 3D emissivity ", " min 3D emissivity ", " /", epsilon, 1.0);
+
+    // Equatorial column profile (j=jm/2, k=km/2), top -> bottom, for a direct
+    // check of the radiation / Q_rad fields against the actual T(p).
+    {
+        const int j0 = jm / 2, k0 = km / 2;
+        cout << endl << " Equatorial column  (j=" << j0 << ", k=" << k0
+             << ")   top -> bottom" << endl;
+        printf("   %3s  %10s  %8s  %8s  %12s  %14s\n",
+               "i", "p[bar]", "T[K]", "eps", "netRad[W/m2]", "Q_rad[W/m3]");
+        for(int i = im - 1; i >= 0; i--){
+            printf("   %3d  %10.4f  %8.2f  %8.4f  %12.4f  %14.4e\n",
+                   i, p_stat.x[i][j0][k0], t.x[i][j0][k0] * t_ref,
+                   epsilon.x[i][j0][k0], radiation.x[i][j0][k0], Q_rad.x[i][j0][k0]);
+        }
+    }
     cout << endl << endl;
 }
 /*

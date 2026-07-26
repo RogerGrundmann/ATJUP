@@ -37,15 +37,16 @@ public:
         // u-velocity: seed tropopause profiles at cell boundaries
         // --------------------------------------------------------------------
         // northern hemisphere cell boundaries (equator → north pole)
+        init_u(m.u,   0);  init_u(m.u,   4);  init_u(m.u,   8);  init_u(m.u,  12);   // polar cell (centre j8)
         init_u(m.u,  15);  // 8. Ferrel cell north, min
         init_u(m.u,  16);  // 8. Ferrel cell north, min
         init_u(m.u,  17);  // 8. Ferrel / 8. Hadley center
         init_u(m.u,  19);  // 7. Hadley cell north, max
-        init_u(m.u,  21);  // 7. Ferrel center
-        init_u(m.u,  23);  // 7. Ferrel cell north, min
-        init_u(m.u,  24);  // 7. Ferrel / 6. Hadley center
-        init_u(m.u,  25);  // 6. Hadley cell north, max
-        init_u(m.u,  27);  // 6. Ferrel center
+        // init_u 21 removed (gap closed)
+        // init_u 23 removed
+        // init_u(m.u, 24) removed — j24 updraft deleted, interpolated across as a sink
+        // init_u 25 removed
+        // init_u 27 removed (gap closed)
         init_u(m.u,  29);  // 6. Ferrel cell north, min
         init_u(m.u,  30);  // 6. Ferrel / 5. Hadley center
         init_u(m.u,  34);  // 5. Ferrel cell north, min
@@ -100,6 +101,8 @@ public:
         init_u(m.u, 157);  // 7. Ferrel / 8. Hadley center
         init_u(m.u, 158);
         init_u(m.u, 160);
+        init_u(m.u, 166);  init_u(m.u, 168);  init_u(m.u, 170);  init_u(m.u, 172);   // polar cells (2, not mirrored)
+        init_u(m.u, 174);  init_u(m.u, 176);  init_u(m.u, 178);  init_u(m.u, 180);
 
         // --------------------------------------------------------------------
         // v/w velocity: linear profile between surface and tropopause values
@@ -167,18 +170,18 @@ public:
         init_v_or_w(m.v,  29, -40.0,  40.0);   init_v_or_w(m.w,  29,  12.0,   0.0);
         init_v_or_w(m.v, 145,  40.0, -40.0);   init_v_or_w(m.w, 145,  13.0,   0.0);
         // 6. Ferrel cell
-        init_v_or_w(m.v,  27,   0.0,   0.0);   init_v_or_w(m.w,  27,   1.0,   0.0);
+        // j27 boundary removed (gap closed: cells j17         init_v_or_w(m.v,  27,   0.0,   0.0);   init_v_or_w(m.w,  27,   1.0,   0.0); j30 merge)
         init_v_or_w(m.v, 146,   0.0,   0.0);   init_v_or_w(m.w, 146,  -6.0,   0.0);
-        init_v_or_w(m.v,  25,  40.0, -40.0);   init_v_or_w(m.w,  25,   1.0,   0.0);
+        // j25 flank removed (belonged to deleted j24 cell)
         init_v_or_w(m.v, 149, -40.0,  40.0);   init_v_or_w(m.w, 149,  -1.0,   0.0);
 
         // 7. Hadley cell
-        init_v_or_w(m.v,  24,   0.0,   0.0);   init_v_or_w(m.w,  24,  13.0,   0.0);
+        // j=24 updraft centre deleted (redundant vertical line): neighbours j17 & j30 expand across it
         init_v_or_w(m.v, 152,   0.0,   0.0);   init_v_or_w(m.w, 152,  -1.0,   0.0);
-        init_v_or_w(m.v,  23, -40.0,  40.0);   init_v_or_w(m.w,  23,  33.0,   0.0);
+        // j23 flank removed (belonged to deleted j24 cell)
         init_v_or_w(m.v, 153,  40.0, -40.0);   init_v_or_w(m.w, 153,  -1.0,   0.0);
         // 7. Ferrel cell
-        init_v_or_w(m.v,  21,   0.0,   0.0);   init_v_or_w(m.w,  21,  33.0,   0.0);
+        // j21 boundary removed (gap closed: cells j17         init_v_or_w(m.v,  21,   0.0,   0.0);   init_v_or_w(m.w,  21,  33.0,   0.0); j30 merge)
         init_v_or_w(m.v, 154,   0.0,   0.0);   init_v_or_w(m.w, 154,  13.0,   0.0);
         init_v_or_w(m.v,  19,  40.0, -40.0);   init_v_or_w(m.w,  19,  -6.0,   0.0);
         init_v_or_w(m.v, 155, -40.0,  40.0);   init_v_or_w(m.w, 155,  -6.0,   0.0);
@@ -191,15 +194,43 @@ public:
         init_v_or_w(m.v,  15,   0.0,   0.0);
         init_v_or_w(m.w, 160,   0.0,   0.0);
 
+        // 9. + 10. Polar cells — ventilate the polar caps (j=0..14 / 166..180), which were
+        // previously left with ZERO meridional circulation (stagnant), a suspected driver of
+        // the polar temperature/pressure build-up and the long-run pole blow-up. Two thin
+        // overturning cells per cap continue the banded pattern to the pole (mirrors ATOM's
+        // polar-cell construction), with the branch signs alternating from the 8. Ferrel cell
+        // and zero meridional flow enforced at the poles j=0 / j=180. Magnitudes follow the
+        // existing +-40 m/s cell pattern; tune as the physics dictates.
+        // ONE polar cell per cap (rising centre), mirror-positioned N<->S. Unit:
+        // [Z boundary] R(v:trop+40,surf-40 equatorward flank) P(rising centre, v=0)
+        // R(v:trop-40,surf+40 poleward flank) [Z pole] — flow converges at the surface,
+        // rises at the centre, diverges aloft (one closed rotation, no redundant divider).
+        // northern cap: single rising cell — centre j=8, flanks j=12/4, boundaries j=15/0.
+        init_v_or_w(m.v,  12,  40.0, -40.0);   init_v_or_w(m.w,  12,   0.0,   0.0);   // equatorward flank
+        init_v_or_w(m.v,   8,   0.0,   0.0);   init_v_or_w(m.w,   8,   0.0,   0.0);   // rising centre
+        init_v_or_w(m.v,   4, -40.0,  40.0);   init_v_or_w(m.w,   4,   0.0,   0.0);   // poleward flank
+        init_v_or_w(m.v,   0,   0.0,   0.0);   init_v_or_w(m.w,   0,   0.0,   0.0);   // north pole
+        // southern cap: kept as two cells (Jupiter is not equator-symmetric; not mirrored to N)
+        init_v_or_w(m.v, 166, -40.0,  40.0);   init_v_or_w(m.w, 166,   0.0,   0.0);   //  9. equatorward flank
+        init_v_or_w(m.v, 168,   0.0,   0.0);   init_v_or_w(m.w, 168,   0.0,   0.0);   //  9. rising centre
+        init_v_or_w(m.v, 170,  40.0, -40.0);   init_v_or_w(m.w, 170,   0.0,   0.0);   //  9. poleward flank
+        init_v_or_w(m.v, 172,   0.0,   0.0);   init_v_or_w(m.w, 172,   0.0,   0.0);   //  9./10. boundary
+        init_v_or_w(m.v, 174, -40.0,  40.0);   init_v_or_w(m.w, 174,   0.0,   0.0);   // 10. equatorward flank
+        init_v_or_w(m.v, 176,   0.0,   0.0);   init_v_or_w(m.w, 176,   0.0,   0.0);   // 10. rising centre
+        init_v_or_w(m.v, 178,  40.0, -40.0);   init_v_or_w(m.w, 178,   0.0,   0.0);   // 10. poleward flank
+        init_v_or_w(m.v, 180,   0.0,   0.0);   init_v_or_w(m.w, 180,   0.0,   0.0);   // south pole
+
         // --------------------------------------------------------------------
         // Interpolate between seeded latitudes — northern hemisphere
         // --------------------------------------------------------------------
         // u
+        form_diagonals(m.u,   0,   4);  form_diagonals(m.u,   4,   8);   // polar cell
+        form_diagonals(m.u,   8,  12);  form_diagonals(m.u,  12,  15);   // polar cell
         form_diagonals(m.u,  15,  16);  form_diagonals(m.u,  16,  17);
-        form_diagonals(m.u,  17,  19);  form_diagonals(m.u,  19,  21);
-        form_diagonals(m.u,  21,  23);  form_diagonals(m.u,  23,  24);
-        form_diagonals(m.u,  24,  25);  form_diagonals(m.u,  25,  27);
-        form_diagonals(m.u,  27,  29);  form_diagonals(m.u,  29,  30);
+        form_diagonals(m.u,  17,  19);  form_diagonals(m.u,  19,  29);   // merged downwelling
+
+        // (merged into 21->27)
+        form_diagonals(m.u,  29,  30);
         form_diagonals(m.u,  30,  34);  form_diagonals(m.u,  34,  35);
         form_diagonals(m.u,  35,  37);  form_diagonals(m.u,  37,  40);
         form_diagonals(m.u,  40,  43);  form_diagonals(m.u,  43,  46);
@@ -211,11 +242,13 @@ public:
         form_diagonals(m.u,  66,  69);  form_diagonals(m.u,  69,  76);
         form_diagonals(m.u,  76,  83);  form_diagonals(m.u,  83,  90);
         // v
+        form_diagonals(m.v,   0,   4);  form_diagonals(m.v,   4,   8);   // polar cell
+        form_diagonals(m.v,   8,  12);  form_diagonals(m.v,  12,  15);   // polar cell
         form_diagonals(m.v,  15,  16);  form_diagonals(m.v,  16,  17);
-        form_diagonals(m.v,  17,  19);  form_diagonals(m.v,  19,  21);
-        form_diagonals(m.v,  21,  23);  form_diagonals(m.v,  23,  24);
-        form_diagonals(m.v,  24,  25);  form_diagonals(m.v,  25,  27);
-        form_diagonals(m.v,  27,  29);  form_diagonals(m.v,  29,  30);
+        form_diagonals(m.v,  17,  19);  form_diagonals(m.v,  19,  29);   // merged downwelling
+
+        // (merged into 21->27)
+        form_diagonals(m.v,  29,  30);
         form_diagonals(m.v,  30,  34);  form_diagonals(m.v,  34,  35);
         form_diagonals(m.v,  35,  37);  form_diagonals(m.v,  37,  40);
         form_diagonals(m.v,  40,  43);  form_diagonals(m.v,  43,  46);
@@ -227,11 +260,13 @@ public:
         form_diagonals(m.v,  66,  69);  form_diagonals(m.v,  69,  76);
         form_diagonals(m.v,  76,  83);  form_diagonals(m.v,  83,  90);
         // w
+        form_diagonals(m.w,   0,   4);  form_diagonals(m.w,   4,   8);   // polar cell
+        form_diagonals(m.w,   8,  12);  form_diagonals(m.w,  12,  15);   // polar cell
         form_diagonals(m.w,  15,  16);  form_diagonals(m.w,  16,  17);
-        form_diagonals(m.w,  17,  19);  form_diagonals(m.w,  19,  21);
-        form_diagonals(m.w,  21,  23);  form_diagonals(m.w,  23,  24);
-        form_diagonals(m.w,  24,  25);  form_diagonals(m.w,  25,  27);
-        form_diagonals(m.w,  27,  29);  form_diagonals(m.w,  29,  30);
+        form_diagonals(m.w,  17,  19);  form_diagonals(m.w,  19,  29);   // merged downwelling
+
+        // (merged into 21->27)
+        form_diagonals(m.w,  29,  30);
         form_diagonals(m.w,  30,  34);  form_diagonals(m.w,  34,  35);
         form_diagonals(m.w,  35,  37);  form_diagonals(m.w,  37,  40);
         form_diagonals(m.w,  40,  43);  form_diagonals(m.w,  43,  46);
@@ -262,6 +297,10 @@ public:
         form_diagonals(m.u, 152, 153);  form_diagonals(m.u, 153, 154);
         form_diagonals(m.u, 154, 155);  form_diagonals(m.u, 155, 157);
         form_diagonals(m.u, 157, 158);  form_diagonals(m.u, 158, 160);
+        form_diagonals(m.u, 160, 166);  form_diagonals(m.u, 166, 168);   // polar cells
+        form_diagonals(m.u, 168, 170);  form_diagonals(m.u, 170, 172);   // polar cells
+        form_diagonals(m.u, 172, 174);  form_diagonals(m.u, 174, 176);   // polar cells
+        form_diagonals(m.u, 176, 178);  form_diagonals(m.u, 178, 180);   // polar cells
         // v
         form_diagonals(m.v,  90,  97);  form_diagonals(m.v,  97, 104);
         form_diagonals(m.v, 102, 107);  form_diagonals(m.v, 107, 111);
@@ -278,6 +317,10 @@ public:
         form_diagonals(m.v, 152, 153);  form_diagonals(m.v, 153, 154);
         form_diagonals(m.v, 154, 155);  form_diagonals(m.v, 155, 157);
         form_diagonals(m.v, 157, 158);  form_diagonals(m.v, 158, 160);
+        form_diagonals(m.v, 160, 166);  form_diagonals(m.v, 166, 168);   // polar cells
+        form_diagonals(m.v, 168, 170);  form_diagonals(m.v, 170, 172);   // polar cells
+        form_diagonals(m.v, 172, 174);  form_diagonals(m.v, 174, 176);   // polar cells
+        form_diagonals(m.v, 176, 178);  form_diagonals(m.v, 178, 180);   // polar cells
         // w
         form_diagonals(m.w,  90,  97);  form_diagonals(m.w,  97, 104);
         form_diagonals(m.w, 102, 107);  form_diagonals(m.w, 107, 111);
@@ -294,6 +337,10 @@ public:
         form_diagonals(m.w, 152, 153);  form_diagonals(m.w, 153, 154);
         form_diagonals(m.w, 154, 155);  form_diagonals(m.w, 155, 157);
         form_diagonals(m.w, 157, 158);  form_diagonals(m.w, 158, 160);
+        form_diagonals(m.w, 160, 166);  form_diagonals(m.w, 166, 168);   // polar cells (w overwritten by N->S mirror below)
+        form_diagonals(m.w, 168, 170);  form_diagonals(m.w, 170, 172);   // polar cells
+        form_diagonals(m.w, 172, 174);  form_diagonals(m.w, 174, 176);   // polar cells
+        form_diagonals(m.w, 176, 178);  form_diagonals(m.w, 178, 180);   // polar cells
 
         // --------------------------------------------------------------------
         // Mirror w field north-south (Jupiter's hemispherical symmetry)
@@ -353,9 +400,9 @@ private:
             // northern hemisphere — 8 cell pairs
             case  15: return Z;  case  16: return R;
             case  17: return P;  // 8. Ferrel/Hadley centre
-            case  19: return R;  case  21: return Z;  case  23: return R;
-            case  24: return P;  // 7. Ferrel/Hadley centre
-            case  25: return R;  case  27: return Z;  case  29: return R;
+            case  19: return R;  // j21..27 boundary removed (gap closed)
+            // case 24 (P centre) deleted — redundant updraft; interpolated as sink
+            case  29: return R;
             case  30: return P;  // 6. Ferrel/Hadley centre
             case  34: return R;  case  35: return Z;  case  37: return R;
             case  40: return P;  // 5. Ferrel/Hadley centre
@@ -384,6 +431,12 @@ private:
             case 153: return R;  case 154: return Z;  case 155: return R;
             case 157: return P;  // 7. Hadley/Ferrel centre
             case 158: return R;  case 160: return Z;
+            // 9./10. polar cells (cap ventilation) — give the polar overturning a radial
+            // (vertical) branch, so the cells are not flat. Boundaries/poles = Z (node),
+            // branches alternate P/R like the neighbouring cells.
+            case  12: return R;  case   8: return P;  case   4: return R;  case   0: return Z;  // north polar cell (centre j8)
+            case 166: return R;  case 168: return P;  case 170: return R;  case 172: return Z;  // south polar cell 9
+            case 174: return R;  case 176: return P;  case 178: return R;  case 180: return Z;  // south polar cell 10 + pole
             default:  return Z;
         }
     }

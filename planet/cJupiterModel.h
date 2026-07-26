@@ -58,6 +58,8 @@ class cJupiterModel{
     friend class SaturationAdjustmentJup;
     friend class BC_Jup;
     friend class VelocityInitializerJup;
+    friend class RadiationJup;
+    friend class PrecipitationJup;
 
 public:
 
@@ -131,7 +133,19 @@ public:
     }
     std::vector<float> get_layer_heights(){
         return m_layer_heights;
-    }   
+    }
+    /*
+     * Thickness of layer i in METRES, i.e. get_layer_height(i+1) - get_layer_height(i)
+     * converted from km. NOTE: m_layer_heights is built from L_atm, which is specified in km
+     * (L_atm = 140.0), so get_layer_height() returns KILOMETRES. Most callers only use it as a
+     * relative height and are unaffected, but anything forming a physical per-metre quantity
+     * (e.g. a volumetric heating rate W/m3 = flux difference / dz) must use this accessor —
+     * using the raw km difference makes such rates 1000x too large.
+    */
+    double layer_thickness_m(int i){
+        if(i < 0 || i > im - 2) return -1.0;
+        return (double)(m_layer_heights[i + 1] - m_layer_heights[i]) * 1.0e3;
+    }
     /*
     * Given a altitude, return the layer index
     */
@@ -533,6 +547,15 @@ private:
     void SetDefaultConfig();
     void RHSJup(int i, int j, int k, const CellGeometry& geo);
     void RungeKuttaJup();
+
+    // Shapiro de-checkerboarding of the velocity fields (u,v,w). Order/strength are
+    // read once from the environment (see cJupiterModel.cpp):
+    //   ATJUP_VEL_SHAPIRO_ORDER    2 = 1-2-1 (default, bit-identical), 4 = shear-preserving
+    //   ATJUP_SHAPIRO_STRENGTH     filter strength (default 1.0)
+    //   ATJUP_VEL_SHAPIRO_INLOOP   # of per-iteration passes after RK4 (default 0 = off)
+    // dampVelocities() applies the configured init-time filter; the in-loop knob is
+    // consulted directly in Run().
+    void dampVelocities();
     void JupiterPlotData();
     void paraview_vtk_longal(int n, int j_longal);
     void paraview_vtk_radial(int n, int i_radial);
@@ -644,9 +667,29 @@ private:
     Array_1D the;
     Array_1D phi;
 
+    // First isothermal ("stratospheric") layer of each column, i.e. the lowest i at which the
+    // tropospheric lapse rate was clamped by init_temperature; im when the column never clamps.
+    // init_PressureStatic needs it because p_stat ~ T^(g/(gam*R_ref)) is the POLYTROPIC relation
+    // and holds only where the lapse rate really is gam — above the clamp the pressure must
+    // follow the isothermal hydrostatic law instead.
+    std::vector<std::vector<int> > i_strato_base;
+
+    // Snapshot of the lid temperature t.x[im-1][j][k] taken from the initial condition on the
+    // first bcRadius() call (ATOM's t_top_init). Empty until then; used only when the
+    // ATJUP_BC_T_LID_PIN knob is set. See the discussion in BC_Jup.h bcRadius().
+    std::vector<std::vector<double> > t_top_init;
+
     Array_2D Topography; // topography
     Array_2D LatentHeat;        // areas of higher latent heat
     Array_2D Precipitation;        // areas of higher precipitation
+    // All-species surface precipitation map [kg/m2/s], filled by PrecipitationJup at the base of
+    // each column (i_topography, so the GRS solid is respected). Per-species totals plus their
+    // sum, so a single lat-lon view shows which condensate dominates where. Zero unless
+    // ATJUP_PRECIP is set. ParaView writes these as mm/day.
+    Array_2D precip_srf_total;  // H2O + NH3 + NH4SH
+    Array_2D precip_srf_h2o;    // H2O rain + snow + graupel
+    Array_2D precip_srf_nh3;    // NH3 rain + snow + graupel
+    Array_2D precip_srf_nh4sh;  // NH4SH settling crystals
     Array_2D precipitable_water;// areas of precipitable water in the air
     Array_2D nh3_total;            // areas of higher nh3 concentration
     Array_2D nh3_cloud_total;    // areas of higher nh3_cloud concentration
@@ -732,6 +775,17 @@ private:
 
     Array Q_Latent;                // latent heat
     Array Q_Sensible;            // sensible heat
+    Array Q_rad;                // radiative heating rate [W/m3] (RadiationJup)
+    Array radiation;            // layer-centre net radiative flux [W/m2] (RadiationJup)
+    Array epsilon;                // layer emissivity (RadiationJup)
+    Array P_rain;               // H2O rain    precipitation flux [kg/m2/s] (PrecipitationJup)
+    Array P_snow;               // H2O snow    precipitation flux [kg/m2/s]
+    Array P_graupel;            // H2O graupel precipitation flux [kg/m2/s]
+    Array P_nh3_rain;           // NH3 rain    precipitation flux [kg/m2/s]
+    Array P_nh3_snow;           // NH3 snow    precipitation flux [kg/m2/s]
+    Array P_nh3_graupel;        // NH3 graupel precipitation flux [kg/m2/s]
+    Array P_nh4sh;              // NH4SH crystal sedimentation flux [kg/m2/s]
+    Array Q_precip;             // latent heating rate from precip phase changes [W/m3] (diagnostic)
     Array CoriolisForce;        // Coriolis force
     Array CentrifugalForce;             // centrifugal force
     Array BuoyancyForce;        // buoyancy force, Boussinesque approximation
