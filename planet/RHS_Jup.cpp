@@ -331,10 +331,24 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
         }
     }
 
+    // ===== Turbulent (eddy) diffusion from the closure (opt-in) =====
+    // nue is the DIMENSIONLESS eddy viscosity nue* = nue_phys/(u_0*L_atm), the same
+    // normalisation as 1/re (since re = u_0*L_atm/nue_mol), so the two are directly additive:
+    // the effective diffusivity is simply 1/re + nue*. Without this the closure computed an eddy
+    // viscosity that nothing ever used. Scalars get nue*/Pr_t with a turbulent Prandtl (Schmidt)
+    // number of 0.9, the standard value for shear-driven turbulence, in place of the laminar
+    // 1/(sc*re). Gated by ATJUP_TURB_COUPLING (default 0 = off, bit-identical); nue is nonzero
+    // only when ATJUP_TURB is enabled.
+    static const double turb_coupling = [](){ const char* e = getenv("ATJUP_TURB_COUPLING"); return e ? atof(e) : 0.0; }();
+    constexpr double Pr_t = 0.9;
+    const double nue_t   = (turb_coupling != 0.0 && std::isfinite(nue.x[i][j][k]))
+                         ? turb_coupling * std::max(0.0, nue.x[i][j][k]) : 0.0;
+    const double nue_t_s = nue_t / Pr_t;      // scalar (heat / species) eddy diffusivity
+
     rhs_t.x[i][j][k] =
         + pressure_t
         - transport_t
-        + diffusion_t / (re * pr)
+        + diffusion_t * (1.0 / (re * pr) + nue_t_s)
         + radiation_t
         + precip_t;
 
@@ -345,7 +359,7 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
         + buoyancy * g * (p_stat.x[i][j][k] + p_dyn.x[i][j][k])
                       / (r_mix * R_mix * t.x[i][j][k] * t_ref)
         - transport_u
-        + diffusion_u / re
+        + diffusion_u * (1.0 / re + nue_t)
         - Coriolis    * Coriolis_rad
         - centrifugal * centrifugal_rad;
 
@@ -378,57 +392,57 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     rhs_v.x[i][j][k] =
         - dpdthe_term
         - transport_v
-        + diffusion_v / re
+        + diffusion_v * (1.0 / re + nue_t)
         - Coriolis    * Coriolis_the
         - centrifugal * centrifugal_the;
 
     rhs_w.x[i][j][k] =
         - dpdphi_term
         - transport_w
-        + diffusion_w / re
+        + diffusion_w * (1.0 / re + nue_t)
         - Coriolis    * Coriolis_phi;
 
     rhs_h2o.x[i][j][k] =
         - transport_h2o
-        + diffusion_h2o / (sc_h2o * re);
+        + diffusion_h2o * (1.0 / (sc_h2o * re) + nue_t_s);
 
     rhs_h2o_cloud.x[i][j][k] =
         - transport_h2o_cloud
-        + diffusion_h2o_cloud / (sc_h2o * re);
+        + diffusion_h2o_cloud * (1.0 / (sc_h2o * re) + nue_t_s);
 
     rhs_h2o_ice.x[i][j][k] =
         - transport_h2o_ice
-        + diffusion_h2o_ice / (sc_h2o * re);
+        + diffusion_h2o_ice * (1.0 / (sc_h2o * re) + nue_t_s);
 
     rhs_h2s.x[i][j][k] =
         - transport_h2s
-        + diffusion_h2s / (sc_h2s * re)
+        + diffusion_h2s * (1.0 / (sc_h2s * re) + nue_t_s)
         + chemical_reaction * massflux_h2s.x[i][j][k];
 
     rhs_nh3.x[i][j][k] =
         - transport_nh3
-        + diffusion_nh3 / (sc_nh3 * re)
+        + diffusion_nh3 * (1.0 / (sc_nh3 * re) + nue_t_s)
         + chemical_reaction * massflux_nh3.x[i][j][k];
 
     rhs_nh3_cloud.x[i][j][k] =
         - transport_nh3_cloud
-        + diffusion_nh3_cloud / (sc_nh3 * re);
+        + diffusion_nh3_cloud * (1.0 / (sc_nh3 * re) + nue_t_s);
 
     rhs_nh3_ice.x[i][j][k] =
         - transport_nh3_ice
-        + diffusion_nh3_ice / (sc_nh3 * re);
+        + diffusion_nh3_ice * (1.0 / (sc_nh3 * re) + nue_t_s);
 
     rhs_ch4.x[i][j][k] =
         - transport_ch4
-        + diffusion_ch4 / (sc_ch4 * re);
+        + diffusion_ch4 * (1.0 / (sc_ch4 * re) + nue_t_s);
 
     rhs_ch4_cloud.x[i][j][k] =
         - transport_ch4_cloud
-        + diffusion_ch4_cloud / (sc_ch4 * re);
+        + diffusion_ch4_cloud * (1.0 / (sc_ch4 * re) + nue_t_s);
 
     rhs_ch4_ice.x[i][j][k] =
         - transport_ch4_ice
-        + diffusion_ch4_ice / (sc_ch4 * re);
+        + diffusion_ch4_ice * (1.0 / (sc_ch4 * re) + nue_t_s);
 
     // Stokes terminal velocity for NH4SH crystals falling in the -r direction.
     // v_stokes [m/s] = (2/9) * r_p² * (rho_crystal - rho_mix) * g / mue_mix
@@ -442,7 +456,7 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     rhs_nh4sh.x[i][j][k] =
         - transport_nh4sh
         + fluxlim_nh4sh.x[i][j][k]
-        + diffusion_nh4sh / (sc_nh4sh * re)
+        + diffusion_nh4sh * (1.0 / (sc_nh4sh * re) + nue_t_s)
         + chemical_reaction * massflux_nh4sh.x[i][j][k]
         + (v_stokes_nh4sh / u_0) * dnh4shdr;
 
