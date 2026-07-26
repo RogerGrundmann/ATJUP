@@ -33,6 +33,14 @@ def main():
             ('panorama_print', "control when to write panorama files", 'int', 32),
 #            ('panorama_print', "control when to write panorama files", 'int', 256),
 
+# Binary checkpoint / restart of the full 3D prognostic state, mirroring ATOM's
+# cAtmosphereModel::save_state / load_state. Files land in output_path as
+# jup_restart_<iter>.bin. Besides these two knobs the run also writes a checkpoint every
+# restart_save_stride (100) iterations, but only when the state is clean (no non-finite cell),
+# so a diverged state can never overwrite a good restart point.
+            ('checkpoint_save_iter', 'dump the full 3D prognostic state to output_path/jup_restart_<iter>.bin when iter_n reaches this; -1 disables', 'int', -1),
+            ('restart_from_iter', 'load output_path/jup_restart_<iter>.bin and resume the iteration loop at iter+1, skipping the spin-up; -1 disables', 'int', -1),
+
 
             ('Coriolis', 'Coriolis force', 'double', 1),
             ('centrifugal', 'centrifugal force', 'double', 1),

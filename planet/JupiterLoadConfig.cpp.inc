@@ -17,6 +17,8 @@
     Config::FillIntWithElement(elem_jupiter, "nm", nm);
     Config::FillIntWithElement(elem_jupiter, "checkpoint", checkpoint);
     Config::FillIntWithElement(elem_jupiter, "panorama_print", panorama_print);
+    Config::FillIntWithElement(elem_jupiter, "checkpoint_save_iter", checkpoint_save_iter);
+    Config::FillIntWithElement(elem_jupiter, "restart_from_iter", restart_from_iter);
     Config::FillDoubleWithElement(elem_jupiter, "Coriolis", Coriolis);
     Config::FillDoubleWithElement(elem_jupiter, "centrifugal", centrifugal);
     Config::FillDoubleWithElement(elem_jupiter, "buoyancy", buoyancy);

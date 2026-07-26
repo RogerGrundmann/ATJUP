@@ -579,6 +579,20 @@ private:
     void writeResults();
     void writeData();
 
+    // Boussinesq base state for the buoyancy term: the area-weighted horizontal mean of
+    // ATJUP's own buoyancy expression at each radial level, over fluid cells only. Refilled
+    // once per RK4 step. See RungeKutta_Jup_Turb.cpp for why this exists.
+    std::vector<double> buoy_ref_level;
+    void computeBuoyancyRefLevel();
+
+    // Binary checkpoint / restart of the full 3D state (FileIO_Jup.cpp), the ATJUP
+    // counterpart of ATOM's cAtmosphereModel::save_state / load_state.
+    std::vector<Array*> restart_arrays();   // the prognostic 3D fields a checkpoint serializes
+    void save_state(int iter);              // dump restart_arrays() to output_path/jup_restart_<iter>.bin
+    bool load_state(int iter);              // restore them; false (and run from scratch) if absent/mismatched
+    bool restart_state_is_clean();          // true when every serialized field is finite everywhere
+    bool nan_watch(int iter);               // ATJUP_NANCHECK: report the first non-finite cell, by field name
+
     void BC_phi();
     void BC_radius();
     void BC_theta();

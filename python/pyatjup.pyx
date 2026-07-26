@@ -134,6 +134,24 @@ cdef class Jupiter:
             self._check_alive()
             self._thisptr.panorama_print = <int> value
     
+    property checkpoint_save_iter:
+        def __get__(Jupiter self):
+            self._check_alive()
+            return self._thisptr.checkpoint_save_iter
+    
+        def __set__(Jupiter self, value):
+            self._check_alive()
+            self._thisptr.checkpoint_save_iter = <int> value
+    
+    property restart_from_iter:
+        def __get__(Jupiter self):
+            self._check_alive()
+            return self._thisptr.restart_from_iter
+    
+        def __set__(Jupiter self, value):
+            self._check_alive()
+            self._thisptr.restart_from_iter = <int> value
+    
     property Coriolis:
         def __get__(Jupiter self):
             self._check_alive()

@@ -10,6 +10,10 @@
 #include "cJupiterModel.h"
 #include "Utils.h"
 
+#include <cstdint>
+#include <cstring>
+#include <vector>
+
 using namespace std;
 using namespace JupiterUtils;
 
@@ -238,6 +242,190 @@ void cJupiterModel::writeResults(){
 
     cout << "      ATJUP: writeResults ended" << endl;
 
+}
+/*
+*
+*/
+
+
+// ==================== FULL-3D-STATE CHECKPOINT / RESTART ====================
+// Binary dump of the prognostic fields so a run can resume at a chosen iteration instead of
+// re-spinning the circulation from scratch. The ATJUP counterpart of ATOM's
+// cAtmosphereModel::save_state / load_state (FileIO_Atm.cpp), with the same file layout:
+// a 5-int header followed by the arrays, each written as im*jm contiguous rows of km doubles.
+//
+// Only the genuinely PROGNOSTIC arrays are stored. Everything else — the reaction rates,
+// diffusive and thermal mass fluxes, forces, radiation, precipitation fluxes and the latent
+// and sensible heat fields — is recomputed from these at the top of every even iteration, so
+// storing them would only add bulk and a way for the file to disagree with itself.
+//
+// p_stat is included even though it is quasi-static: it is what the buoyancy term and the
+// whole saturation chain read, and it must match the temperature field it was built with.
+std::vector<Array*> cJupiterModel::restart_arrays(){
+    return { &t,   &u,   &v,   &w,
+             &tn,  &un,  &vn,  &wn,
+             &h2o,  &h2o_cloud,  &h2o_ice,
+             &h2on, &h2o_cloudn, &h2o_icen,
+             &h2s,  &h2sn,
+             &nh3,  &nh3_cloud,  &nh3_ice,
+             &nh3n, &nh3_cloudn, &nh3_icen,
+             &ch4,  &ch4_cloud,  &ch4_ice,
+             &ch4n, &ch4_cloudn, &ch4_icen,
+             &nh4sh, &nh4shn,
+             &p_dyn, &p_dynn, &p_stat,
+             &tke, &dis, &tken, &disn, &nue };
+}
+
+// Names parallel to restart_arrays(), so the NaN report can say WHICH field went bad.
+static const char* const restart_array_names[] = {
+    "t","u","v","w",
+    "tn","un","vn","wn",
+    "h2o","h2o_cloud","h2o_ice",
+    "h2on","h2o_cloudn","h2o_icen",
+    "h2s","h2sn",
+    "nh3","nh3_cloud","nh3_ice",
+    "nh3n","nh3_cloudn","nh3_icen",
+    "ch4","ch4_cloud","ch4_ice",
+    "ch4n","ch4_cloudn","ch4_icen",
+    "nh4sh","nh4shn",
+    "p_dyn","p_dynn","p_stat",
+    "tke","dis","tken","disn","nue" };
+
+// Per-iteration NaN watch (ATJUP_NANCHECK=1). Scans the same fields the checkpoint stores
+// and reports the FIRST non-finite cell with the field name and its (i,j,k), so a blow-up
+// is caught at the iteration it starts rather than being discovered hundreds of iterations
+// later in the output. Returns true while the state is clean.
+bool cJupiterModel::nan_watch(int iter){
+    std::vector<Array*> arrs = restart_arrays();
+    const int n_names = (int)(sizeof(restart_array_names)/sizeof(restart_array_names[0]));
+
+    // A CENSUS, not just the first cell in scan order. The scan runs i outermost, so a NaN
+    // born in the interior gets reported at the i=0 boundary cell that merely inherited it
+    // through the bcRadius extrapolation. Counting per field and recording the index extent
+    // shows at a glance whether this is one interior cell, a whole boundary plane, or already
+    // everywhere — which is the difference between a local physics problem and a global one.
+    long total = 0;
+    bool any = false;
+    for(size_t a = 0; a < arrs.size(); a++){
+        long n = 0;
+        int i_lo = im, i_hi = -1, j_lo = jm, j_hi = -1, k_lo = km, k_hi = -1;
+        int fi = -1, fj = -1, fk = -1;
+        for(int i = 0; i < im; i++)
+            for(int j = 0; j < jm; j++)
+                for(int k = 0; k < km; k++){
+                    std::uint64_t bits;
+                    std::memcpy(&bits, &arrs[a]->x[i][j][k], sizeof(bits));
+                    if((bits & 0x7FF0000000000000ULL) == 0x7FF0000000000000ULL){
+                        n++;
+                        if(i < i_lo) i_lo = i;
+                        if(i > i_hi) i_hi = i;
+                        if(j < j_lo) j_lo = j;
+                        if(j > j_hi) j_hi = j;
+                        if(k < k_lo) k_lo = k;
+                        if(k > k_hi) k_hi = k;
+                        if(fi < 0){ fi = i; fj = j; fk = k; }
+                    }
+                }
+        if(n > 0){
+            if(!any){
+                printf("      ATJUP: ===== NAN WATCH: state went non-finite at iteration %d =====\n",
+                       iter);
+                any = true;
+            }
+            printf("        %-12s %8ld cells   i[%d..%d] j[%d..%d] k[%d..%d]   first (%d,%d,%d)"
+                   "  SeaMount=%g t=%g p_stat=%g\n",
+                   (a < (size_t)n_names ? restart_array_names[a] : "?"), n,
+                   i_lo, i_hi, j_lo, j_hi, k_lo, k_hi, fi, fj, fk,
+                   SeaMount.x[fi][fj][fk], t.x[fi][fj][fk], p_stat.x[fi][fj][fk]);
+            total += n;
+        }
+    }
+    if(any) printf("        total %ld non-finite cells\n", total);
+    return !any;
+}
+
+void cJupiterModel::save_state(int iter){
+    const string fn = output_path + "/jup_restart_" + std::to_string(iter) + ".bin";
+    std::ofstream f(fn, std::ios::binary);
+    if(!f){
+        cout << "      ATJUP: save_state FAILED to open " << fn << endl;
+        return;
+    }
+    // Header: magic, grid dimensions, and the iteration this state belongs to. The grid is
+    // checked on load so a restart written at a different resolution is rejected rather than
+    // read as garbage.
+    const int32_t hdr[5] = { 0x4A555031 /*"JUP1"*/, im, jm, km, iter };
+    f.write(reinterpret_cast<const char*>(hdr), sizeof(hdr));
+
+    std::vector<Array*> arrs = restart_arrays();
+    for(size_t a = 0; a < arrs.size(); a++)
+        for(int i = 0; i < im; i++)
+            for(int j = 0; j < jm; j++)
+                f.write(reinterpret_cast<const char*>(arrs[a]->x[i][j]), km * sizeof(double));
+
+    if(!f){
+        cout << "      ATJUP: save_state FAILED while writing " << fn
+             << " (disk full?)" << endl;
+        return;
+    }
+    const double mb = (double)(sizeof(hdr) + arrs.size() * (size_t)im * jm * km * sizeof(double))
+                    / (1024.0 * 1024.0);
+    printf("      ATJUP: save_state wrote %zu arrays (%.1f MB) to %s\n",
+           arrs.size(), mb, fn.c_str());
+}
+
+bool cJupiterModel::load_state(int iter){
+    const string fn = output_path + "/jup_restart_" + std::to_string(iter) + ".bin";
+    std::ifstream f(fn, std::ios::binary);
+    if(!f){
+        cout << "      ATJUP: load_state: no file " << fn
+             << " - running from scratch" << endl;
+        return false;
+    }
+    int32_t hdr[5];
+    f.read(reinterpret_cast<char*>(hdr), sizeof(hdr));
+    if(!f || hdr[0] != 0x4A555031 || hdr[1] != im || hdr[2] != jm || hdr[3] != km){
+        cout << "      ATJUP: load_state: bad header / grid mismatch in " << fn
+             << " - running from scratch" << endl;
+        return false;
+    }
+
+    std::vector<Array*> arrs = restart_arrays();
+    for(size_t a = 0; a < arrs.size(); a++)
+        for(int i = 0; i < im; i++)
+            for(int j = 0; j < jm; j++){
+                f.read(reinterpret_cast<char*>(arrs[a]->x[i][j]), km * sizeof(double));
+                if(!f){
+                    cout << "      ATJUP: load_state: truncated file " << fn
+                         << " - running from scratch" << endl;
+                    return false;
+                }
+            }
+
+    cout << "      ATJUP: load_state restored " << arrs.size() << " arrays from "
+         << fn << " (resuming after iteration " << hdr[4] << ")" << endl;
+    return true;
+}
+
+// True when every serialized prognostic field is finite everywhere. Guards the periodic
+// checkpoint: a diverged state must never overwrite a good restart point, because the whole
+// value of the file is that you can resume from it. Uses the IEEE-754 exponent bits rather
+// than std::isfinite for the reason given in RungeKutta_Jup_Turb.cpp.
+bool cJupiterModel::restart_state_is_clean(){
+    std::vector<Array*> arrs = restart_arrays();
+    bool clean = true;
+    for(size_t a = 0; a < arrs.size() && clean; a++)
+        for(int i = 0; i < im && clean; i++)
+            for(int j = 0; j < jm && clean; j++)
+                for(int k = 0; k < km; k++){
+                    std::uint64_t bits;
+                    std::memcpy(&bits, &arrs[a]->x[i][j][k], sizeof(bits));
+                    if((bits & 0x7FF0000000000000ULL) == 0x7FF0000000000000ULL){
+                        clean = false;
+                        break;
+                    }
+                }
+    return clean;
 }
 /*
 *

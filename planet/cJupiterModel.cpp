@@ -384,7 +384,19 @@ void cJupiterModel::Run(){
     iter_n = 0;
     writeData();
 
-    for(iter_n = 1; iter_n <= nm; iter_n++){
+    // ---- Optional restart from a binary checkpoint ----
+    // Loading here, after the full initialisation, is deliberate: the geometry (SeaMount,
+    // i_topography, layer heights) and every derived constant are rebuilt from param.py as
+    // usual, and only the prognostic 3D fields are then overwritten by the file. The loop
+    // resumes at restart_from_iter+1, so the parity of iter_n is preserved and the
+    // "even iterations do the physics" schedule continues where it left off.
+    int iter_start = 1;
+    if(restart_from_iter >= 0 && load_state(restart_from_iter)){
+        iter_start = restart_from_iter + 1;
+        restoreVar(1.0);          // refresh the n-level copies from the restored fields
+    }
+
+    for(iter_n = iter_start; iter_n <= nm; iter_n++){
 
         auto begin = std::chrono::high_resolution_clock::now();
 
@@ -397,7 +409,14 @@ void cJupiterModel::Run(){
              << "    checkpoint when to write 3D-panorama = " << checkpoint << endl
              << "    panorama_print = " << panorama_print << endl << endl;
 
-        if(iter_n % 2 == 0){
+        // The physics block runs on even iterations; odd iterations reuse the diagnostic
+        // fields it leaves behind (massflux_*, fluxlim_nh4sh, Q_rad, Q_precip, the turbulence
+        // sources, the forces). A restart deliberately stores only the PROGNOSTIC arrays, so
+        // those diagnostics are still zero on the first iteration after a load — and rhs_h2s /
+        // rhs_nh3 / rhs_nh4sh read massflux_* directly. Force the block on the first iteration
+        // after a restart, whatever its parity, so the diagnostics are rebuilt from the
+        // restored state before anything consumes them.
+        if(iter_n % 2 == 0 || iter_n == iter_start){
 
         PressureSolverJup(*this).run();
         JupiterUtils::damp_wiggles(p_dyn, &i_topography, true, true, true);
@@ -494,6 +513,36 @@ void cJupiterModel::Run(){
         }
 
         if(panorama_cnt == panorama_print) panorama_cnt = 1;
+
+        // Per-iteration NaN watch (opt-in, ATJUP_NANCHECK=1): reports the first iteration at
+        // which any prognostic field goes non-finite, naming the field and the cell. Costs a
+        // full sweep of the restart arrays per iteration, so it is off by default.
+        static const int nan_check = [](){ const char* e = getenv("ATJUP_NANCHECK"); return e ? atoi(e) : 0; }();
+        if(nan_check){
+            static bool still_clean = true;
+            if(still_clean && !nan_watch(iter_n)) still_clean = false;
+        }
+
+        // ---- Binary restart checkpoints ----
+        // One explicit dump at checkpoint_save_iter, plus a periodic one every
+        // restart_save_stride iterations. The periodic dump is written ONLY when the state is
+        // clean, so a diverged run can never overwrite a good restart point — the whole value
+        // of the file is that you can resume from it. Written after restoreVar so the stored
+        // n-level copies are consistent with the fields they were built from.
+        if(checkpoint_save_iter >= 0 && iter_n == checkpoint_save_iter)
+            save_state(iter_n);
+
+        {
+            constexpr int restart_save_stride = 100;
+            if(restart_save_stride > 0 && iter_n > 0 && iter_n % restart_save_stride == 0
+               && iter_n != checkpoint_save_iter){
+                if(restart_state_is_clean())
+                    save_state(iter_n);
+                else
+                    cout << "      ATJUP: restart checkpoint SKIPPED at iter " << iter_n
+                         << " - non-finite cell present (state not clean)" << endl;
+            }
+        }
 
         auto end = std::chrono::high_resolution_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
