@@ -44,6 +44,33 @@ public:
         // Tunable via ATJUP_PDYN_CAP; normal p_dyn ~0.03 bar so 0.2 is a generous backstop.
         static const double p_dyn_cap = [](){ const char* e = getenv("ATJUP_PDYN_CAP"); return e ? atof(e) : 0.2; }();
 
+        // ---- Solid-wall condition on p_dyn at the obstacle (ATJUP_PRESS_WALL, default on) ----
+        //
+        // Until this was added the SeaMount was INVISIBLE to the pressure equation. The relaxation
+        // sweep below runs over every cell of the interior, solid ones included, and the Laplacian
+        // stencil of a fluid cell reads p_dyn straight out of its solid neighbours. So p was
+        // relaxed THROUGH the body as if it were air; the only thing that knew about the obstacle
+        // was the divergence source, via the one-sided stencils further down, and those fire only
+        // when the cell ITSELF is solid.
+        //
+        // A body in a flow works by building pressure in front of itself: that is what turns the
+        // stream aside instead of letting it accelerate into the obstacle. With no wall condition
+        // there is nothing to build it against. Measured at the fluid cell beside the cone flank
+        // (i=24, j=97, k=171 — see ATJUP_PROBE in RHS_Jup_Turb.cpp), -dp/dphi reaches only -3.3
+        // while advection supplies +30, and the zonal wind there runs from 32 to 388 m/s until the
+        // field overflows.
+        //
+        // The condition a rigid impermeable wall imposes on the pressure of a projection method is
+        // dp/dn = 0. Discretely, in the finite-volume reading of this 7-point stencil, that is
+        // exactly "no pressure flux through a solid face": the face is dropped from the numerator
+        // AND from the denominator, rather than being fed a value from inside the body. Faces are
+        // counted per cell below, so a cell with several solid neighbours simply keeps fewer.
+        //
+        // Only FLUID cells are treated. Solid cells keep the existing machinery untouched — their
+        // one-sided divergence source and their bcSolidGround values are left exactly as they were,
+        // so this change is confined to the fluid side of the interface.
+        static const bool press_wall = [](){ const char* e = getenv("ATJUP_PRESS_WALL"); return e ? atoi(e) != 0 : true; }();
+
         // Precompute land mask — eliminates repeated function call overhead
         // Allocate flat mask: 1 = land, 0 = air
         std::vector<int8_t> land(m.im * m.jm * m.km);
@@ -90,6 +117,26 @@ public:
         const double inv_dthe  = 1.0 / m.dthe;
         const double inv_dphi  = 1.0 / m.dphi;
 
+        // ---- Relaxation sweeps (ATJUP_PRESS_SWEEPS, default 1 = previous behaviour) ----
+        //
+        // What follows is ONE Gauss-Seidel sweep of the Poisson equation, and run() is called
+        // once per physics iteration. A single sweep moves information one cell, so the elliptic
+        // problem is never actually solved: p_dyn is a local smoothing of the divergence, not the
+        // global pressure response of the flow. That matters exactly where a body sits in the
+        // stream — the high pressure a body builds in front of itself is an elliptic effect,
+        // reaching several cells upstream, and one sweep per step cannot construct it. Measured
+        // at the cell beside the cone flank: -dp/dphi = -3.3 against +30 of advection.
+        //
+        // Raising this is the honest way to test whether the pressure response is merely
+        // unconverged. Cost is linear in the count; the sweep itself is a few hundredths of a
+        // second on this grid.
+        static const int n_sweeps = [](){
+            const char* e = getenv("ATJUP_PRESS_SWEEPS");
+            const int v = e ? atoi(e) : 1;
+            return v > 0 ? v : 1; }();
+
+        for (int sweep = 0; sweep < n_sweeps; sweep++) {
+
         // Main compute loop — land mask lookups + hoisted j-invariants + k sliding window
         #pragma omp parallel for collapse(2) schedule(dynamic, 4)
         for (int i = 1; i < m.im-1; i++) {
@@ -121,7 +168,6 @@ public:
                 const double denom = 2.0 * geo.exp_2_rm    * inv_dr2
                                    + 2.0 * geo.inv_rm       * inv_dthe2
                                    + 2.0 * geo.inv_rmsinthe * inv_dphi2;
-                const double inv_denom = 1.0 / denom;
                 const double num1 = geo.exp_2_rm    * inv_dr2;
                 const double num2 = geo.inv_rm      * inv_dthe2;
                 const double num3 = geo.inv_rmsinthe * inv_dphi2;
@@ -223,21 +269,39 @@ public:
                     double div_src = du_dr   * geo.exp_rm
                                    + dv_dthe * geo.inv_rm
                                    + dw_dphi * geo.inv_rmsinthe;
-                    const double src_max = denom * p_dyn_cap;
+
+                    // Assemble the stencil, dropping any face that looks into the body (see the
+                    // note at the top of run()). For a cell with no solid neighbour this is the
+                    // original expression term for term, so the open ocean is bit-identical.
+                    double acc = 0.0, den = denom;
+                    if (press_wall && !lnd_ijk) {
+                        acc = den = 0.0;
+                        if (!LAND(i+1,j,k)) { acc += num1 * m.p_dyn.x[i+1][j][k]; den += num1; }
+                        if (!LAND(i-1,j,k)) { acc += num1 * m.p_dyn.x[i-1][j][k]; den += num1; }
+                        if (!LAND(i,j+1,k)) { acc += num2 * m.p_dyn.x[i][j+1][k]; den += num2; }
+                        if (!LAND(i,j-1,k)) { acc += num2 * m.p_dyn.x[i][j-1][k]; den += num2; }
+                        if (!lnd_kp1)       { acc += num3 * m.p_dyn.x[i][j][k+1]; den += num3; }
+                        if (!lnd_km1)       { acc += num3 * m.p_dyn.x[i][j][k-1]; den += num3; }
+                        // A fluid cell walled in on all six faces has no pressure equation left;
+                        // leave it as it is rather than dividing by zero.
+                        if (den <= 0.0) continue;
+                    } else {
+                        acc = (m.p_dyn.x[i+1][j][k] + m.p_dyn.x[i-1][j][k]) * num1
+                            + (m.p_dyn.x[i][j+1][k] + m.p_dyn.x[i][j-1][k]) * num2
+                            + (m.p_dyn.x[i][j][k+1] + m.p_dyn.x[i][j][k-1]) * num3;
+                    }
+
+                    // The clamp is a discrete max principle, so it has to use the denominator
+                    // this cell actually ends up with, not the full six-face one.
+                    const double src_max = den * p_dyn_cap;
                     if      (!std::isfinite(div_src)) div_src = 0.0;
                     else if (div_src >  src_max)      div_src =  src_max;
                     else if (div_src < -src_max)      div_src = -src_max;
 
-                    m.p_dyn.x[i][j][k] =
-                        ((m.p_dyn.x[i+1][j][k] + m.p_dyn.x[i-1][j][k]) * num1
-                       + (m.p_dyn.x[i][j+1][k] + m.p_dyn.x[i][j-1][k]) * num2
-                       + (m.p_dyn.x[i][j][k+1] + m.p_dyn.x[i][j][k-1]) * num3
-                       - div_src) * inv_denom;
+                    m.p_dyn.x[i][j][k] = (acc - div_src) / den;
                 } // k
             } // j
         } // i
-
-        #undef LAND
 
         // Radial boundary extrapolation — 2-point Neumann, consistent with bcRadius.
         // The 3-point cubic (3p[1]-3p[2]+p[3]) amplifies alternating errors 7x per call
@@ -271,6 +335,12 @@ public:
                     = (m.p_dyn.x[i][j][0] + m.p_dyn.x[i][j][m.km-1]) / 2.0;
             }
         }
+
+        #undef LAND
+
+        } // sweep — the three boundary passes above belong inside it: they ARE the outer
+          // boundary condition of the relaxation, and leaving them outside would let the
+          // interior run away from its own edges for n_sweeps-1 passes.
 
         auto end = std::chrono::high_resolution_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
