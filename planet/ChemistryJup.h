@@ -107,9 +107,37 @@ public:
                         m.w_nh4sh.x[i][j][k] =  m.m_nh4sh * R_diff;
                     }
 
-                    m.massflux_h2s.x[i][j][k]   = m.w_h2s.x[i][j][k]   - m.difflux_h2s.x[i][j][k];
-                    m.massflux_nh3.x[i][j][k]   = m.w_nh3.x[i][j][k]   - m.difflux_nh3.x[i][j][k];
-                    m.massflux_nh4sh.x[i][j][k] = m.w_nh4sh.x[i][j][k] - m.difflux_nh4sh.x[i][j][k];
+                    // PLUS, not minus. massflux_* is added to the species tendency in
+                    // RHS_Jup_Turb.cpp, and difflux_* is computed just above as
+                    // D_x * laplacian(c_x) — the diffusive TENDENCY, positive where a species
+                    // sits in a local minimum, which is exactly what Fick gives:
+                    //     dc/dt = -div(j) + sources,   j = -D grad(c),   -div(j) = +D lap(c)
+                    // Subtracting it made the multicomponent diffusion an ANTI-diffusion,
+                    // sharpening every species gradient instead of smoothing it.
+                    //
+                    // It survived because the coefficient is tiny: D_x is built as
+                    // mue_x/(rg_x*sc_x) with rg_h2s = 949 kg/m3, the density of the CONDENSED
+                    // phase rather than the gas, giving D = 1.4e-8 m2/s, and diff_* prints as
+                    // 0.000000 kg/(m3 s) against massflux_* of 3e-4.
+                    //
+                    // Tiny is NOT the same as harmless, and the measurement says so. Anti-
+                    // diffusion is self-amplifying: it sharpens a gradient, the sharper gradient
+                    // raises the Laplacian, which sharpens it further. Differencing the full 3D
+                    // state at iteration 100 against the uncorrected run, everything else equal:
+                    //
+                    //   nh3    1.27 %      nh4sh  1.56 %      h2s   0.24 %
+                    //   t      0.027 %     w      0.066 %
+                    //
+                    // So a term that never shows up in printMinMax had moved the ammonia field
+                    // by more than a percent in 100 iterations. The questionable D_x is left
+                    // alone here — it belongs to a separate question.
+                    //
+                    // Also left alone, but worth recording: `chemical_reaction` in the RHS
+                    // multiplies the WHOLE of massflux_*, so setting that switch to 0 to disable
+                    // the chemistry silently disables this diffusion as well.
+                    m.massflux_h2s.x[i][j][k]   = m.w_h2s.x[i][j][k]   + m.difflux_h2s.x[i][j][k];
+                    m.massflux_nh3.x[i][j][k]   = m.w_nh3.x[i][j][k]   + m.difflux_nh3.x[i][j][k];
+                    m.massflux_nh4sh.x[i][j][k] = m.w_nh4sh.x[i][j][k] + m.difflux_nh4sh.x[i][j][k];
                 }
             }
         }
