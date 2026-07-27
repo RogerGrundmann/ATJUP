@@ -69,8 +69,14 @@ void SaturationAdjustmentJup::run(
                 if(cloud.x[i][j][k] < 0.0) cloud.x[i][j][k] = 0.0;
                 if(ice.x[i][j][k]   < 0.0) ice.x[i][j][k]   = 0.0;
 
+                // Density of the mixture at THIS cell when ATJUP_LOCAL_RHO is set, the constant
+                // reference density otherwise. The saturation quantity carried by c/cloud/ice is
+                // a vapour DENSITY (r_max in cJupiterModel.h is documented in kg/m3), so
+                // rho*ep*E/p is the right form and the density in it belongs to the cell.
+                const double rho_c = m.rho_at(i, j, k);
+
                 const double E_Rain_0 = saturation_vapour_pressure(t_u, C, L0, R, del_alf, del_bet);
-                const double q_Rain_0 = m.r_mix * ep * E_Rain_0 / p_u;
+                const double q_Rain_0 = rho_c * ep * E_Rain_0 / p_u;
 
                 // skip: subsaturated, already at saturation, or SVP underflowed to 0 at very cold cells
                 if(c.x[i][j][k] <= q_Rain_0 || q_Rain_0 <= 0.0) continue;
@@ -95,7 +101,7 @@ void SaturationAdjustmentJup::run(
                     const double d_q_c = -d_q_v * CND;
                     const double d_q_i = -d_q_v * DEP;
 
-                    T     += (lv * d_q_c + ls * d_q_i) / (m.cp_mix * m.r_mix);
+                    T     += (lv * d_q_c + ls * d_q_i) / (m.cp_mix * rho_c);
                     q_v_b += d_q_v;
                     q_c_b += d_q_c;
                     q_i_b += d_q_i;
@@ -106,8 +112,8 @@ void SaturationAdjustmentJup::run(
 
                     const double E_Rain = saturation_vapour_pressure(T, C,   L0,   R, del_alf,   del_bet);
                     const double E_Ice  = saturation_vapour_pressure(T, C_i, L0_i, R, del_alf_i, del_bet_i);
-                    const double q_Rain = m.r_mix * ep * E_Rain / p_u;
-                    const double q_Ice  = m.r_mix * ep * E_Ice  / p_u;
+                    const double q_Rain = rho_c * ep * E_Rain / p_u;
+                    const double q_Ice  = rho_c * ep * E_Ice  / p_u;
 
                     if(q_c_b > 0.0 && q_i_b > 0.0)
                         q_v_hyp = (q_c_b * q_Rain + q_i_b * q_Ice) / (q_c_b + q_i_b);

@@ -193,7 +193,9 @@ inline void PrecipitationJup::column(const Species& s){
                 // Multiplying by a density here would double-count it.
                 const double E_r = SaturationAdjustmentJup::saturation_vapour_pressure(
                     T, s.C, s.L0, s.R, s.del_alf, s.del_bet);
-                const double q_sat = (p_u > E_r) ? m.r_mix * s.ep * E_r / p_u : q_v;
+                // Same density choice as SaturationAdjustmentJup — the two must agree or
+                // the microphysics and the adjustment would saturate at different values.
+                const double q_sat = (p_u > E_r) ? m.rho_at(i, j, k) * s.ep * E_r / p_u : q_v;
 
                 // METRES — get_layer_height() is in km, and dz sets both the flux increment
                 // S*dz and the volumetric heating F/dz, so the unit must be physical.

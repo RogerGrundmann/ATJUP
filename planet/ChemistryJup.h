@@ -200,40 +200,62 @@ public:
                     // (difflux_* below uses laplacian_spherical() which is already
                     // pole-symmetric by construction via cosθ·∂c/∂θ; no fix needed there.)
                     const double dt_div = dtdr + std::abs(dtdthe) / rm + dtdphi / rmsinthe;
+
+                    // ATJUP_LOCAL_RHO: the Lewis groups L = rho*cp*D/k and LT = rho*cp*DT/k are
+                    // precomputed once with the constant r_mix, so rescaling them per cell is a
+                    // single factor rho_c/r_mix. Where that factor lands is worth spelling out,
+                    // because it is not uniform:
+                    //   jT_*  carries rho TWICE (once explicitly, once inside LT) -> (rho/r_mix)^2
+                    //   cM_*  divides by rho again, so the two cancel and it is UNCHANGED
+                    //   j_*   the bare L terms scale linearly with rho/r_mix
+                    // With rho_c/r_mix reaching 1/200 near the top, the thermo-diffusion flux
+                    // there is cut by ~4e-5 while the concentration part is only cut by 1/200.
+                    const double rho_c = m.rho_at(i, j, k);
+                    const double sc    = rho_c / m.r_mix;      // 1.0 exactly when the knob is off
+
                     // ONE density, not two. This line used to read
                     //     jT = m.r_mix * LT_x / t * dt_div
                     // with LT_x = r_mix * cp_mix * DT_x / k_mix, so the mixture density entered
-                    // TWICE and the thermal-diffusion flux went as rho^2. The Soret flux is
-                    // j_T = -rho * D_T * grad(T)/T — linear in the density, once. LT_x already
-                    // carries it, so there is no explicit factor here.
-                    m.jT_nh3.x[i][j][k]   = LT_nh3   / m.t.x[i][j][k] * dt_div;
-                    m.jT_h2s.x[i][j][k]   = LT_h2s   / m.t.x[i][j][k] * dt_div;
-                    m.jT_nh4sh.x[i][j][k] = LT_nh4sh / m.t.x[i][j][k] * dt_div;
+                    // TWICE and the flux went as rho^2. The Soret (thermal diffusion) mass flux
+                    // is j_T = -rho * D_T * grad(T)/T — linear in the density, once. The double
+                    // count was invisible while the density was the constant 1.2844: it merely
+                    // scaled every jT_* by that factor. With the local density it is not
+                    // invisible at all, because rho spans 0.006 to 1.09 across the shell and the
+                    // square would cut the flux near the top by 4e-5 instead of 1/200.
+                    // LT_x * sc already carries exactly one density — the local one when
+                    // ATJUP_LOCAL_RHO is set, r_mix otherwise — so no explicit factor here.
+                    m.jT_nh3.x[i][j][k]   = (LT_nh3   * sc) / m.t.x[i][j][k] * dt_div;
+                    m.jT_h2s.x[i][j][k]   = (LT_h2s   * sc) / m.t.x[i][j][k] * dt_div;
+                    m.jT_nh4sh.x[i][j][k] = (LT_nh4sh * sc) / m.t.x[i][j][k] * dt_div;
 
                     const double dnh3_div   = dnh3dr   + std::abs(dnh3dthe)   / rm + dnh3dphi   / rmsinthe;
                     const double dh2s_div   = dh2sdr   + std::abs(dh2sdthe)   / rm + dh2sdphi   / rmsinthe;
                     const double dnh4sh_div = dnh4shdr + std::abs(dnh4shdthe) / rm + dnh4shdphi / rmsinthe;
 
-                    const double cM_nh3   = L_nh3   * m.nh3.x[i][j][k]   / m.r_mix;
-                    const double cM_h2s   = L_h2s   * m.h2s.x[i][j][k]   / m.r_mix;
-                    const double cM_nh4sh = L_nh4sh * m.nh4sh.x[i][j][k] / m.r_mix;
+                    const double L_nh3_c   = L_nh3   * sc;
+                    const double L_h2s_c   = L_h2s   * sc;
+                    const double L_nh4sh_c = L_nh4sh * sc;
+
+                    const double cM_nh3   = L_nh3_c   * m.nh3.x[i][j][k]   / rho_c;
+                    const double cM_h2s   = L_h2s_c   * m.h2s.x[i][j][k]   / rho_c;
+                    const double cM_nh4sh = L_nh4sh_c * m.nh4sh.x[i][j][k] / rho_c;
 
                     m.j_nh3.x[i][j][k] =
-                        m.m_nh3/M_mix     * (L_nh3 * dnh3_div
+                        m.m_nh3/M_mix     * (L_nh3_c * dnh3_div
                         - M_mix/m.m_nh3   * cM_nh3 * dnh3_div
                         - M_mix/m.m_h2s   * cM_nh3 * dh2s_div
                         - M_mix/m.m_nh4sh * cM_nh3 * dnh4sh_div)
                         - m.jT_nh3.x[i][j][k];
 
                     m.j_h2s.x[i][j][k] =
-                        m.m_h2s/M_mix     * (L_h2s * dh2s_div
+                        m.m_h2s/M_mix     * (L_h2s_c * dh2s_div
                         - M_mix/m.m_nh3   * cM_h2s * dnh3_div
                         - M_mix/m.m_h2s   * cM_h2s * dh2s_div
                         - M_mix/m.m_nh4sh * cM_h2s * dnh4sh_div)
                         - m.jT_h2s.x[i][j][k];
 
                     m.j_nh4sh.x[i][j][k] =
-                        m.m_nh4sh/M_mix   * (L_nh4sh * dnh4sh_div
+                        m.m_nh4sh/M_mix   * (L_nh4sh_c * dnh4sh_div
                         - M_mix/m.m_nh3   * cM_nh4sh * dnh3_div
                         - M_mix/m.m_h2s   * cM_nh4sh * dh2s_div
                         - M_mix/m.m_nh4sh * cM_nh4sh * dnh4sh_div)

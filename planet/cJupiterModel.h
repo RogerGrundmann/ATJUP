@@ -617,6 +617,26 @@ private:
     // Local mixture density rho = p/(R_mix*T); call with Forces(). See InitValues_Jup.cpp.
     void computeMixtureDensity();
 
+    // ATJUP_LOCAL_RHO=1 — use the LOCAL mixture density rho_mix in place of the constant
+    // reference density r_mix wherever a density genuinely belongs to the cell: the saturation
+    // vapour density in SaturationAdjustmentJup and PrecipitationJup, and the Lewis groups in
+    // ChemistryJup. Default 0 keeps r_mix everywhere and is bit-identical.
+    //
+    // Why it is a knob and not simply a fix: r_mix = 1.2844 kg/m3 is the density of the DEEPEST
+    // layer, and the shell spans 0.006 to 1.09 kg/m3 — nearly three orders of magnitude. So this
+    // is not a small correction, it rescales the saturation vapour density by up to 1/200 near
+    // the top, and (rho/r_mix)^2 in the thermo-diffusion flux jT_*. Measure before adopting.
+    static bool local_rho(){
+        static const bool v = [](){ const char* e = getenv("ATJUP_LOCAL_RHO"); return e && atoi(e) != 0; }();
+        return v;
+    }
+    // The density to use in such a place. Falls back to r_mix where rho_mix is not positive
+    // (solid cells, or before the first computeMixtureDensity), so no caller can divide by zero.
+    double rho_at(int i, int j, int k) const {
+        if(!local_rho()) return r_mix;
+        const double rho = rho_mix.x[i][j][k];
+        return (rho > 0.0 && std::isfinite(rho)) ? rho : r_mix;
+    }
 
     // Binary checkpoint / restart of the full 3D state (FileIO_Jup.cpp), the ATJUP
     // counterpart of ATOM's cAtmosphereModel::save_state / load_state.
