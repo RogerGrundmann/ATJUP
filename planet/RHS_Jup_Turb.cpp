@@ -231,8 +231,24 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     double Coriolis_the  = +2.0 * omega * costhe * w_ijk;
     double Coriolis_phi  = +2.0 * omega * (-costhe * v_ijk + sinthe * u_ijk);
 
-    double centrifugal_rad = omega * omega * rm;
-    double centrifugal_the = omega * omega * rm * fabs(sinthe);
+    // Centrifugal acceleration = Omega^2 * s * s_hat, with s = r*sin(theta) the distance from
+    // the rotation axis and s_hat = sin(theta)*e_r + cos(theta)*e_theta the unit vector pointing
+    // AWAY from it. So
+    //     a_r     = +Omega^2 * r * sin^2(theta)
+    //     a_theta = +Omega^2 * r * sin(theta) * cos(theta)
+    // Both were wrong. The code had Omega^2*r and Omega^2*r*|sin(theta)| entering with a MINUS,
+    // so the force pointed toward the axis instead of away from it, the radial part had no
+    // sin^2 at all (full strength at the poles, where it must vanish), and the meridional part
+    // had |sin| in place of sin*cos, which is neither the right magnitude nor equator-directed.
+    //
+    // sinthe here is CLAMPED to >= 0.55 for the 1/sin^2 metric divisions; that floor has no
+    // business in a body force, so the true sine is recovered from the cosine. theta runs 0..pi,
+    // so sin(theta) >= 0 and the positive root is the right one. costhe now carries its proper
+    // hemispheric sign (see cJupiterModel.h::costhe_abs), which is what makes a_theta point
+    // toward the equator in BOTH hemispheres rather than southward everywhere.
+    const double sinthe_true = sqrt(std::max(0.0, 1.0 - costhe * costhe));
+    double centrifugal_rad = omega * omega * rm * sinthe_true * sinthe_true;
+    double centrifugal_the = omega * omega * rm * sinthe_true * costhe;
 
     double coeff_energy_p = u_0 * u_0 / (cp_mix * t_ref);
 
@@ -738,7 +754,7 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
         - transport_u
         + diffusion_u * (1.0 / re + nue_t + nue_wall)
         - Coriolis    * Coriolis_rad
-        - centrifugal * centrifugal_rad;
+        + centrifugal * centrifugal_rad;
 
 
 /*
@@ -771,7 +787,7 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
         - transport_v
         + diffusion_v * (1.0 / re + nue_t + nue_wall)
         - Coriolis    * Coriolis_the
-        - centrifugal * centrifugal_the;
+        + centrifugal * centrifugal_the;
 
     rhs_w.x[i][j][k] =
         - dpdphi_term
