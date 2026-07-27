@@ -333,9 +333,18 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
 
 
     // ===== RHS assembly =====
-    double dpdr_term   = dpdr;
-    double dpdthe_term = dpdthe * inv_rm;
-    double dpdphi_term = dpdphi * inv_rmsinthe;
+    // The pressure gradient is in the same bind as the buoyancy: p_dyn is in bar, and rhs_u is
+    // nondimensional in u_0^2/L_atm, so the consistent factor on (1/rho)*grad(p) is
+    // 1e5/(r_mix*u_0^2) = 7.79. It matters only when the buoyancy is scaled, because those two
+    // are the pair that must balance: raising the buoyancy alone by its own factor leaves
+    // nothing able to oppose it, and the radial velocity runs away (measured: max|u| 38 -> 1535
+    // m/s by iteration 150 with ATJUP_BUOY_SCALE=1.4e6 alone). Default 1.0 is bit-identical.
+    static const double pgrad_scale = [](){
+        const char* e = getenv("ATJUP_PGRAD_SCALE"); return e ? atof(e) : 1.0; }();
+
+    double dpdr_term   = pgrad_scale * dpdr;
+    double dpdthe_term = pgrad_scale * dpdthe * inv_rm;
+    double dpdphi_term = pgrad_scale * dpdphi * inv_rmsinthe;
 
     // ===== Radiative heating source (step 4, opt-in) =====
     // Convert the diagnostic radiative flux divergence Q_rad [W/m3] (RadiationJup) into a
@@ -663,23 +672,64 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
         + radiation_t
         + precip_t;
 
-    // Buoyancy from the ideal-gas density, rho = p/(R*T), as a BOUSSINESQ ANOMALY: the
-    // horizontal mean at this radial level (buoy_ref_level[i], refilled once per RK4 step by
-    // computeBuoyancyRefLevel) is subtracted, so the body force has zero mean at every height
-    // and only horizontal density contrasts accelerate the flow. Using the absolute value
-    // instead — as this line did — leaves a systematic upward acceleration in every cell that
-    // only the radial pressure gradient opposes, and the residual accumulated into a vertical
-    // velocity growing ~1 m/s per iteration until it overflowed. See the long note at the top
-    // of RungeKutta_Jup_Turb.cpp; this is ATOM's (t - t_ref_level[i]) treatment.
+    // ===== Buoyancy: a Boussinesq anomaly, with the sign and the scale it needs =====
     //
+    // rho = p/(R*T), and buoy_ref_level[i] (computeBuoyancyRefLevel, once per RK4 step) is the
+    // area-weighted horizontal mean of the same expression at this level, so the difference is
+    // (g/r_mix)*(rho - rho_bar): zero mean at every height, only horizontal density contrasts
+    // drive vertical motion, and hydrostatic balance is left to carry the mean.
+    //
+    // TWO THINGS WERE WRONG WITH IT, and they had to be fixed together.
+    //
+    // (1) THE SIGN. The anomaly entered rhs_u with a PLUS, so a parcel DENSER than its level
+    // mean was accelerated UPWARD and a warm, light one pushed down — convection upside down.
+    // The Archimedes force is a = -g*(rho - rho_bar)/rho_ref. The error came from translating
+    // ATOM's form, which is +(t - t_ref_level[i]): a plus is right for a TEMPERATURE anomaly,
+    // because warm rises, and wrong for a DENSITY anomaly, because heavy sinks. The sign flip
+    // that the change of variable requires was dropped.
+    //
+    // (2) THE SCALE. p_stat is in bar while r_mix*R_mix*T yields pascals, so the expression is
+    // 1e-5 of a physical acceleration; and rhs_u is nondimensional in units of u_0^2/L_atm =
+    // 0.0714 m/s2, so a physical acceleration still needs L_atm/u_0^2 = 14. The dimensionally
+    // consistent factor is therefore 1e5 * L_atm/u_0^2 = 1.4e6. Forces() carries only the 1e5,
+    // and correctly so — BuoyancyForce there is a diagnostic force DENSITY in N/m3, matching
+    // CoriolisForce, a different unit system from this equation.
+    //
+    // Fixing (2) without (1) would have been the worst of both: the term is currently ~2e-4
+    // against O(1) transport, i.e. switched off, so the wrong sign costs nothing today. Scale
+    // it up by 1.4e6 with the sign still inverted and the model would convect upside down at
+    // full strength.
+    //
+    // The sign is corrected unconditionally, because it is a defect. The scale is a knob,
+    // because g*L_atm/u_0^2 = 363 against O(1) transport is a violent change to a model that
+    // has never felt buoyancy, and ATOM's experience with the same correction (a 336x factor,
+    // see cAtmosphereModel.h) was that switching it on cold blows the CFL limit and needs a
+    // ramp of a few hundred iterations:
+    //   ATJUP_BUOY_SCALE=1.4e6         the dimensionally consistent value
+    //   ATJUP_BUOY_SCALE=<x>           anything in between, for finding the usable range
+    //   ATJUP_BUOY_RAMP_ITERS=<n>      ramp linearly from 0 to full over the first n iterations
+    // Default scale 1.0 keeps today's magnitude, so this commit changes only the sign.
+    //
+    // NOT addressed, and worth knowing before the knob is turned up: the anomaly is divided by
+    // the CONSTANT r_mix, not by the level mean density. Proper Boussinesq divides by the local
+    // reference rho_bar(i), which would weight the anomaly aloft up to 200x more strongly than
+    // this does. rho_mix and buoy_ref_level are both available if that is wanted.
+    static const double buoy_scale = [](){
+        const char* e = getenv("ATJUP_BUOY_SCALE"); return e ? atof(e) : 1.0; }();
+    static const int buoy_ramp_iters = [](){
+        const char* e = getenv("ATJUP_BUOY_RAMP_ITERS"); return e ? atoi(e) : 0; }();
+    const double buoy_ramp = (buoy_ramp_iters > 0)
+        ? std::min(1.0, (double)iter_n / (double)buoy_ramp_iters) : 1.0;
+
     // The 1/t is guarded because a cell without a positive temperature has no density and
     // hence no buoyancy: t = 0 used to give +-inf here, RK4 turned that into an infinite
     // velocity, and the advection stencil of every neighbour then carried inf - inf = NaN
     // outwards, roughly doubling the affected volume each iteration.
     const double buoyancy_u = (t.x[i][j][k] > 0.0)
-        ? buoyancy * (g * (p_stat.x[i][j][k] + p_dyn.x[i][j][k])
-                        / (r_mix * R_mix * t.x[i][j][k] * t_ref)
-                      - buoy_ref_level[i])
+        ? -buoy_scale * buoy_ramp * buoyancy
+          * (g * (p_stat.x[i][j][k] + p_dyn.x[i][j][k])
+               / (r_mix * R_mix * t.x[i][j][k] * t_ref)
+             - buoy_ref_level[i])
         : 0.0;
 
     rhs_u.x[i][j][k] =
