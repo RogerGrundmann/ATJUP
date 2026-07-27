@@ -646,6 +646,26 @@ private:
     // the.z runs 0 (north pole) to pi (south pole), so cos(the.z[j]) is already the correct
     // colatitude cosine and the flip only destroyed it. ATJUP_COSTHE_ABS=1 restores the old
     // behaviour for A/B work.
+    // Polar metric floor: sin(theta) is held at this value instead of going to zero, so that
+    // 1/sin(theta) and 1/sin^2(theta) in the metric terms stay bounded. 0.55 corresponds to
+    // theta = 33.4 deg, i.e. the floor is active POLEWARD OF 56.6 DEGREES LATITUDE — 16.5 % of
+    // the sphere, both polar caps, where every metric term is consequently wrong.
+    //
+    // It is a genuine stability measure, not an oversight: the sequential k-loop of the Runge-
+    // Kutta makes an asymmetric phi-Laplacian whose error is amplified by 1/sin^2, and the value
+    // was raised from 0.4 to 0.55 to stop a long-run polar blow-up. Lowering it is therefore a
+    // trade, not a fix, which is why it stays at 0.55 by default and is now merely VISIBLE and
+    // measurable rather than hard-coded in two files that had to be kept in step by hand.
+    // ATJUP_SINTHE_MIN=<x> sets it; see the measurement in the commit that introduced the knob.
+    static double sinthe_min(){
+        static const double v = [](){
+            const char* e = getenv("ATJUP_SINTHE_MIN");
+            const double x = e ? atof(e) : 0.55;
+            return (x > 0.0 && x < 1.0) ? x : 0.55;
+        }();
+        return v;
+    }
+
     static bool costhe_abs(){
         static const bool v = [](){ const char* e = getenv("ATJUP_COSTHE_ABS"); return e && atoi(e) != 0; }();
         return v;

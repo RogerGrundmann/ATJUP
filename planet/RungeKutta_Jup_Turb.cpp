@@ -98,7 +98,7 @@ void cJupiterModel::RungeKuttaJup(){
     // error is amplified by inv_rm2sinthe2; clamping keeps the amplification < 1.
     // PressureSolverJup uses the same threshold. Raised 0.4 -> 0.55 (ATOM parity, metric
     // floor ~57°) to curb the polar 1/sin²θ amplification that seeded a long-run pole blow-up.
-    constexpr double sinthe_min = 0.55;
+    const double sinthe_min = cJupiterModel::sinthe_min();   // see the note in cJupiterModel.h
     std::vector<double> sinthe_tbl(jm), costhe_tbl(jm);
     for(int j = 0; j < jm; j++){
         sinthe_tbl[j] = std::max(sinthe_min, std::abs(sin(the.z[j])));

@@ -34,7 +34,9 @@ public:
         std::vector<double> sinthe_table(m.jm);
         for (int j = 0; j < m.jm; j++) {
             sinthe_table[j] = sin(m.the.z[j]);
-            if (sinthe_table[j] < 0.55) sinthe_table[j] = 0.55;   // metric floor ~57° (ATOM parity); keep in sync with RungeKutta_Jup_Turb
+            // One knob for both files now — they had to be kept in step by hand before.
+            if (sinthe_table[j] < cJupiterModel::sinthe_min())
+                sinthe_table[j] = cJupiterModel::sinthe_min();
         }
 
         // Divergence-source clamp for the p_dyn update (ported from ATOM PressureSolverAtm).
