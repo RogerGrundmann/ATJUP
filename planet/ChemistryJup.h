@@ -200,9 +200,15 @@ public:
                     // (difflux_* below uses laplacian_spherical() which is already
                     // pole-symmetric by construction via cosθ·∂c/∂θ; no fix needed there.)
                     const double dt_div = dtdr + std::abs(dtdthe) / rm + dtdphi / rmsinthe;
-                    m.jT_nh3.x[i][j][k]   = m.r_mix * LT_nh3   / m.t.x[i][j][k] * dt_div;
-                    m.jT_h2s.x[i][j][k]   = m.r_mix * LT_h2s   / m.t.x[i][j][k] * dt_div;
-                    m.jT_nh4sh.x[i][j][k] = m.r_mix * LT_nh4sh / m.t.x[i][j][k] * dt_div;
+                    // ONE density, not two. This line used to read
+                    //     jT = m.r_mix * LT_x / t * dt_div
+                    // with LT_x = r_mix * cp_mix * DT_x / k_mix, so the mixture density entered
+                    // TWICE and the thermal-diffusion flux went as rho^2. The Soret flux is
+                    // j_T = -rho * D_T * grad(T)/T — linear in the density, once. LT_x already
+                    // carries it, so there is no explicit factor here.
+                    m.jT_nh3.x[i][j][k]   = LT_nh3   / m.t.x[i][j][k] * dt_div;
+                    m.jT_h2s.x[i][j][k]   = LT_h2s   / m.t.x[i][j][k] * dt_div;
+                    m.jT_nh4sh.x[i][j][k] = LT_nh4sh / m.t.x[i][j][k] * dt_div;
 
                     const double dnh3_div   = dnh3dr   + std::abs(dnh3dthe)   / rm + dnh3dphi   / rmsinthe;
                     const double dh2s_div   = dh2sdr   + std::abs(dh2sdthe)   / rm + dh2sdphi   / rmsinthe;
