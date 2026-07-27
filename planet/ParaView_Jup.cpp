@@ -329,21 +329,21 @@ void cJupiterModel::paraview_vtk_radial(int n, int i_radial){
 
     dump_radial("Q_Latent", Q_Latent, 1.0, i_radial, Jupiter_vtk_radial_File);
     dump_radial("Q_Sensible", Q_Sensible, 1.0, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("Q_rad_mW_m3", Q_rad, 1.0e3, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("Q_rad", Q_rad, 1.0e3, i_radial, Jupiter_vtk_radial_File);
     dump_radial("Radiation", radiation, 1.0, i_radial, Jupiter_vtk_radial_File);
 
     // Precipitation fluxes, written as mm/day (x86400 from kg/m2/s; 1 kg/m2 == 1 mm depth).
     // These streams use precision(4)+ios::fixed, so raw SI values ~1e-6 would all round to
     // 0.0000 — hence the unit scaling, and the _mmd suffix so the legend is unambiguous.
     // Q_precip/Q_rad are scaled to mW/m3 for the same reason. Zero unless ATJUP_PRECIP is set.
-    dump_radial("P_rain_mmd", P_rain, 86400.0, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("P_snow_mmd", P_snow, 86400.0, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("P_graupel_mmd", P_graupel, 86400.0, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("P_nh3_rain_mmd", P_nh3_rain, 86400.0, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("P_nh3_snow_mmd", P_nh3_snow, 86400.0, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("P_nh3_graupel_mmd", P_nh3_graupel, 86400.0, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("P_nh4sh_mmd", P_nh4sh, 86400.0, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("Q_precip_mW_m3", Q_precip, 1.0e3, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("P_rain", P_rain, 86400.0, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("P_snow", P_snow, 86400.0, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("P_graupel", P_graupel, 86400.0, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("P_nh3_rain", P_nh3_rain, 86400.0, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("P_nh3_snow", P_nh3_snow, 86400.0, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("P_nh3_graupel", P_nh3_graupel, 86400.0, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("P_nh4sh", P_nh4sh, 86400.0, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("Q_precip", Q_precip, 1.0e3, i_radial, Jupiter_vtk_radial_File);
 
     // Turbulence (TurbulenceJup: k-epsilon / k-omega / k-omega SST). Zero unless ATJUP_TURB is
     // set. These streams use precision(4)+ios::fixed, so anything below 5e-5 rounds to 0.0000:
@@ -355,21 +355,21 @@ void cJupiterModel::paraview_vtk_radial(int n, int i_radial){
     // uses u_0/L_atm) and the writer cannot know which model ran; its raw range (3.6e-3 for
     // k-eps, 19 for k-omega) resolves fine. prod and the two source terms are left dimensionless
     // for the same reason — their magnitudes (1e-2 .. 1e2) print without loss.
-    dump_radial("tke_m2s2", tke, u_0 * u_0, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("dis_nd", dis, 1.0, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("nue_t_m2s", nue, u_0 * L_atm * 1.0e3, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("prod_nd", prod, 1.0, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("tke_source_nd", tke_source, 1.0, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("dis_source_nd", dis_source, 1.0, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("tke", tke, u_0 * u_0, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("disd", dis, 1.0, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("nue_t", nue, u_0 * L_atm * 1.0e3, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("prod", prod, 1.0, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("tke_source", tke_source, 1.0, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("dis_source", dis_source, 1.0, i_radial, Jupiter_vtk_radial_File);
 
     // All-species SURFACE precipitation map, in mm/day. Unlike the fields above — which are
     // sampled at this file's fixed altitude i_radial and so miss any deck that does not live
     // there — these are 2D and always taken at the base of each column, giving the total
     // condensate mass flux actually arriving at the bottom plus its per-species breakdown.
-    dump_radial_2d("PrecipSrf_total_mmd", precip_srf_total, 86400.0, Jupiter_vtk_radial_File);
-    dump_radial_2d("PrecipSrf_h2o_mmd",   precip_srf_h2o,   86400.0, Jupiter_vtk_radial_File);
-    dump_radial_2d("PrecipSrf_nh3_mmd",   precip_srf_nh3,   86400.0, Jupiter_vtk_radial_File);
-    dump_radial_2d("PrecipSrf_nh4sh_mmd", precip_srf_nh4sh, 86400.0, Jupiter_vtk_radial_File);
+    dump_radial_2d("Precip_total", precip_srf_total, 86400.0, Jupiter_vtk_radial_File);
+    dump_radial_2d("Precip_h2o",   precip_srf_h2o,   86400.0, Jupiter_vtk_radial_File);
+    dump_radial_2d("Precip_nh3",   precip_srf_nh3,   86400.0, Jupiter_vtk_radial_File);
+    dump_radial_2d("Precip_nh4sh", precip_srf_nh4sh, 86400.0, Jupiter_vtk_radial_File);
 
     // Per-column friction velocity u_tau from TurbulenceJup::compute_vel_star.
     dump_radial_2d("vel_star_ms", vel_star, 1.0, Jupiter_vtk_radial_File);
@@ -497,14 +497,14 @@ void cJupiterModel::paraview_vtk_zonal(int n, int k_zonal){
     // the most useful one for precipitation: it shows the three condensation decks stacked in
     // altitude (deep H2O rain, NH4SH crystals mid-level, NH3 snow aloft) against latitude.
     // Units as above: mm/day for the fluxes, mW/m3 for the latent heating.
-    dump_zonal("P_rain_mmd", P_rain, 86400.0, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("P_snow_mmd", P_snow, 86400.0, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("P_graupel_mmd", P_graupel, 86400.0, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("P_nh3_rain_mmd", P_nh3_rain, 86400.0, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("P_nh3_snow_mmd", P_nh3_snow, 86400.0, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("P_nh3_graupel_mmd", P_nh3_graupel, 86400.0, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("P_nh4sh_mmd", P_nh4sh, 86400.0, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("Q_precip_mW_m3", Q_precip, 1.0e3, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("P_rain", P_rain, 86400.0, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("P_snow", P_snow, 86400.0, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("P_graupel", P_graupel, 86400.0, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("P_nh3_rain", P_nh3_rain, 86400.0, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("P_nh3_snow", P_nh3_snow, 86400.0, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("P_nh3_graupel", P_nh3_graupel, 86400.0, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("P_nh4sh", P_nh4sh, 86400.0, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("Q_precip", Q_precip, 1.0e3, k_zonal, Jupiter_vtk_zonal_File);
 
     // Turbulence (TurbulenceJup: k-epsilon / k-omega / k-omega SST). Zero unless ATJUP_TURB is
     // set. These streams use precision(4)+ios::fixed, so anything below 5e-5 rounds to 0.0000:
@@ -516,12 +516,12 @@ void cJupiterModel::paraview_vtk_zonal(int n, int k_zonal){
     // uses u_0/L_atm) and the writer cannot know which model ran; its raw range (3.6e-3 for
     // k-eps, 19 for k-omega) resolves fine. prod and the two source terms are left dimensionless
     // for the same reason — their magnitudes (1e-2 .. 1e2) print without loss.
-    dump_zonal("tke_m2s2", tke, u_0 * u_0, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("dis_nd", dis, 1.0, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("nue_t_m2s", nue, u_0 * L_atm * 1.0e3, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("prod_nd", prod, 1.0, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("tke_source_nd", tke_source, 1.0, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("dis_source_nd", dis_source, 1.0, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("tke", tke, u_0 * u_0, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("dis", dis, 1.0, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("nue_t", nue, u_0 * L_atm * 1.0e3, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("prod", prod, 1.0, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("tke_source", tke_source, 1.0, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("dis_source", dis_source, 1.0, k_zonal, Jupiter_vtk_zonal_File);
 
     Jupiter_vtk_zonal_File <<  "VECTORS u-v-Cell float" << endl;
     for(int i = 0; i < im; i++){
@@ -648,14 +648,14 @@ void cJupiterModel::paraview_vtk_longal(int n, int j_longal){
     // These streams use precision(4)+ios::fixed, so raw SI values ~1e-6 would all round to
     // 0.0000 — hence the unit scaling, and the _mmd suffix so the legend is unambiguous.
     // Q_precip/Q_rad are scaled to mW/m3 for the same reason. Zero unless ATJUP_PRECIP is set.
-    dump_longal("P_rain_mmd", P_rain, 86400.0, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("P_snow_mmd", P_snow, 86400.0, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("P_graupel_mmd", P_graupel, 86400.0, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("P_nh3_rain_mmd", P_nh3_rain, 86400.0, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("P_nh3_snow_mmd", P_nh3_snow, 86400.0, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("P_nh3_graupel_mmd", P_nh3_graupel, 86400.0, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("P_nh4sh_mmd", P_nh4sh, 86400.0, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("Q_precip_mW_m3", Q_precip, 1.0e3, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("P_rain", P_rain, 86400.0, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("P_snow", P_snow, 86400.0, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("P_graupel", P_graupel, 86400.0, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("P_nh3_rain", P_nh3_rain, 86400.0, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("P_nh3_snow", P_nh3_snow, 86400.0, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("P_nh3_graupel", P_nh3_graupel, 86400.0, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("P_nh4sh", P_nh4sh, 86400.0, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("Q_precip", Q_precip, 1.0e3, j_longal, Jupiter_vtk_longal_File);
 
     // Turbulence (TurbulenceJup: k-epsilon / k-omega / k-omega SST). Zero unless ATJUP_TURB is
     // set. These streams use precision(4)+ios::fixed, so anything below 5e-5 rounds to 0.0000:
@@ -667,12 +667,12 @@ void cJupiterModel::paraview_vtk_longal(int n, int j_longal){
     // uses u_0/L_atm) and the writer cannot know which model ran; its raw range (3.6e-3 for
     // k-eps, 19 for k-omega) resolves fine. prod and the two source terms are left dimensionless
     // for the same reason — their magnitudes (1e-2 .. 1e2) print without loss.
-    dump_longal("tke_m2s2", tke, u_0 * u_0, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("dis_nd", dis, 1.0, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("nue_t_m2s", nue, u_0 * L_atm * 1.0e3, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("prod_nd", prod, 1.0, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("tke_source_nd", tke_source, 1.0, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("dis_source_nd", dis_source, 1.0, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("tke", tke, u_0 * u_0, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("dis", dis, 1.0, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("nue_t", nue, u_0 * L_atm * 1.0e3, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("prod", prod, 1.0, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("tke_source", tke_source, 1.0, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("dis_source", dis_source, 1.0, j_longal, Jupiter_vtk_longal_File);
 
     Jupiter_vtk_longal_File <<  "VECTORS u-w-Cell float" << endl;
     for(int i = 0; i < im; i++){
