@@ -23,14 +23,17 @@ by Imke de Pater and Jack J. Lissauer was inevitable.
 - **Parallelism:** OpenMP shared-memory threading
 - **Obstacle:** an ellipsoidal solid body (the "SeaMount") installed below the top of the atmosphere —
   the fixed obstruction whose wake is the proposed mechanism for the Great Red Spot, and the model's
-  only genuine solid boundary
+  only genuine solid boundary. Its staircase flank is numerically delicate: see *Geometry and
+  scaling* before reading features that sit directly on it
 - **Thermodynamics:**
   - Temperature initialised as a parabolic pole-to-pole profile (zonally uniform), with the
     tropospheric lapse rate **clamped at a tropopause minimum** (default 110 K), so an isothermal
     stratosphere caps the profile instead of the lapse rate running unbounded to the model top
   - Static pressure follows the polytropic relation below the clamp and the isothermal hydrostatic
     law above it, the two being different physical regimes
-  - Boussinesq buoyancy approximation with water-vapour density correction
+  - Boussinesq buoyancy, formed as an anomaly against the area-weighted horizontal mean at each
+    level, so only horizontal density contrasts drive vertical motion and the mean is left to
+    hydrostatic balance. Its scale is currently inert — see *Geometry and scaling*
   - Clausius-Clapeyron / Sanchez-Lavega SVP formulation for saturation vapour pressures
   - Tao mixed-phase (liquid + ice) saturation adjustment
 - **Numerical filtering:** Shapiro de-checkerboarding of the velocity fields, selectable between the
@@ -55,10 +58,10 @@ unchanged. See *Optional modules*.
   downward thermal flux, since the thermal opacity is the wrong absorber for sunlight — with a
   cos(latitude) distribution whose global mean is S(1−A)/4 ≈ 8.3 W/m² against an observed ~8.5.
 - **Turbulence:** k-ε (Chien 1982), k-ω (Wilcox 1988) and k-ω SST (Menter 1994), selected by the
-  `turb_model` parameter. k and ω are prognostic, integrated with a positivity-preserving Patankar
-  splitting; the eddy viscosity can be fed back into the momentum, heat and species diffusion.
-  Turbulent *transport* of k and ω is not yet included, so apart from the SST cross-diffusion term
-  they evolve locally.
+  `turb_model` parameter. k and ω are prognostic members of the Runge-Kutta system, so they see the
+  same advection, turbulent diffusion and four-stage integration as temperature and the species; the
+  eddy viscosity can be fed back into the momentum, heat and species diffusion. The production
+  tensor is the full nine-term τ:∇u in the orthonormal spherical basis, curvature terms included.
 
 ---
 
@@ -181,12 +184,94 @@ variable to enable.
 | `ATJUP_BC_RIGID_LID` | 1 | u = 0 at both radial walls |
 | `ATJUP_BC_TOP_TAPER` | 1 | taper v, w to zero over the top three layers |
 | `ATJUP_BC_POLE_COPY` | 1 | plain copy instead of extrapolation at the poles |
+| `ATJUP_R_NH3_ADD` | *param* | deep well-mixed NH₃ density [kg/m³] |
+
+**Geometry, scaling and the obstacle**
+
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `ATJUP_METRIC_RADIUS` | 0 (off) | planetary radius [km] for the metric terms — see *Geometry* below |
+| `ATJUP_SINTHE_MIN` | 0.55 | polar floor on sin θ; 0.55 means the floor is active poleward of 56.6° |
+| `ATJUP_WALL_NUE` | 4 | wall eddy viscosity at the obstacle, in multiples of 1/re; 0 disables |
+| `ATJUP_WALL_NUE_LAYERS` | 3 | its ramp depth in cells |
+| `ATJUP_LOCAL_RHO` | 0 | use the local density instead of the constant r_mix in q_sat, latent heat and the Lewis groups |
+| `ATJUP_BUOY_SCALE` | 1 | buoyancy scale; 1.4e6 is the dimensionally consistent value — see *Scaling* |
+| `ATJUP_BUOY_RAMP_ITERS` | 0 | ramp the buoyancy in linearly over n iterations |
+| `ATJUP_PGRAD_SCALE` | 1 | pressure-gradient scale; 7.79 is the consistent value |
+| `ATJUP_PRESS_WALL` | 1 | dp/dn = 0 at the obstacle in the Poisson stencil |
+| `ATJUP_PRESS_SWEEPS` | 1 | relaxation sweeps of the pressure equation per call |
+| `ATJUP_TURB_CURV` | 1 | spherical curvature terms in the turbulence production |
+| `ATJUP_COSTHE_ABS` | 0 | restore the old, non-reversing cos θ (diagnostic only) |
+| `ATJUP_NO_SEAMOUNT` | 0 | build no obstacle at all (diagnostic) |
+| `ATJUP_BC_RADIUS_COPY` | 0 | plain copy instead of extrapolation at the radial walls (diagnostic) |
+| `ATJUP_NO_CLAMP` | 0 | disable the zero floor on the species |
+
+**Diagnostics**
+
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `ATJUP_WPROFILE` | 0 | every n iterations, print max **and** area-weighted mean of u,v,w per radial level |
+| `ATJUP_PROBE` | — | `"i,j,k"`: term-by-term momentum budget of one cell, all four RK stages |
+| `ATJUP_NANCHECK` | 0 | per-iteration census of non-finite cells, by field and index extent |
+| `ATJUP_FPE` | 0 | trap floating-point exceptions (use with gdb) |
+
+The first two are what the geometry and obstacle findings below were measured with. `ATJUP_WPROFILE`
+pairs the level maximum with the level mean deliberately: a single global extremum cannot tell a
+local artifact from a domain-wide source, and that distinction settled the obstacle question.
 
 `ATJUP_RAD_COUPLING` deserves a note. **1.0 is the physically correct value** — the expression is
 the exact nondimensional form of dT/dt = Q/(ρ·cₚ) under this model's scaling. But the timestep is
 only ~1.4 s of Jupiter time against a radiative relaxation time of ~10⁷ s, so radiative
 equilibration needs on the order of 10⁶ iterations. Larger values are a deliberate **acceleration
 factor**, not a correction, and they distort the ratio of radiative to advective timescales.
+
+---
+
+## Geometry and scaling — read this before interpreting a run
+
+Two structural issues run through the momentum equation. Both are opt-in rather than fixed, because
+each is a modelling decision with measured consequences, and neither can be repaired term by term.
+
+**The metric radius.** `rad.z` is built as r₀ = 1.0 with dr = 0.025, so it spans 1.0 to 2.0 across
+the shell — while that same dr means one radial step is L_atm/40 = 3.5 km. One number is doing two
+incompatible jobs: a vertical grid spacing scaled by L_atm, and the planetary radius that enters
+every horizontal metric factor. Jupiter's radius over L_atm is 69911/140 ≈ 499, so every horizontal
+derivative is ~500× larger than the geometry warrants and every horizontal Laplacian term 250000×.
+`ATJUP_METRIC_RADIUS=69911` gives `rad.z` its geometric meaning; dr is untouched, so the vertical
+grid is unchanged and only the curvature moves. The convention is inherited from ATOM, which builds
+`rad` identically — this is not specific to ATJUP.
+
+It matters in practice. A fluid cell beside the staircase flank of the SeaMount accelerates without
+bound through advective self-amplification, −w ∂w/∂φ growing linearly in w, until the run overflows
+around iteration 320. The geometry cuts that driving term by a factor 310 and slows the growth
+about sixfold; the wall eddy viscosity (`ATJUP_WALL_NUE`) holds the remainder. Together they give a
+run whose maximum vertical velocity *falls* over 500 iterations instead of running away. The
+circulation is not otherwise retuned: level means agree within a few percent.
+
+**The body forces are effectively switched off.** `rhs_u` is nondimensional in units of u₀²/L_atm =
+0.0714 m/s², but its body-force terms were never converted into those units, each falling short by a
+different factor: buoyancy 1.4e6, Coriolis L/u₀ = 1400, centrifugal L/u₀² = 14, pressure gradient
+1e5/(r_mix·u₀²) = 7.79. Measured at the probe, the Coriolis contribution is ~1e-4 where consistent
+scaling gives ~0.067. The centrifugal force is not small physically — Ω²R = 2.17 m/s² at the
+equator, 8.4 % of gravity, the force that gives the planet its oblateness — it is simply not being
+felt.
+
+Raising them one at a time does not work, and the measurement is unambiguous: buoyancy at its
+consistent value alone drives the radial velocity from 38 to 1535 m/s in 150 iterations, and adding
+the pressure gradient's own factor makes it worse, not better. The momentum equation, the Poisson
+equation and the projection are one system — the solver builds p_dyn from the unscaled divergence
+relation, so scaling only the gradient returns an overshoot rather than a balance. Activating the
+buoyancy requires one coherent nondimensionalisation across all three. `Forces()`, by contrast, is
+dimensionally correct as it stands: it is a diagnostic force **density** in N/m³, a different unit
+system from the prognostic equation, which is why it carries a 1e5 that `rhs_u` does not.
+
+**The polar metric floor.** sin θ is held at `ATJUP_SINTHE_MIN` = 0.55 so that 1/sin and 1/sin²
+stay bounded, which means the metric is distorted poleward of 56.6° latitude — 16.5 % of the
+sphere. It is a real stability measure, not an oversight: lowering it to 0.15 in the original
+geometry produces a non-finite state within 150 iterations, with the entire difference in the polar
+caps. With `ATJUP_METRIC_RADIUS` set, the two values become indistinguishable, because the terms the
+floor protects are damped by the radius. Lowering the floor is therefore safe only in that
+geometry, and 150 iterations is not yet enough evidence to make it the default.
 
 ---
 
@@ -226,10 +311,17 @@ model.turb_model = b"k_omega_SST"
 
 Output is written as VTK for ParaView: a panorama `.vts` plus radial, meridional and longitudinal
 cuts. Alongside the dynamical fields these carry the radiation, precipitation and turbulence
-diagnostics, including an all-species surface precipitation map. Several fields are written in
-scaled units with the unit in the field name — `P_rain_mmd` in mm/day, `Q_rad_mW_m3` in mW/m³,
-`nue_t_m2s` in m²/s — because the VTK writers use fixed-point output with four decimals, in which
-the raw SI values would round to zero.
+diagnostics, including an all-species surface precipitation map.
+
+Several fields are written in **scaled units** because the VTK writers use fixed-point output with
+four decimals, in which the raw SI values would round to zero: the precipitation fluxes `P_*` and
+`PrecipSrf_*` in mm/day, `Q_rad` and `Q_precip` in mW/m³, `nue_t` in m²/s, `tke` in m²/s².
+The field *names* no longer carry the unit — read this list, not the label.
+
+The condensable species (`h2o`, `nh3`, `ch4`, `h2s`, `nh4sh` and their cloud/ice partners) are mass
+**densities** in kg/m³, not mixing ratios. The model had held both readings at once; the density one
+is what the initial condition, the microphysics and the sedimentation all assume, and the printout
+and the radiative opacity were brought into line with it.
 
 ---
 
