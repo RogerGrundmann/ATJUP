@@ -623,6 +623,12 @@ private:
     bool nan_watch(int iter);               // ATJUP_NANCHECK: report the first non-finite cell, by field name
     void momentum_profile(int iter);        // ATJUP_WPROFILE: per-radial-level census of u,v,w
 
+    // Zero floor for the condensable species, with accounting — see FileIO_Jup.cpp.
+    void clampNegativeSpecies();
+    void reportClampBudget();
+    std::vector<double> clamp_added;        // cumulative mass added by the floor, per field
+    std::vector<long>   clamp_cells;        // cumulative number of clipped cells, per field
+
     void BC_phi();
     void BC_radius();
     void BC_theta();

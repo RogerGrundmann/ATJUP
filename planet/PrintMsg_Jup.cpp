@@ -143,6 +143,8 @@ void cJupiterModel::printMinMax(){
         }
     }
     cout << endl << endl;
+
+    reportClampBudget();
 }
 /*
 *

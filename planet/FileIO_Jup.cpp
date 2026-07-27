@@ -391,6 +391,106 @@ void cJupiterModel::momentum_profile(int iter){
     }
 }
 
+// Floor the condensable species at zero, and keep the books on what that costs.
+//
+// A negative concentration has no meaning, and the fields do go slightly negative: the central
+// differences of the transport terms undershoot wherever a species has a sharp edge, and the
+// (4/3,-1/3) extrapolation at the radial boundary planes undershoots a field that is already
+// essentially zero there. Measured at iteration 200 the clipped amount is small enough that a
+// plain floor is the right answer rather than a mass-conserving filler:
+//
+//   nh4sh      0.017 % of the positive mass, 125418 cells
+//   nh3_cloud  0.0013 %      nh3_ice 0.0009 %      h2o_ice 0.0001 %
+//   h2o, h2s, ch4 and the ch4 condensates: zero or a handful of cells at 1e-11
+//
+// and 96 % of those nh4sh cells sit on the two radial boundary planes i=0 and i=40, where the
+// field is 1e-16 and smaller — they are extrapolation noise, not transport undershoot. The
+// genuine interior ones cluster at i=10, the widest flank of the obstacle.
+//
+// A floor is in principle a mass SOURCE, so the clipped amount is accumulated per field and
+// reported next to printMinMax rather than left invisible. Read that report as GROSS clipping,
+// not as net mass gained: h2o_cloud accumulates 19.6 % of its own mass in 50 iterations, which
+// looks alarming and is not, because SaturationAdjustmentJup re-partitions vapour and condensate
+// on the next pass and gives it straight back. Verified by running the same 200 iterations with
+// and without the floor and summing h2o + h2o_cloud + h2o_ice:
+//
+//   floor on   total water  3.3293e4 -> 3.2436e4   (-2.573 % over 100 iterations)
+//   floor off  total water  3.3279e4 -> 3.2432e4   (-2.545 %)
+//
+// i.e. the two budgets agree to 0.03 percentage points, while h2o_cloud's minimum goes from
+// -5.07e-4 to exactly 0. The floor buys a clean field for the price of nothing measurable.
+// What the counter is FOR is the day that stops being true. ATJUP_NO_CLAMP=1 turns it off.
+void cJupiterModel::clampNegativeSpecies(){
+    static const int off = [](){ const char* e = getenv("ATJUP_NO_CLAMP"); return e ? atoi(e) : 0; }();
+    if(off) return;
+
+    Array* fields[] = {
+        &h2o, &h2o_cloud, &h2o_ice,
+        &h2s,
+        &nh3, &nh3_cloud, &nh3_ice,
+        &ch4, &ch4_cloud, &ch4_ice,
+        &nh4sh };
+    const int nf = (int)(sizeof(fields) / sizeof(fields[0]));
+
+    if((int)clamp_added.size() != nf){
+        clamp_added.assign(nf, 0.0);
+        clamp_cells.assign(nf, 0);
+    }
+
+    for(int f = 0; f < nf; f++){
+        Array& F = *fields[f];
+        double added = 0.0;
+        long   cells = 0;
+        #pragma omp parallel for collapse(2) schedule(static) reduction(+:added,cells)
+        for(int i = 0; i < im; i++){
+            for(int j = 0; j < jm; j++){
+                for(int k = 0; k < km; k++){
+                    const double v = F.x[i][j][k];
+                    // Written as !(v >= 0.0) so a NaN is caught here too rather than carried on.
+                    if(!(v >= 0.0)){
+                        if(std::isfinite(v)){ added -= v; cells++; }
+                        F.x[i][j][k] = 0.0;
+                    }
+                }
+            }
+        }
+        clamp_added[f] += added;
+        clamp_cells[f] += cells;
+    }
+}
+
+// Companion report, called from printMinMax so it shares the checkpoint cadence.
+void cJupiterModel::reportClampBudget(){
+    static const char* const names[] = {
+        "h2o","h2o_cloud","h2o_ice","h2s","nh3","nh3_cloud","nh3_ice",
+        "ch4","ch4_cloud","ch4_ice","nh4sh" };
+    const int nf = (int)(sizeof(names)/sizeof(names[0]));
+    if((int)clamp_added.size() != nf) return;
+
+    Array* fields[] = {
+        &h2o, &h2o_cloud, &h2o_ice, &h2s, &nh3, &nh3_cloud, &nh3_ice,
+        &ch4, &ch4_cloud, &ch4_ice, &nh4sh };
+
+    bool any = false;
+    for(int f = 0; f < nf; f++) if(clamp_cells[f] > 0) any = true;
+    if(!any) return;
+
+    printf("\n      ATJUP: negative-value clamp, cumulative since start\n");
+    for(int f = 0; f < nf; f++){
+        if(clamp_cells[f] == 0) continue;
+        double pos = 0.0;
+        #pragma omp parallel for collapse(2) schedule(static) reduction(+:pos)
+        for(int i = 0; i < im; i++)
+            for(int j = 0; j < jm; j++)
+                for(int k = 0; k < km; k++)
+                    if(fields[f]->x[i][j][k] > 0.0) pos += fields[f]->x[i][j][k];
+        printf("        %-12s gross %.4e over %10ld clippings = %8.4f %% of the current"
+               " field mass (gross, not net — see the note in FileIO_Jup.cpp)\n",
+               names[f], clamp_added[f], clamp_cells[f],
+               (pos > 0.0) ? 100.0 * clamp_added[f] / pos : 0.0);
+    }
+}
+
 void cJupiterModel::save_state(int iter){
     const string fn = output_path + "/jup_restart_" + std::to_string(iter) + ".bin";
     std::ofstream f(fn, std::ios::binary);

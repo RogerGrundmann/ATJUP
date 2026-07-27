@@ -498,6 +498,12 @@ void cJupiterModel::Run(){
             JupiterUtils::damp_wiggles_ho(w, &i_topography, true, true, true, s, shapiro_vel_inloop());
         }
 
+        // Floor the species at zero before the n-level copies are refreshed, so the clamped
+        // values are what the next Runge-Kutta step starts from. Runs after the Shapiro pass,
+        // which can itself undershoot at a sharp cloud edge. See FileIO_Jup.cpp for the
+        // measurement that says a plain floor is enough here.
+        clampNegativeSpecies();
+
         restoreVar(1.0);
 
         panorama_cnt++;
