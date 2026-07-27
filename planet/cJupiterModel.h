@@ -300,7 +300,32 @@ private:
     double r_h2o = 0.09;                                                // density of water vapour in kg/m³
     double r_nh4sh = 0.000;                                             // density of ammonium hydrosulfide vapour in kg/m³  assumption
 
-    double r_nh3_add = 0.0001;                                          // density of ammonia vapour in kg/m³
+    // Deep, WELL-MIXED ammonia below the condensation level. init_vapour_cloud_ice uses it for
+    // every cell warmer than t_add (= t_0_nh3), and the saturation profile capped at r_nh3
+    // everywhere above; so this value is the deep plateau and r_nh3 is the ceiling aloft.
+    //
+    // It was 0.0001, i.e. FORTY TIMES BELOW r_nh3 = 0.004, which inverted the profile: NH3 sat
+    // at 8.3e-5 from i=0 to i=12 and then rose 40x to the 3.5e-3 cap at i=22 (77 km), a vapour
+    // MAXIMUM above the cloud deck. On Jupiter NH3 is well mixed at depth and decreases upward
+    // through the NH4SH and NH3 decks, so the profile ran the wrong way round. The consequence
+    // was measurable: NH4SH forms exactly at the crossing, i=12..13, where the 40x gradient puts
+    // the whole ammonia reservoir in one pair of layers, and the field peaked at 0.33 g/m3 there
+    // with NH3 locally drawn down from 8.5e-5 to 1.3e-5.
+    //
+    // The reference block above this one (Planetary Sciences p. 90) has the relation the right
+    // way round, r_nh3_add = 0.09 against r_nh3 = 0.04, a factor 2.25. That ratio is carried over
+    // to the abundance scale of the active block rather than importing the absolute reference
+    // values, which would change far more than the profile shape. With r_nh3_add >= r_nh3 the
+    // initial profile is monotonically non-increasing upward by construction: constant
+    // r_nh3_add while t > t_add, then min(saturation, r_nh3) <= r_nh3 <= r_nh3_add.
+    //
+    // Override at runtime with ATJUP_R_NH3_ADD [kg/m3] to A/B the deep abundance without a
+    // rebuild; 0 or unset keeps the value below.
+    double r_nh3_add = [](){
+        const char* e = getenv("ATJUP_R_NH3_ADD");
+        const double v = e ? atof(e) : 0.0;
+        return (v > 0.0) ? v : 0.009;
+    }();                                                                // density of ammonia vapour in kg/m³
 
 // vapour mass densities of clouds and ices               Planetary sciences p. 90 2010
     double r_nh3_cloud = 0.004;                                         // density of ammonia cloud in kg/m³
