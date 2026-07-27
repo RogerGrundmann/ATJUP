@@ -716,7 +716,11 @@ void cJupiterModel::paraview_sphere_vts(int n){
         for(int j = 0; j < jm; j++){
             sinthe = sin(the.z[j]);
             costhe = cos(the.z[j]);
-            if(j > 90) costhe = - costhe;
+            // Fourth and last site of the hemispheric cosine flip; see cJupiterModel.h::
+            // costhe_abs. Dead code today — the only caller of paraview_sphere_vts is
+            // commented out in FileIO_Jup.cpp — but left inconsistent it would reappear
+            // as a silent southern-hemisphere error the day the sphere writer is used.
+            if(costhe_abs() && j > 90) costhe = - costhe;
             for(int i = 0; i < im; i++){
                 aux_u.x[i][j][k] = sinthe * cosphi * u.x[i][j][k] + costhe * cosphi * v.x[i][j][k] - sinphi * w.x[i][j][k];
                 aux_v.x[i][j][k] = sinthe * sinphi * u.x[i][j][k] + sinphi * costhe * v.x[i][j][k] + cosphi * w.x[i][j][k];
