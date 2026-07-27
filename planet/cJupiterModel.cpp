@@ -402,6 +402,7 @@ void cJupiterModel::Run(){
 //    goto Printout;
 
     Forces();
+    computeMixtureDensity();
     Latent_Heat();
     init_PressureDynamic();
 
@@ -464,6 +465,12 @@ void cJupiterModel::Run(){
 
         PressureSolverJup(*this).run();
         JupiterUtils::damp_wiggles(p_dyn, &i_topography, true, true, true);
+
+        // Refresh the local mixture density FIRST, so the saturation adjustment, the
+        // precipitation microphysics and the Lewis groups all see a rho built from the p_dyn and
+        // t of this block rather than the previous one. Only matters with ATJUP_LOCAL_RHO set,
+        // but the ordering should be right either way.
+        computeMixtureDensity();
 
         if(radiation_enabled()) RadiationJup(*this).run();
 

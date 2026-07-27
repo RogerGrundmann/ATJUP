@@ -614,6 +614,10 @@ private:
     // Fills wall_nue from the SeaMount contour. Call once, after bcSeaMount().
     void computeWallViscosity();
 
+    // Local mixture density rho = p/(R_mix*T); call with Forces(). See InitValues_Jup.cpp.
+    void computeMixtureDensity();
+
+
     // Binary checkpoint / restart of the full 3D state (FileIO_Jup.cpp), the ATJUP
     // counterpart of ATOM's cAtmosphereModel::save_state / load_state.
     std::vector<Array*> restart_arrays();   // the prognostic 3D fields a checkpoint serializes

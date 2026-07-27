@@ -339,6 +339,41 @@ void cJupiterModel::init_PressureStatic(){
 // ============================================================================
 // Body-Force Fields (Coriolis, Centrifugal, Buoyancy, Pressure-Gradient)
 // ============================================================================
+// Local density of the gas mixture, rho = p/(R_mix*T) — the ideal gas law, with p converted
+// from bar to Pa exactly as the buoyancy expression in Forces() does it.
+//
+// It was NEVER COMPUTED. resetArrays initialises rho_mix twice, to 0.0 and then to 1.0, and no
+// line anywhere in the model assigns to it again — the only occurrence of rho_mix.x[][][] in the
+// whole codebase is a READ, in the NH4SH Stokes settling velocity in RHS_Jup_Turb.cpp. So the
+// field sat at exactly 1.0 kg/m3 in every cell for the entire run, which is what a zonal slice
+// at iteration 200 showed: min = max = mean = 1.000000 over all 7421 cells.
+//
+// The consequence for the physics was small, which is why it survived: the settling velocity
+// goes as (rg_nh4sh - rho_mix) with rg_nh4sh = 1170 kg/m3, so using 1.0 instead of the true
+// 0.1..1.3 kg/m3 was at most a 0.1 % error there. The consequence for anyone LOOKING at the
+// model was not small — rho_mix is written to all three ParaView slices, where it was a flat
+// constant masquerading as a computed field.
+//
+// Placed next to Forces() and called with it, so it shares the physics-block cadence and is
+// consistent with the p_stat and t it is built from. Whole grid, boundaries included, unlike
+// Forces() itself, since nothing here needs neighbours.
+void cJupiterModel::computeMixtureDensity(){
+    #pragma omp parallel for collapse(2) schedule(static)
+    for (int i = 0; i < im; i++) {
+        for (int j = 0; j < jm; j++) {
+            for (int k = 0; k < km; k++) {
+                const double T = t.x[i][j][k] * t_ref;
+                // Same guard as the buoyancy: a cell without a positive temperature has no
+                // density. Written !(T > 0) so a NaN lands here instead of propagating.
+                if (!(T > 0.0)) { rho_mix.x[i][j][k] = 0.0; continue; }
+                const double p_pa = (p_stat.x[i][j][k] + p_dyn.x[i][j][k]) * 1.0e5;
+                const double rho  = p_pa / (R_mix * T);
+                rho_mix.x[i][j][k] = std::isfinite(rho) ? rho : 0.0;
+            }
+        }
+    }
+}
+
 void cJupiterModel::Forces(){
     std::cout << "\n\n\n      ATJUP: Forces" << std::endl;
 
