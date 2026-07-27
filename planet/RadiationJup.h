@@ -182,18 +182,30 @@ inline void RadiationJup::run(){
                 // CIA layer optical depth  tau_cia = cia_coeff * (P/T) * dP   (tau ∝ P^2/T).
                 const double tau_cia = (T > 0.0) ? cia_coeff * (P_mean / T) * dP : 0.0;
 
-                // CH4/NH3 gas band optical depth  = kappa * q * dm.
-                const double q_ch4 = (m.ch4.x[i][j][k] > 0.0) ? m.ch4.x[i][j][k] : 0.0;
-                const double q_nh3 = (m.nh3.x[i][j][k] > 0.0) ? m.nh3.x[i][j][k] : 0.0;
+                // CH4/NH3 gas band optical depth = kappa[m2/kg] * q * dm[kg/m2], which needs q
+                // as a DIMENSIONLESS mass mixing ratio. The species fields are mass DENSITIES in
+                // kg/m3 (see the units note at the top of printMinMax), so they are divided by
+                // the local mixture density here. Before this they were fed in raw, i.e. a
+                // density where a mixing ratio belongs, which understated tau wherever rho < 1 —
+                // by a factor ~3 at the cloud decks and ~170 near the top of the shell.
+                //
+                // NOTE FOR RECALIBRATION: opac_cal = 0.25 was tuned against the old, wrong
+                // quantity. ATJUP_OPACITY_STRENGTH is the lever if the photosphere level needs
+                // to be brought back.
+                const double rho_c = m.rho_mix.x[i][j][k];
+                const double inv_rho = (rho_c > 0.0 && std::isfinite(rho_c)) ? 1.0 / rho_c : 0.0;
+                const double q_ch4 = std::max(0.0, m.ch4.x[i][j][k]) * inv_rho;
+                const double q_nh3 = std::max(0.0, m.nh3.x[i][j][k]) * inv_rho;
                 const double tau_gas = opac_mult * opac_cal * (kappa_ch4 * q_ch4 + kappa_nh3 * q_nh3) * dm;
 
                 // Cloud/ice continuum optical depth (all three condensing species), capped.
-                const double q_liq = std::max(0.0, m.h2o_cloud.x[i][j][k])
-                                   + std::max(0.0, m.nh3_cloud.x[i][j][k])
-                                   + std::max(0.0, m.ch4_cloud.x[i][j][k]);
-                const double q_ice = std::max(0.0, m.h2o_ice.x[i][j][k])
-                                   + std::max(0.0, m.nh3_ice.x[i][j][k])
-                                   + std::max(0.0, m.ch4_ice.x[i][j][k]);
+                // Same conversion as the gas bands: densities -> mixing ratios.
+                const double q_liq = (std::max(0.0, m.h2o_cloud.x[i][j][k])
+                                    + std::max(0.0, m.nh3_cloud.x[i][j][k])
+                                    + std::max(0.0, m.ch4_cloud.x[i][j][k])) * inv_rho;
+                const double q_ice = (std::max(0.0, m.h2o_ice.x[i][j][k])
+                                    + std::max(0.0, m.nh3_ice.x[i][j][k])
+                                    + std::max(0.0, m.ch4_ice.x[i][j][k])) * inv_rho;
                 double tau_cloud = opac_mult * opac_cal * (kappa_cloud * q_liq + kappa_ice * q_ice) * dm;
                 if(tau_cloud > tau_cloud_cap) tau_cloud = tau_cloud_cap;
 
