@@ -299,6 +299,7 @@ private:
     double r_h2s = 0.0004;                                              // density of hydrogen sulfide vapour in kg/m³
     double r_h2o = 0.09;                                                // density of water vapour in kg/m³
     double r_nh4sh = 0.000;                                             // density of ammonium hydrosulfide vapour in kg/m³  assumption
+
     double r_nh3_add = 0.0001;                                          // density of ammonia vapour in kg/m³
 
 // vapour mass densities of clouds and ices               Planetary sciences p. 90 2010
@@ -592,6 +593,7 @@ private:
     bool load_state(int iter);              // restore them; false (and run from scratch) if absent/mismatched
     bool restart_state_is_clean();          // true when every serialized field is finite everywhere
     bool nan_watch(int iter);               // ATJUP_NANCHECK: report the first non-finite cell, by field name
+    void momentum_profile(int iter);        // ATJUP_WPROFILE: per-radial-level census of u,v,w
 
     void BC_phi();
     void BC_radius();

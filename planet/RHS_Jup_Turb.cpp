@@ -722,6 +722,38 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
         + diffusion_w * (1.0 / re + nue_t)
         - Coriolis    * Coriolis_phi;
 
+    // ---- Single-cell momentum budget probe (ATJUP_PROBE="i,j,k", off by default) ----
+    // The secular growth of max|w| is anchored to ONE fluid cell beside the staircase flank of
+    // the SeaMount cone, so the question "which term feeds it" is answerable by printing the
+    // terms of that one cell. Fires on all four RK4 stages, which also shows whether a term is
+    // steady through the step or oscillating between stages. Velocities are in m/s, the terms
+    // are left nondimensional: multiplied by dt they are the increment per stage.
+    {
+        static const bool probe_on = getenv("ATJUP_PROBE") != nullptr;
+        if(probe_on){
+            static int pi = -1, pj = -1, pk = -1;
+            static bool parsed = false;
+            if(!parsed){ sscanf(getenv("ATJUP_PROBE"), "%d,%d,%d", &pi, &pj, &pk); parsed = true; }
+            if(i == pi && j == pj && k == pk){
+                printf("      PROBE %4d  w=%9.3f u=%9.3f v=%9.3f | rhs_w=%11.4f"
+                       " dpdphi=%11.4f transp=%11.4f diff=%11.4f cor=%11.4f | nue_t=%.3e\n",
+                       iter_n, w_ijk * u_0, u_ijk * u_0, v_ijk * u_0, rhs_w.x[i][j][k],
+                       -dpdphi_term, -transport_w, diffusion_w * (1.0 / re + nue_t),
+                       -Coriolis * Coriolis_phi, nue_t);
+                // Advection broken into its four pieces: the three directional derivatives and
+                // the spherical metric group. Which one carries the +4 tells the difference
+                // between "the flow really accelerates round the flank" (r/theta/phi advection)
+                // and "the curvature terms are unbalanced at the wall" (metric).
+                printf("      PROBEADV %4d  u*dwdr=%11.4f  v/r*dwdthe=%11.4f"
+                       "  w/(r sin)*dwdphi=%11.4f  metric=%11.4f | dwdr=%10.3f dwdthe=%10.3f"
+                       " dwdphi=%10.3f\n",
+                       iter_n, u_ijk * dwdr, v_invrm * dwdthe, w_invrs * dwdphi,
+                       (w_ijk * u_ijk + v_ijk * w_ijk * cotanthe) * inv_rm,
+                       dwdr, dwdthe, dwdphi);
+            }
+        }
+    }
+
     rhs_h2o.x[i][j][k] =
         - transport_h2o
         + diffusion_h2o * (1.0 / (sc_h2o * re) + nue_t_s);

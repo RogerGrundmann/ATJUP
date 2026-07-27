@@ -82,6 +82,15 @@ namespace BCJupKnobs {
     inline int top_taper()  { static const int v = env_int("ATJUP_BC_TOP_TAPER", 1); return v; }
     // (3) plain copy instead of (4/3,-1/3) extrapolation at the poles.
     inline int pole_copy()  { static const int v = env_int("ATJUP_BC_POLE_COPY", 1); return v; }
+    // (7) Radial boundary: plain copy f[0]=f[1], f[im-1]=f[im-2] instead of the (4/3,-1/3)
+    // extrapolation. DIAGNOSTIC KNOB, default 0 (off). The two agree for a flat profile, but on
+    // a profile that varies across the wall the 2-point form overshoots by 1/3 of the interior
+    // increment, and the deep-level w growth that ends the long runs sits exactly at i = 0..2.
+    // Running with 1 turns the overshoot off without touching anything else, which separates a
+    // boundary artifact from a genuine missing momentum sink. It is deliberately NOT the default:
+    // the copy is only first-order accurate and would degrade every transported field.
+    inline int radius_copy(){ static const int v = env_int("ATJUP_BC_RADIUS_COPY", 0); return v; }
+
     // (4) number of 1-2-1 Shapiro passes across the phi seam. DEFAULT 0 (off): unlike the
     // others this one is NOT supported by ATJUP evidence. A direct zonal-roughness measurement
     // at iteration 100 found the seam SMOOTHER than the interior wherever real dynamics exist
@@ -162,6 +171,7 @@ inline void BC_Jup::bcRadius()
     const int iml = im - 1;
     const bool do_lid   = BCJupKnobs::rigid_lid()  != 0;
     const bool do_taper = BCJupKnobs::top_taper()  != 0;
+    const bool do_copy  = BCJupKnobs::radius_copy() != 0;   // (7) diagnostic: drop the overshoot
 
     // --- (6) Lid temperature pin (opt-in; see the knob note above for why it is off by
     // default and why ATJUP's cold top is an IC problem, not a boundary one). ---
@@ -184,8 +194,13 @@ inline void BC_Jup::bcRadius()
         for(int k = 0; k < km; k++){
             for(int f = 0; f < nf; f++){
                 Array& F = *fields[f];
-                F.x[0][j][k]    = c43*F.x[1][j][k]    - c13*F.x[2][j][k];
-                F.x[im-1][j][k] = c43*F.x[im-2][j][k] - c13*F.x[im-3][j][k];
+                if(do_copy){
+                    F.x[0][j][k]    = F.x[1][j][k];
+                    F.x[im-1][j][k] = F.x[im-2][j][k];
+                }else{
+                    F.x[0][j][k]    = c43*F.x[1][j][k]    - c13*F.x[2][j][k];
+                    F.x[im-1][j][k] = c43*F.x[im-2][j][k] - c13*F.x[im-3][j][k];
+                }
             }
 
             // --- (1) Rigid walls on the RADIAL velocity u at both radial boundaries. ---
@@ -433,7 +448,14 @@ inline void BC_Jup::bcSeaMount()
     const int k_0 = 180;
     const int i_0 = 35;
 
-    for(int i = 0; i < i_0; i++){
+    // DIAGNOSTIC KNOB, default off: build no obstacle at all, leaving a smooth spherical
+    // shell. The secular growth of max|w| is anchored to a single fluid cell two cells
+    // outside the staircase flank of this cone, so a run without the cone is the control
+    // that separates "the obstacle edge makes it" from "the momentum budget makes it".
+    // i_topography is still filled below, all zeros, so every consumer stays valid.
+    const bool no_mount = BCJupKnobs::env_int("ATJUP_NO_SEAMOUNT", 0) != 0;
+
+    for(int i = 0; !no_mount && i < i_0; i++){
         if(i <= 10) a = b = im-1;
         for(int k = k_0-a; k <= k_0+a; k++){
             for(int j = j_0-b; j <= j_0+b; j++){

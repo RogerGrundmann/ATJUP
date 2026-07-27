@@ -517,6 +517,13 @@ void cJupiterModel::Run(){
         // Per-iteration NaN watch (opt-in, ATJUP_NANCHECK=1): reports the first iteration at
         // which any prognostic field goes non-finite, naming the field and the cell. Costs a
         // full sweep of the restart arrays per iteration, so it is off by default.
+        // Per-level momentum census (opt-in, ATJUP_WPROFILE=<stride>): every <stride>
+        // iterations, print max and area-weighted mean of u,v,w for each radial level. Used to
+        // decide whether the secular growth of the zonal wind is made at the radial boundary or
+        // throughout the column — see momentum_profile() in FileIO_Jup.cpp.
+        static const int wprof = [](){ const char* e = getenv("ATJUP_WPROFILE"); return e ? atoi(e) : 0; }();
+        if(wprof > 0 && (iter_n % wprof == 0 || iter_n == iter_start)) momentum_profile(iter_n);
+
         static const int nan_check = [](){ const char* e = getenv("ATJUP_NANCHECK"); return e ? atoi(e) : 0; }();
         if(nan_check){
             static bool still_clean = true;

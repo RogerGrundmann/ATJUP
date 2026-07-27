@@ -344,6 +344,53 @@ bool cJupiterModel::nan_watch(int iter){
     return !any;
 }
 
+// Per-radial-level momentum census (ATJUP_WPROFILE=<stride>, 0 = off).
+//
+// printMinMax only reports ONE global extremum per field, which cannot distinguish a
+// boundary artifact from a domain-wide momentum source: both look like "max|w| is growing".
+// This prints, for every level i, the level maximum and the area-weighted level mean of each
+// velocity component, so the VERTICAL STRUCTURE of the growth is visible:
+//   growth confined to i = 1..3      -> the radial boundary treatment is making it,
+//   growth at every level together   -> the momentum budget has no sink and it is physical.
+// The level mean is the discriminating number: an extrapolation artifact raises the extremum
+// near the wall without moving the layer's mean momentum, a missing sink raises both.
+//
+// One line per level, prefixed WPROF and space-separated, so a run log can be reduced with
+// grep/awk without parsing the surrounding report. Velocities are printed in m/s.
+void cJupiterModel::momentum_profile(int iter){
+    printf("      ATJUP: ===== MOMENTUM PROFILE at iteration %d =====\n", iter);
+    printf("      WPROF iter    i   z[km]     max|u|     max|v|     max|w|"
+           "      <u>        <v>        <w>      rms(w)   jmax kmax\n");
+
+    for(int i = 0; i < im; i++){
+        double mu = 0.0, mv = 0.0, mw = 0.0;
+        double su = 0.0, sv = 0.0, sw = 0.0, sww = 0.0, wsum = 0.0;
+        int bj = -1, bk = -1;
+
+        for(int j = 0; j < jm; j++){
+            const double wgt = sin(the.z[j]);          // spherical area weight, as in computeBuoyancyRefLevel
+            for(int k = 0; k < km; k++){
+                if(SeaMount.x[i][j][k] == 1.0) continue;      // solid cell: not part of the fluid budget
+                const double uu = u.x[i][j][k], vv = v.x[i][j][k], ww = w.x[i][j][k];
+                if(!std::isfinite(uu) || !std::isfinite(vv) || !std::isfinite(ww)) continue;
+                if(fabs(uu) > mu) mu = fabs(uu);
+                if(fabs(vv) > mv) mv = fabs(vv);
+                if(fabs(ww) > mw){ mw = fabs(ww); bj = j; bk = k; }
+                su   += wgt * uu;
+                sv   += wgt * vv;
+                sw   += wgt * ww;
+                sww  += wgt * ww * ww;
+                wsum += wgt;
+            }
+        }
+        const double n = (wsum > 0.0) ? wsum : 1.0;
+        printf("      WPROF %4d %4d %7.2f %10.3f %10.3f %10.3f %10.4f %10.4f %10.4f %10.4f %5d %5d\n",
+               iter, i, get_layer_height(i) , mu * u_0, mv * u_0, mw * u_0,
+               (su / n) * u_0, (sv / n) * u_0, (sw / n) * u_0,
+               sqrt(sww / n) * u_0, bj, bk);
+    }
+}
+
 void cJupiterModel::save_state(int iter){
     const string fn = output_path + "/jup_restart_" + std::to_string(iter) + ".bin";
     std::ofstream f(fn, std::ios::binary);
