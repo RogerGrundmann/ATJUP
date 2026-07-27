@@ -125,7 +125,7 @@ void cJupiterModel::RungeKuttaJup(){
             geo.sinthe  = sinthe_tbl[j];
             geo.sinthe2 = geo.sinthe * geo.sinthe;
             geo.costhe  = costhe_tbl[j];
-            if(j > 90) geo.costhe = -geo.costhe;
+            if(costhe_abs() && j > 90) geo.costhe = -geo.costhe;
             geo.cotanthe            = geo.costhe / geo.sinthe;
             geo.inv_rm              = 1.0 / geo.rm;
             geo.inv_rm2             = 1.0 / geo.rm2;

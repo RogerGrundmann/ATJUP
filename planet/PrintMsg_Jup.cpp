@@ -342,7 +342,7 @@ void cJupiterModel::steadyQuery(){
         for(int j = 1; j < jm-1; j++){
             sinthe = sin(the.z[j]);
             costhe = cos(the.z[j]);
-            if(j > 90) costhe = - costhe;
+            if(costhe_abs() && j > 90) costhe = - costhe;
             rmsinthe = rad.z[i] * sinthe;
             for(int k = 1; k < km-1; k++){
                 dudr = (u.x[i+1][j][k] - u.x[i-1][j][k])/(2. * dr);

@@ -388,7 +388,7 @@ void cJupiterModel::Forces(){
             const double rm       = rad.z[i];
             double sinthe         = sin(the.z[j]);
             double costhe         = cos(the.z[j]);
-            if (j > 90) costhe    = -costhe;
+            if (costhe_abs() && j > 90) costhe    = -costhe;
             const double rmsinthe = rm * sinthe;
 
             for (int k = 1; k < km-1; k++) {

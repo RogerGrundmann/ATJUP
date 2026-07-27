@@ -626,6 +626,23 @@ private:
     // layer, and the shell spans 0.006 to 1.09 kg/m3 — nearly three orders of magnitude. So this
     // is not a small correction, it rescales the saturation vapour density by up to 1/200 near
     // the top, and (rho/r_mix)^2 in the thermo-diffusion flux jT_*. Measure before adopting.
+    // cos(theta) must change SIGN across the equator. Four places used to force it positive
+    // with `if(j > 90) costhe = -costhe`, which is wrong under any velocity-sign convention:
+    // the horizontal Coriolis parameter f = 2*Omega*cos(theta) would then have the same sign in
+    // both hemispheres — cyclones turning the same way north and south — and cot(theta), which
+    // rides on the same cosine, would be wrong in the south wherever it appears: the d/dtheta
+    // term of every Laplacian (costhe_inv_rm2sinthe) and the curvature groups of the transport
+    // terms. The codebase was already split on it: PressureSolverJup and ChemistryJup use the
+    // unflipped cosine, so the two halves of the model disagreed south of the equator.
+    //
+    // the.z runs 0 (north pole) to pi (south pole), so cos(the.z[j]) is already the correct
+    // colatitude cosine and the flip only destroyed it. ATJUP_COSTHE_ABS=1 restores the old
+    // behaviour for A/B work.
+    static bool costhe_abs(){
+        static const bool v = [](){ const char* e = getenv("ATJUP_COSTHE_ABS"); return e && atoi(e) != 0; }();
+        return v;
+    }
+
     static bool local_rho(){
         static const bool v = [](){ const char* e = getenv("ATJUP_LOCAL_RHO"); return e && atoi(e) != 0; }();
         return v;
