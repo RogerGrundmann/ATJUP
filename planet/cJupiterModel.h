@@ -515,7 +515,15 @@ private:
     double c_ch4        = r_ch4 / m_ch4;                                // molar density of ch4 vapour [kmol/m³]
     double X_ch4        = 3.6e-5;                                       // mass fraction
     double R_ch4        = 518.28;                                       // gas constant of methane [J/(kg*K)]
-    double mue_ch4      = 1.107e-2;                                     // dynamic viscosity of methane [Ns/m²]
+    // 1.107e-5 Pa*s, not 1.107e-2. Methane's GAS viscosity is 1.107e-2 CENTIPOISE, and the
+    // centipoise figure was entered as if it were Pa*s — a factor 1000. It mattered because
+    // ThermalPropertiesJup forms mue_mix as a mass-weighted mean and r_ch4 = 0.19 is the third
+    // largest mass fraction, so methane alone contributed 2.10e-3 of a 2.11e-3 sum: mue_mix came
+    // out 1.646e-3 Ns/m2 where every component is of order 1e-5. The only consumer is the NH4SH
+    // Stokes settling velocity in rhs_nh4sh, which goes as 1/mue_mix and was therefore 166x too
+    // slow — 4.1e-4 m/s against the 7.7e-2 m/s that PrecipitationJup computes for the same
+    // crystals from its own hand-entered viscosity.
+    double mue_ch4      = 1.107e-5;                                     // dynamic viscosity of methane [Ns/m²]
     double k_ch4        = 0.0;                                          // thermal conductivity of methane [W/(m*K)]
     double cp_ch4       = 2.232e3;                                      // specific heat capacity of methane [J/(kg*K)]
     double ep_ch4       = 7.6752;                                       // R_h2/R_ch4 ratio
