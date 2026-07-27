@@ -455,9 +455,18 @@ inline void TurbulenceJup::compute_sources(){
 
                 // ---- geometry ----
                 const double rm        = m.rad.z[i];
-                const double exp_rm    = 1.0 / (rm + 1.0);
+                // coord_stretching, like everywhere else. This module applied 1/(rm+1)
+                // UNCONDITIONALLY while RungeKutta_Jup_Turb and PressureSolverJup both gate it
+                // on the flag, which defaults to false. Every radial velocity gradient feeding
+                // the production tensor was therefore divided by (rm+1) — 2.5 in the original
+                // geometry, 501 with ATJUP_METRIC_RADIUS — and the production is dominated by
+                // radial shear, so it entered squared.
+                const double exp_rm    = m.coord_stretching ? 1.0 / (rm + 1.0) : 1.0;
                 double sinthe          = std::sin(m.the.z[j]);
                 if(sinthe == 0.0) sinthe = 1.0e-5;
+                const double costhe    = std::cos(m.the.z[j]);
+                const double cotanthe  = costhe / sinthe;
+                const double inv_rm    = 1.0 / rm;
                 const double rmsinthe  = rm * sinthe;
                 const double inv_2dr   = 1.0 / (2.0 * m.dr);
                 const double inv_2dthe = 1.0 / (2.0 * m.dthe);
@@ -520,23 +529,54 @@ inline void TurbulenceJup::compute_sources(){
                          : tke_here / dis_here;
                     cnue = std::min(cnue, nue_max);
                 }
-                const double der = 0.66667 * (dudr + dvdthe + dwdphi);
+                // ---- velocity gradient tensor in the orthonormal spherical basis ----
+                // The nine components carry curvature terms that the bare derivatives do not.
+                // dudthe and dudphi above already include their 1/r and 1/(r sin) metric
+                // factors, so what is missing is only the extra pieces:
+                //   G_tt = (1/r) dv/dthe + u/r                G_rt = (1/r) du/dthe - v/r
+                //   G_pp = (1/r sin) dw/dphi + u/r + v cot/r  G_rp = (1/r sin) du/dphi - w/r
+                //   G_tp = (1/r sin) dv/dphi - w cot/r
+                // and the divergence gains 2u/r + v cot/r. Their size is set entirely by the
+                // metric radius: with ATJUP_METRIC_RADIUS they are O(1/500) of the radial
+                // derivatives, without it they are comparable to the horizontal ones — which is
+                // why omitting them was defensible in one geometry and not in the other.
+                // ATJUP_TURB_CURV=0 drops them again for A/B.
+                static const bool curv = [](){
+                    const char* e = getenv("ATJUP_TURB_CURV"); return !e || atoi(e) != 0; }();
+                const double u_r = curv ? m.u.x[i][j][k] * inv_rm : 0.0;
+                const double v_r = curv ? m.v.x[i][j][k] * inv_rm : 0.0;
+                const double w_r = curv ? m.w.x[i][j][k] * inv_rm : 0.0;
+                const double v_cot_r = v_r * cotanthe;
+                const double w_cot_r = w_r * cotanthe;
+
+                const double g_rr = dudr;
+                const double g_rt = dudthe - v_r;
+                const double g_rp = dudphi - w_r;
+                const double g_tr = dvdr;
+                const double g_tt = dvdthe + u_r;
+                const double g_tp = dvdphi - w_cot_r;
+                const double g_pr = dwdr;
+                const double g_pt = dwdthe;
+                const double g_pp = dwdphi + u_r + v_cot_r;
+
+                const double der = 0.66667 * (g_rr + g_tt + g_pp);
 
                 m.prod.x[i][j][k] = std::max(0.0,
-                      (cnue * (2.0 * dudr   - der) - 0.66667 * m.tke.x[i][j][k]) * dudr
-                    + (cnue * (dudthe + dvdr))                                   * dudthe
-                    + (cnue * (dudphi + dwdr))                                   * dudphi
-                    + (cnue * (2.0 * dvdthe - der) - 0.66667 * m.tke.x[i][j][k]) * dvdthe
-                    + (cnue * (dvdr + dudthe))                                   * dvdr
-                    + (cnue * (dvdphi + dwdthe))                                 * dvdphi
-                    + (cnue * (2.0 * dwdphi - der) - 0.66667 * m.tke.x[i][j][k]) * dwdphi
-                    + (cnue * (dwdr + dudphi))                                   * dwdr
-                    + (cnue * (dwdthe + dvdphi))                                 * dwdthe);
+                      (cnue * (2.0 * g_rr - der) - 0.66667 * m.tke.x[i][j][k]) * g_rr
+                    + (cnue * (g_rt + g_tr))                                   * g_rt
+                    + (cnue * (g_rp + g_pr))                                   * g_rp
+                    + (cnue * (2.0 * g_tt - der) - 0.66667 * m.tke.x[i][j][k]) * g_tt
+                    + (cnue * (g_tr + g_rt))                                   * g_tr
+                    + (cnue * (g_tp + g_pt))                                   * g_tp
+                    + (cnue * (2.0 * g_pp - der) - 0.66667 * m.tke.x[i][j][k]) * g_pp
+                    + (cnue * (g_pr + g_rp))                                   * g_pr
+                    + (cnue * (g_pt + g_tp))                                   * g_pt);
 
                 // ---- vorticity magnitude Omega = |curl u| ----
-                const double W12 = dudthe - dvdr;
-                const double W13 = dudphi - dwdr;
-                const double W23 = dvdphi - dwdthe;
+                // Antisymmetric part of the SAME tensor, so it carries the curvature too.
+                const double W12 = g_rt - g_tr;
+                const double W13 = g_rp - g_pr;
+                const double W23 = g_tp - g_pt;
                 const double Omega = std::sqrt(W12*W12 + W13*W13 + W23*W23);
 
                 if(turb_model == k_epsilon){
