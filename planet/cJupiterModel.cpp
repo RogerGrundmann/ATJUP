@@ -222,6 +222,7 @@ void cJupiterModel::Run(){
     VelocityInitializerJup(*this).compute();                            // construction of zonal initial velocities from measurements
 
     BC_Jup(*this).bcSeaMount();                                         // velocities close to surfaces, resembling a boundary layer
+    computeWallViscosity();                                             // needs the SeaMount contour; fills wall_nue once
     BC_Jup(*this).bcVelSurfSur();                                       // velocities close to surfaces, resembling a boundary layer
 
     dampVelocities();

@@ -38,7 +38,102 @@ using namespace JupiterUtils;
 
 
 
-void cJupiterModel::init_tropopause_layers(){                                                                                                                                                         
+// ============================================================================
+// Wall-adjacent eddy viscosity around the SeaMount obstacle
+// ============================================================================
+//
+// WHY THIS EXISTS — the measurement, so the strength is not mistaken for a free parameter.
+//
+// A single fluid cell beside the staircase flank of the GRS cone, (i=24, j=97, k=171) with the
+// solid starting at j=98, accelerates without bound: max|w| there goes 87 -> 196 m/s over 70
+// iterations, 388 m/s by iteration 320, and the run overflows shortly after. It is a purely
+// local mode — the area-weighted level mean <w> and rms(w) at that level do not move (13.3 and
+// 33 throughout) while the single-cell maximum triples. Controls: with the obstacle removed
+// (ATJUP_NO_SEAMOUNT=1) the growth does not happen at all; replacing the radial boundary
+// extrapolation (ATJUP_BC_RADIUS_COPY=1) changes nothing, bit for bit.
+//
+// The per-term budget of that cell (ATJUP_PROBE) names the source:
+//
+//   iter    w [m/s]   rhs_w   -w/(r sin) dw/dphi   -u dw/dr   diffusion   -dp/dphi
+//      1      32.0     3.50           +2.44          +1.42      -0.68       -0.00
+//    120     160.5    16.53          +20.26          +6.85     -10.15       -3.26
+//
+// The zonal gradient dw/dphi stays pinned near -20 while w grows fivefold, so -w dw/dphi is
+// linear in w: an advective self-amplification with rate ~12 per nondimensional time unit,
+// about 1.2 % per iteration. What should stop it is the blocking pressure a body builds up in
+// front of itself, and that response is missing — dp/dphi reaches only -3.3 against +30 of
+// advection. (The Poisson solver applies its one-sided obstacle stencils only when the cell
+// ITSELF is solid; the fluid cell beside the wall still differences straight through the
+// boundary. Fixing that is the physical repair and is NOT what this function does.)
+//
+// What this function does is supply the dissipation the wall region is missing. The background
+// momentum diffusivity is 1/re = 1e-3, and the measured Laplacian at the probe cell is about
+// -1.0e4, so 1/re contributes -10 against +30 of advection. Raising the coefficient to
+// WALL_NUE_FACTOR/re over the first WALL_NUE_LAYERS cells therefore brings diffusion to the
+// advection scale exactly where the flow is stagnating against a no-slip face — which is what
+// an eddy viscosity does in a wall layer, and what the k-omega closure would supply here if it
+// produced anything at the obstacle (nue_t is measured as 0 at this cell even with the closure
+// switched on).
+//
+// The profile is linear in the cell distance to the nearest solid cell (Chebyshev, i.e. faces,
+// edges and corners all count as distance 1), so it decays to zero at WALL_NUE_LAYERS and the
+// interior solution is untouched. Both knobs are env-overridable for A/B work:
+//   ATJUP_WALL_NUE=0            switches the whole treatment off (bit-identical to before)
+//   ATJUP_WALL_NUE=<factor>     multiple of 1/re at the wall face itself
+//   ATJUP_WALL_NUE_LAYERS=<n>   ramp depth in cells
+void cJupiterModel::computeWallViscosity(){
+    static const double factor = [](){
+        const char* e = getenv("ATJUP_WALL_NUE");        return e ? atof(e) : 4.0; }();
+    static const int    layers = [](){
+        const char* e = getenv("ATJUP_WALL_NUE_LAYERS"); return e ? atoi(e) : 3;   }();
+
+    wall_nue.initArray(im, jm, km, 0.0);
+    if(factor <= 0.0 || layers <= 0){
+        cout << "      ATJUP: computeWallViscosity - disabled (ATJUP_WALL_NUE=0)" << endl;
+        return;
+    }
+
+    // Chebyshev distance to the nearest solid cell, capped at `layers`. Computed directly:
+    // the obstacle is one compact body, so a bounded box search per cell is cheaper and far
+    // simpler than a full BFS, and this runs exactly once.
+    long touched = 0;
+    #pragma omp parallel for collapse(2) schedule(static) reduction(+:touched)
+    for(int j = 0; j < jm; j++){
+        for(int k = 0; k < km; k++){
+            for(int i = 0; i < im; i++){
+                if(SeaMount.x[i][j][k] == 1.0) continue;     // inside the body: no fluid here
+                int d = layers + 1;
+                for(int di = -layers; di <= layers && d > 1; di++){
+                    const int ii = i + di;
+                    if(ii < 0 || ii >= im) continue;
+                    for(int dj = -layers; dj <= layers && d > 1; dj++){
+                        const int jj = j + dj;
+                        if(jj < 0 || jj >= jm) continue;
+                        for(int dk = -layers; dk <= layers; dk++){
+                            const int kk = k + dk;
+                            if(kk < 0 || kk >= km) continue;
+                            if(SeaMount.x[ii][jj][kk] != 1.0) continue;
+                            const int ad = std::max(std::abs(di), std::max(std::abs(dj), std::abs(dk)));
+                            if(ad < d) d = ad;
+                            if(d <= 1) break;
+                        }
+                    }
+                }
+                if(d > layers) continue;
+                // d = 1 at the wall face -> full strength; d = layers -> just above zero.
+                const double ramp = (double)(layers - d + 1) / (double)layers;
+                wall_nue.x[i][j][k] = factor / re * ramp;
+                touched++;
+            }
+        }
+    }
+
+    printf("      ATJUP: computeWallViscosity - %ld fluid cells within %d of the obstacle,"
+           " peak nue_wall = %.3e (%.1f x 1/re = %.3e)\n",
+           touched, layers, factor / re, factor, 1.0 / re);
+}
+
+void cJupiterModel::init_tropopause_layers(){
     cout << endl << endl << endl << "      Jupiter: init_tropopause_layers" << endl;                                                                                                                        
                                                                                                                                                                                                            
 

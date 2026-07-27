@@ -611,6 +611,9 @@ private:
     std::vector<double> buoy_ref_level;
     void computeBuoyancyRefLevel();
 
+    // Fills wall_nue from the SeaMount contour. Call once, after bcSeaMount().
+    void computeWallViscosity();
+
     // Binary checkpoint / restart of the full 3D state (FileIO_Jup.cpp), the ATJUP
     // counterpart of ATOM's cAtmosphereModel::save_state / load_state.
     std::vector<Array*> restart_arrays();   // the prognostic 3D fields a checkpoint serializes
@@ -859,6 +862,11 @@ private:
     Array BuoyancyForce;        // buoyancy force, Boussinesque approximation
     Array PresGradForce;// pressure gradient force
     Array SeaMount;             // sea mount contour
+
+    // Wall-adjacent eddy viscosity for the momentum equations, in the same units as 1/re, filled
+    // once by computeWallViscosity() after the SeaMount contour exists. Zero everywhere except
+    // within a few cells of the obstacle. See the long note on the function in InitValues_Jup.cpp.
+    Array wall_nue;
 
     Array w_nh3;                // reaction rate nh3
     Array w_h2s;                // reaction rate h2s

@@ -427,6 +427,13 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
                          ? turb_coupling * std::max(0.0, nue.x[i][j][k]) : 0.0;
     const double nue_t_s = nue_t / Pr_t;      // scalar (heat / species) eddy diffusivity
 
+    // Wall-adjacent eddy viscosity around the obstacle, filled once by computeWallViscosity()
+    // (InitValues_Jup.cpp — the measurement that fixes its strength is documented there). It is
+    // added to the MOMENTUM diffusivity only: the runaway is a momentum mode, and smearing the
+    // condensable species across the obstacle face would be a chemistry change, not a numerical
+    // one. Zero everywhere except within a few cells of the SeaMount.
+    const double nue_wall = wall_nue.x[i][j][k];
+
 
     // ===== Turbulence closure: k* and dis* source terms and eddy diffusion coefficients =====
     // This is the ATOM arrangement (RHS_Atm_Turb.cpp): k* and dis* are two more transported
@@ -679,7 +686,7 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
         - dpdr_term
         + buoyancy_u
         - transport_u
-        + diffusion_u * (1.0 / re + nue_t)
+        + diffusion_u * (1.0 / re + nue_t + nue_wall)
         - Coriolis    * Coriolis_rad
         - centrifugal * centrifugal_rad;
 
@@ -712,14 +719,14 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     rhs_v.x[i][j][k] =
         - dpdthe_term
         - transport_v
-        + diffusion_v * (1.0 / re + nue_t)
+        + diffusion_v * (1.0 / re + nue_t + nue_wall)
         - Coriolis    * Coriolis_the
         - centrifugal * centrifugal_the;
 
     rhs_w.x[i][j][k] =
         - dpdphi_term
         - transport_w
-        + diffusion_w * (1.0 / re + nue_t)
+        + diffusion_w * (1.0 / re + nue_t + nue_wall)
         - Coriolis    * Coriolis_phi;
 
     // ---- Single-cell momentum budget probe (ATJUP_PROBE="i,j,k", off by default) ----
@@ -735,11 +742,15 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
             static bool parsed = false;
             if(!parsed){ sscanf(getenv("ATJUP_PROBE"), "%d,%d,%d", &pi, &pj, &pk); parsed = true; }
             if(i == pi && j == pj && k == pk){
+                // diff is the FULL diffusion actually used, wall viscosity included, so the
+                // four terms sum to rhs_w and the budget can be checked by eye.
                 printf("      PROBE %4d  w=%9.3f u=%9.3f v=%9.3f | rhs_w=%11.4f"
-                       " dpdphi=%11.4f transp=%11.4f diff=%11.4f cor=%11.4f | nue_t=%.3e\n",
+                       " dpdphi=%11.4f transp=%11.4f diff=%11.4f cor=%11.4f"
+                       " | nue_t=%.3e nue_wall=%.3e\n",
                        iter_n, w_ijk * u_0, u_ijk * u_0, v_ijk * u_0, rhs_w.x[i][j][k],
-                       -dpdphi_term, -transport_w, diffusion_w * (1.0 / re + nue_t),
-                       -Coriolis * Coriolis_phi, nue_t);
+                       -dpdphi_term, -transport_w,
+                       diffusion_w * (1.0 / re + nue_t + nue_wall),
+                       -Coriolis * Coriolis_phi, nue_t, nue_wall);
                 // Advection broken into its four pieces: the three directional derivatives and
                 // the spherical metric group. Which one carries the +4 tells the difference
                 // between "the flow really accelerates round the flank" (r/theta/phi advection)
