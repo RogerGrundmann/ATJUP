@@ -388,10 +388,19 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     static const double rad_coupling = [](){ const char* e = getenv("ATJUP_RAD_COUPLING"); return e ? atof(e) : 0.0; }();
     double radiation_t = 0.0;
     if(rad_coupling != 0.0){
-        constexpr double R_H2He = 3600.0;                       // specific gas constant of the H2/He mix [J/(kg*K)]
+        // The density here used to be recomputed from a hard-coded R_H2He = 3600 J/(kg K),
+        // while the model's own mixture constant, assembled from the composition in
+        // ChemistryJup::ThermalPropertiesJup, is R_mix = 3104.84. Two different gas constants
+        // for the same gas: the density came out 13.8 % too small and this heating 16 % too
+        // large. rho_mix now carries exactly this quantity (computeMixtureDensity, refreshed at
+        // the top of the physics block), so it is read rather than recomputed — one formula,
+        // one constant. The ideal-gas fallback keeps the term alive if rho_mix is not yet filled.
         const double T_phys = t.x[i][j][k] * t_ref;             // [K]
         const double P_phys = p_stat.x[i][j][k] * 1.0e5;        // p_stat ~ bars -> [Pa]
-        const double rho    = (T_phys > 1.0) ? P_phys / (R_H2He * T_phys) : 0.0;  // [kg/m3]
+        const double rho_f  = rho_mix.x[i][j][k];
+        const double rho    = (rho_f > 0.0 && std::isfinite(rho_f))
+                            ? rho_f
+                            : ((T_phys > 1.0) ? P_phys / (R_mix * T_phys) : 0.0);  // [kg/m3]
         const double L_rad  = L_atm * 1.0e3;                    // atmosphere thickness [m]
         if(rho > 0.0 && cp_mix > 0.0){
             radiation_t = rad_coupling * Q_rad.x[i][j][k] * L_rad
