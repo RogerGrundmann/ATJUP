@@ -203,6 +203,49 @@ void cJupiterModel::Run(){
 
     m_model = this;
 
+    // ---- Metric radius (ATJUP_METRIC_RADIUS=<planet radius in km>, default off) ----
+    //
+    // rad.z is the radius that enters every horizontal metric factor: inv_rm, inv_rmsinthe,
+    // inv_rm2sinthe2, the curvature groups of the transport terms and the horizontal parts of
+    // every Laplacian. It is built as r0 = 1.0 with dr = 0.025, so it runs 1.0 to 2.0 across
+    // the shell — while dr = 0.025 simultaneously means one radial step is L_atm/40 = 3.5 km.
+    // The same number is therefore doing two incompatible jobs: a vertical grid spacing scaled
+    // by L_atm, and a planetary radius. cJupiterModel.cpp's own declaration of r0 says as much
+    // ("value much too small, Jupiter radius 72000km").
+    //
+    // Consequence, since Jupiter's radius over L_atm is 69911/140 = 499: every horizontal
+    // derivative is about 500x larger than the geometry warrants, and every horizontal
+    // Laplacian term 250000x. It bears directly on the obstacle-flank runaway — the driving
+    // term w/(r sin) dw/dphi measures 20.26 there and would be 0.04 with the true radius,
+    // smaller than the diffusion opposing it.
+    //
+    // Set the knob to the planetary radius in kilometres to give rad.z its geometric meaning,
+    // r = (R + z)/L_atm. dr is untouched, so the vertical grid is exactly as before and only
+    // the curvature changes. Default 0 keeps r0 = 1.0 and is bit-identical.
+    //
+    // NOTE this convention is inherited from ATOM, which builds rad the same way (r0 = 1.0,
+    // dr = 0.025, L_atm = 400 m against an Earth radius, so the same factor ~400). Changing it
+    // is a modelling decision, not a bug fix, which is why it is opt-in.
+    //
+    // Two places assume rad.z starts at 1 and must not be combined with this knob:
+    //   - coord_stretching (default false) forms exp_rm = 1/(rm+1), which becomes 1/500 rather
+    //     than 1/2 and silently rescales every radial derivative. Leave it off.
+    //   - paraview_sphere_vts builds Cartesian coordinates as rad.z * (unit sphere), so the
+    //     rendered shell would become a skin of relative thickness 1/500. Its only call site
+    //     (FileIO_Jup.cpp) is commented out, so nothing renders wrong today; the radial, longal,
+    //     zonal and panorama writers do not use rad.z at all.
+    {
+        static const double metric_R_km = [](){
+            const char* e = getenv("ATJUP_METRIC_RADIUS"); return e ? atof(e) : 0.0; }();
+        if(metric_R_km > 0.0){
+            const double r0_metric = metric_R_km / L_atm;
+            rad.Coordinates(im, r0_metric, dr);
+            printf("      ATJUP: metric radius set from ATJUP_METRIC_RADIUS = %.0f km,"
+                   " L_atm = %.1f km  ->  rad.z = %.3f .. %.3f (was 1.000 .. %.3f)\n",
+                   metric_R_km, L_atm, rad.z[0], rad.z[im-1], 1.0 + (im-1)*dr);
+        }
+    }
+
     cout.precision(6);
     cout.setf(ios::fixed);
 
