@@ -167,12 +167,52 @@ public:
                 geo.inv_dthe2 = inv_dthe2;
                 geo.inv_dphi2 = inv_dphi2;
 
-                const double denom = 2.0 * geo.exp_2_rm    * inv_dr2
-                                   + 2.0 * geo.inv_rm       * inv_dthe2
-                                   + 2.0 * geo.inv_rmsinthe * inv_dphi2;
-                const double num1 = geo.exp_2_rm    * inv_dr2;
-                const double num2 = geo.inv_rm      * inv_dthe2;
-                const double num3 = geo.inv_rmsinthe * inv_dphi2;
+                // ---- Metric of the Laplacian (ATJUP_POISSON_METRIC, default on = corrected) ----
+                //
+                // The stencil weights carried the metric factors of the DIVERGENCE, not of the
+                // Laplacian: 1/r on the theta term and 1/(r sin) on the phi term, where the
+                // spherical Laplacian has 1/r^2 and 1/(r^2 sin^2). They look like the coefficients
+                // of div_src twenty lines below, and that is almost certainly where they were
+                // copied from.
+                //
+                // This is not a cosmetic difference. The two operators of a projection have to be
+                // each other's composition: the momentum equation applies grad p with 1/r and
+                // 1/(r sin) (RHS_Jup_Turb.cpp, dpdthe_term / dpdphi_term), the source is div u*
+                // with the same factors, so the operator relating them must be div(grad(.)) —
+                // one power of r more in the denominator, not the same one. With the horizontal
+                // weights r and r sin too large, the sweep relaxed p_dyn far more strongly along
+                // the sphere than through the shell, i.e. it flattened exactly the horizontal
+                // pressure gradients the momentum equation then asks for.
+                //
+                // The size of the error is the size of r. In the original geometry r runs 1..2 and
+                // it is a factor of about two, which is why it could sit here unnoticed. With
+                // ATJUP_METRIC_RADIUS the same r is 500, and the theta and phi weights come out
+                // 500 and 5000 times too large.
+                //
+                // Corrected, the operator is strongly radial (num1 = 1600 against num2 = 0.013 at
+                // r = 500), and that anisotropy is the physical one: a 140 km shell wrapped round
+                // a 70000 km planet has no business diffusing pressure sideways as fast as it does
+                // vertically.
+                //
+                // Not included, and deliberately: the first-derivative parts of the spherical
+                // Laplacian, (2/r) dp/dr and (cot/r^2) dp/dtheta. They are small on this grid
+                // (2 dr/r = 1e-4 of the second derivative; cot(theta) dtheta = 0.017 away from the
+                // poles) and adding them would break the symmetric seven-point form the max
+                // principle below relies on.
+                static const bool poisson_metric = [](){
+                    const char* e = getenv("ATJUP_POISSON_METRIC"); return e ? atoi(e) != 0 : true; }();
+
+                const double w_the = poisson_metric ? geo.inv_rm2        : geo.inv_rm;
+                const double w_phi = poisson_metric ? geo.inv_rm2sinthe2 : geo.inv_rmsinthe;
+
+                const double num1 = geo.exp_2_rm * inv_dr2;
+                const double num2 = w_the        * inv_dthe2;
+                const double num3 = w_phi        * inv_dphi2;
+                // Written as the sum of the doubled terms, as it was, so that with the knob off
+                // the arithmetic is the original one operation for operation.
+                const double denom = 2.0 * geo.exp_2_rm * inv_dr2
+                                   + 2.0 * w_the        * inv_dthe2
+                                   + 2.0 * w_phi        * inv_dphi2;
 
                 const bool i_in_range = (i < m.im-2);
                 const bool j_inner    = (j > 2) && (j < m.jm-2);

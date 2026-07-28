@@ -366,7 +366,10 @@ void cJupiterModel::computeMixtureDensity(){
                 // Same guard as the buoyancy: a cell without a positive temperature has no
                 // density. Written !(T > 0) so a NaN lands here instead of propagating.
                 if (!(T > 0.0)) { rho_mix.x[i][j][k] = 0.0; continue; }
-                const double p_pa = (p_stat.x[i][j][k] + p_dyn.x[i][j][k]) * 1.0e5;
+                // p_dyn is the nondimensional kinematic pressure, not bar — see p_dyn_to_bar()
+                // in cJupiterModel.h. Added to p_stat unconverted it counted 7.79x too heavily.
+                const double p_pa = (p_stat.x[i][j][k]
+                                     + p_dyn.x[i][j][k] * p_dyn_to_bar()) * 1.0e5;
                 const double rho  = p_pa / (R_mix * T);
                 rho_mix.x[i][j][k] = std::isfinite(rho) ? rho : 0.0;
             }
@@ -415,14 +418,21 @@ void cJupiterModel::Forces(){
                 // second line of defence — one inf here used to spread through the whole
                 // field within a few iterations.
                 BuoyancyForce.x[i][j][k] = (t.x[i][j][k] > 0.0)
-                    ? buoyancy * r_mix * g * (p_stat.x[i][j][k] + p_dyn.x[i][j][k])
+                    ? buoyancy * r_mix * g
+                      * (p_stat.x[i][j][k] + p_dyn.x[i][j][k] * p_dyn_to_bar())
                       / (r_mix * R_mix * t.x[i][j][k] * t_ref) * 1e5
                     : 0.0;
 
+                // Two conversions, both of which were missing, and this is a force DENSITY in
+                // N/m3 like the three above it: p_dyn to bar (it is not bar, see p_dyn_to_bar),
+                // and the nondimensional length to metres. L_atm is in KILOMETRES here, so the
+                // divisor is L_atm*1e3; dividing by L_atm alone made this diagnostic 1000x too
+                // large. Together the two changes leave it about 128x smaller than before.
                 PresGradForce.x[i][j][k] =
                     -sqrt((pow(dpdr, 2)
                           + pow(dpdthe / rm, 2)
-                          + pow(dpdphi / rmsinthe, 2)) / 3.0) / L_atm * 1.0e5;
+                          + pow(dpdphi / rmsinthe, 2)) / 3.0)
+                     * p_dyn_to_bar() * 1.0e5 / (L_atm * 1.0e3);
             }
         }
     }

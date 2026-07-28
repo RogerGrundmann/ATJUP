@@ -51,7 +51,9 @@ void cJupiterModel::computeBuoyancyRefLevel(){
             for(int k = 0; k < km; k++){
                 if(SeaMount.x[i][j][k] == 1.0) continue;   // solid cell: no fluid state
                 if(!(t.x[i][j][k] > 0.0)) continue;        // also catches NaN
-                const double b = g * (p_stat.x[i][j][k] + p_dyn.x[i][j][k])
+                // Same pressure the buoyancy itself uses — the mean has to be the mean OF the
+                // quantity whose anomaly is taken, or the anomaly no longer has zero mean.
+                const double b = g * buoy_pressure(i, j, k)
                                / (r_mix * R_mix * t.x[i][j][k] * t_ref);
                 if(!std::isfinite(b)) continue;
                 sum  += wgt * b;

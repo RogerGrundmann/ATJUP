@@ -43,7 +43,10 @@ void cJupiterModel::printMinMax(){
     cout << endl;
 
     cout << endl << " Pressures " << endl;
-    searchMinMax_3D(" max 3D pressure dynamic ", " min 3D pressure dynamic ", "bar", p_dyn, 1.0);
+    // p_dyn is stored as the nondimensional kinematic pressure; p_dyn_to_bar() makes the
+    // printed number match its unit label. See the note in cJupiterModel.h.
+    searchMinMax_3D(" max 3D pressure dynamic ", " min 3D pressure dynamic ", "bar", p_dyn,
+                    p_dyn_to_bar());
     searchMinMax_3D(" max 3D pressure static ", " min 3D pressure static ", "bar", p_stat, 1.0);
     cout << endl;
 

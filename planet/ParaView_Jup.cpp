@@ -130,7 +130,11 @@ void cJupiterModel::paraview_panorama_vts(int n){
     dump_array("v-component", v, u_0, Jupiter_panorama_vts_File);
     dump_array("w-component", w, u_0, Jupiter_panorama_vts_File);
 
-    dump_array("PressureDyn", p_dyn, 1.0, Jupiter_panorama_vts_File);
+    // PressureDyn goes out in MILLIBAR. p_dyn is stored as the nondimensional kinematic
+    // pressure (see p_dyn_to_bar in cJupiterModel.h); in bar it would be ~0.002, and these
+    // writers print four decimals, so bar would throw away all but one digit. Same reason the
+    // precipitation fluxes go out in mm/day and Q_rad in mW/m3.
+    dump_array("PressureDyn", p_dyn, p_dyn_to_bar() * 1.0e3, Jupiter_panorama_vts_File);
 //    dump_array("PressureStat", p_stat, 1.0, Jupiter_panorama_vts_File);
 
 //    dump_array("CoriolisForce", CoriolisForce, 1.0, Jupiter_panorama_vts_File);
@@ -318,7 +322,7 @@ void cJupiterModel::paraview_vtk_radial(int n, int i_radial){
     dump_radial("difflux_nh4sh", difflux_nh4sh, r_mix_plus, i_radial, Jupiter_vtk_radial_File);
 */
 
-    dump_radial("PressureDyn", p_dyn, 1.0, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("PressureDyn", p_dyn, p_dyn_to_bar() * 1.0e3, i_radial, Jupiter_vtk_radial_File);
     dump_radial("PressureStat", p_stat, 1.0, i_radial, Jupiter_vtk_radial_File);
     dump_radial("rho_mix", rho_mix, 1.0, i_radial, Jupiter_vtk_radial_File);
 
@@ -476,7 +480,7 @@ void cJupiterModel::paraview_vtk_zonal(int n, int k_zonal){
     dump_zonal("jT_nh4sh", jT_nh4sh, r_mix_plus, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("difflux_nh4sh", difflux_nh4sh, r_mix_plus, k_zonal, Jupiter_vtk_zonal_File);
 */
-    dump_zonal("PressureDyn", p_dyn, 1.0, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("PressureDyn", p_dyn, p_dyn_to_bar() * 1.0e3, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("PressureStat", p_stat, 1.0, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("rho_mix", rho_mix, 1.0, k_zonal, Jupiter_vtk_zonal_File);
 
@@ -630,7 +634,7 @@ void cJupiterModel::paraview_vtk_longal(int n, int j_longal){
     dump_longal("difflux_nh4sh", difflux_nh4sh, r_mix_plus, j_longal, Jupiter_vtk_longal_File);
 */
 
-    dump_longal("PressureDyn", p_dyn, 1.0, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("PressureDyn", p_dyn, p_dyn_to_bar() * 1.0e3, j_longal, Jupiter_vtk_longal_File);
     dump_longal("PressureStat", p_stat, 1.0, j_longal, Jupiter_vtk_longal_File);
     dump_longal("rho_mix", rho_mix, 1.0, j_longal, Jupiter_vtk_longal_File);
 

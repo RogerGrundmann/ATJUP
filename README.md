@@ -248,22 +248,92 @@ about sixfold; the wall eddy viscosity (`ATJUP_WALL_NUE`) holds the remainder. T
 run whose maximum vertical velocity *falls* over 500 iterations instead of running away. The
 circulation is not otherwise retuned: level means agree within a few percent.
 
-**The body forces are effectively switched off.** `rhs_u` is nondimensional in units of u₀²/L_atm =
-0.0714 m/s², but its body-force terms were never converted into those units, each falling short by a
-different factor: buoyancy 1.4e6, Coriolis L/u₀ = 1400, centrifugal L/u₀² = 14, pressure gradient
-1e5/(r_mix·u₀²) = 7.79. Measured at the probe, the Coriolis contribution is ~1e-4 where consistent
-scaling gives ~0.067. The centrifugal force is not small physically — Ω²R = 2.17 m/s² at the
-equator, 8.4 % of gravity, the force that gives the planet its oblateness — it is simply not being
-felt.
+**The body forces were switched off, and `ATJUP_NONDIM=1` switches them on.** `rhs_u` is
+nondimensional in units of u₀²/L_atm = 0.0714 m/s², and its body-force terms were never converted
+into those units. Each needs its own factor, because each is built from a different combination of
+dimensional quantities: buoyancy 1e5·L/u₀² = 1.4e6, Coriolis L/u₀ = 1400, centrifugal L²/u₀² =
+1.96e6. `ATJUP_NONDIM=1` applies all three, computed from the configured u₀ and L_atm rather than
+written as constants; `ATJUP_ND_BUOY`, `ATJUP_ND_COR` and `ATJUP_ND_CENT` exist for attribution.
 
-Raising them one at a time does not work, and the measurement is unambiguous: buoyancy at its
-consistent value alone drives the radial velocity from 38 to 1535 m/s in 150 iterations, and adding
-the pressure gradient's own factor makes it worse, not better. The momentum equation, the Poisson
-equation and the projection are one system — the solver builds p_dyn from the unscaled divergence
-relation, so scaling only the gradient returns an overshoot rather than a balance. Activating the
-buoyancy requires one coherent nondimensionalisation across all three. `Forces()`, by contrast, is
-dimensionally correct as it stands: it is a diagnostic force **density** in N/m³, a different unit
-system from the prognostic equation, which is why it carries a 1e5 that `rhs_u` does not.
+**The pressure gradient needs no factor, and the 7.79 that used to be claimed for it was wrong.**
+`p_dyn` is not a pressure in bar. Nothing in the model ever assigns it one: it is created solely by
+`PressureSolverJup` relaxing ∇²p_dyn = div(aux), and aux is a nondimensional acceleration, so
+p_dyn is the nondimensional kinematic pressure p/(ρu₀²) and grad(p_dyn) is already in the units
+`rhs_u` wants. That is why raising `ATJUP_PGRAD_SCALE` measured worse rather than better — it was
+breaking a balance, not restoring one. Leave it at 1.0. What the factor is genuinely needed for is
+the other direction: everywhere p_dyn was **added to p_stat**, which really is in bar, it counted
+7.79× too heavily. `p_dyn_to_bar()` now converts it, and the printed field reads 0.002 bar where it
+used to read 0.016.
+
+**Three defects came out of doing this properly.**
+
+*The Poisson equation used the metric of a divergence.* Its stencil weights carried 1/r on the θ
+term and 1/(r sin θ) on the φ term, where the spherical Laplacian has 1/r² and 1/(r² sin²θ) — the
+coefficients of the divergence source twenty lines below, which is where they came from. A
+projection's two operators have to be each other's composition. In the original geometry r ≈ 1.5 and
+the error is a factor of two, which is how it survived; with `ATJUP_METRIC_RADIUS` the same r is 500.
+Corrected (`ATJUP_POISSON_METRIC`, default on), the operator becomes strongly radial, which is the
+physical anisotropy for a 140 km shell on a 70000 km planet. Measured over 99 iterations: with the
+metric radius it moves p_dyn by 1 % and the velocities not at all; in the original geometry it moves
+p_dyn by 30–45 %.
+
+*The buoyancy density contained p_dyn, which is a feedback loop.* ρ = (p_stat + p_dyn)/(R·T) lets
+buoyancy drive a divergence, the divergence set p_dyn, p_dyn change the density and the density
+feed the buoyancy again. In a Boussinesq system the density anomaly is thermodynamic and p_dyn is a
+Lagrange multiplier for the velocity constraint; it does not belong in the equation of state. The
+loop is invisible while p_dyn is a local smear of the divergence and fatal once the elliptic problem
+is actually solved: at full buoyancy, 1 relaxation sweep gives max|u| = 277 m/s after 99 iterations,
+50 sweeps 127, and 300 sweeps reaches 69775 m/s by iteration 33 and collapses, with p_dyn at ±60
+bar. **More convergence made it worse** — the signature of a feedback, not of a discretisation
+error. The buoyancy now reads p_stat alone (`ATJUP_BUOY_PDYN=1` restores the old behaviour), after
+which 300 sweeps is stable.
+
+*The temperature equation had no adiabatic term.* `pressure_t` is the correct nondimensional form of
+(1/ρcₚ)Dp/Dt, but it was given p_dyn only. A parcel moving vertically does its work against the
+**hydrostatic** pressure, and that term is the entire dry adiabatic lapse rate, dT/dt = −(g/cₚ)w =
+2.07 K per kilometre climbed on Jupiter. Without it the model has no static stability at all: a
+parcel pushed up keeps its temperature, arrives warmer than its new surroundings and is pushed up
+again. This is the reason the buoyancy could not be switched on, and no factor in `rhs_u` would ever
+have fixed it — with the buoyancy off, nothing moved vertically for long enough to notice.
+`ATJUP_ADIABATIC=1` adds it; at the probe it is 20 % of the temperature tendency.
+
+**What the model does once it can feel all this: it convects, because its own profile is
+superadiabatic.** Measured from the restart file of the 500-iteration reference run, the
+horizontally averaged lapse rate against g/cₚ = 2.067 K/km:
+
+| height | dT/dz | Γ_d + dT/dz | N² | |
+|---|---|---|---|---|
+| 3.5–10.5 km | −0.8 … −1.8 K/km | +1.29 … +0.29 | 1.0e-4 … 2.3e-5 | stable |
+| **14–66 km** | **−2.08 … −2.45 K/km** | **−0.01 … −0.39** | **down to −3.7e-5** | **unstable** |
+| 70–136 km | −2.05 … 0 K/km | +0.02 … +2.07 | 2.7e-6 … 4.7e-4 | stable |
+
+The unstable layer *grows over the run*: at iteration 100 it spans 17–46 km and reaches −0.28 K/km,
+at iteration 500 it spans 14–66 km and reaches −0.39. The model has been storing convective
+instability that its momentum equation had no way to release. The predicted growth rate, |N| =
+5.9e-3 s⁻¹, is an e-folding time of 170 s ≈ 120 iterations — and the measured growth of max|u| with
+the buoyancy on e-folds in about 82 iterations. **The growth is convection at the rate the profile
+demands, not a numerical runaway.** What the model needs next is therefore not another scaling
+factor but a convective adjustment, the way every giant-planet GCM handles a superadiabatic column;
+that is a modelling decision and has not been taken here.
+
+Elsewhere the stratification is very weak, so a buoyancy experiment has to be long: N⁻¹ in the stable
+layers is 0.08–1 h against a timestep of 1.4 s, so 99 iterations covers 139 s of Jupiter time and
+cannot decide a stability question at all.
+
+`Forces()` needed two corrections of its own, both in `PresGradForce`: it read p_dyn as bar, and it
+divided by `L_atm` where L_atm is in kilometres, making the diagnostic 1000× too large. The other
+three components were and remain dimensionally correct — they are force **densities** in N/m³, a
+different unit system from the prognostic equation, which is why they carry a 1e5 that `rhs_u` does
+not.
+
+**The centrifugal force has a factor but should stay off.** At full strength its radial part is
+Ω²R = 2.17 m/s² at the equator, 8.4 % of gravity, and its meridional part peaks near 1 m/s². On the
+real planet nothing balances those: they are absorbed into the geopotential, and the answer is
+Jupiter's oblateness — the equator sits 4600 km further from the centre than the poles, and the
+surfaces of constant effective gravity *are* that shape. This model has a spherical grid, a
+spherical lower boundary and a constant radial g, so the meridional part has nothing to work against
+and would drive a permanent, entirely spurious pole-to-equator acceleration. The physical treatment
+is to fold it into an effective gravity and never write it as a force.
 
 **The polar metric floor.** sin θ is held at `ATJUP_SINTHE_MIN` = 0.55 so that 1/sin and 1/sin²
 stay bounded, which means the metric is distorted poleward of 56.6° latitude — 16.5 % of the

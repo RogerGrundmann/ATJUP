@@ -675,6 +675,58 @@ private:
         static const bool v = [](){ const char* e = getenv("ATJUP_LOCAL_RHO"); return e && atoi(e) != 0; }();
         return v;
     }
+
+    // ---- What p_dyn actually is, and what it is worth in bar ----
+    //
+    // p_dyn is not a pressure in bar, although five places read it as one. Nothing in the model
+    // ever assigns it a physical pressure: it is created solely by PressureSolverJup, which
+    // relaxes  lap(p_dyn) = div(aux),  and aux_u/v/w are the momentum RHS without their own
+    // pressure gradient — that is, NONDIMENSIONAL accelerations in units of u_0^2/L_atm. The
+    // units of p_dyn follow from that equation and from nothing else: if lap has 1/length^2 and
+    // div has 1/length, then p_dyn carries one power of length more than aux, so grad(p_dyn) is
+    // an acceleration in the same units as aux — which is exactly how RHS_Jup_Turb.cpp uses it.
+    // Written out, p_dyn = p_phys / (rho * u_0^2): the nondimensional kinematic pressure.
+    //
+    // TWO CONSEQUENCES, and they pull in opposite directions from what the earlier note in
+    // RHS_Jup_Turb.cpp assumed.
+    //
+    // 1. The pressure gradient in the momentum equation needs NO conversion factor. The 7.79 =
+    //    1e5/(r_mix*u_0^2) that ATJUP_PGRAD_SCALE offers is derived from p_dyn being in bar, and
+    //    it is not. The projection is already self-consistent — grad(p_dyn) is nondimensional
+    //    because the Poisson equation made it so — which is also why raising ATJUP_PGRAD_SCALE
+    //    on its own measured WORSE rather than better: it was not restoring a balance, it was
+    //    breaking one. The knob stays for the record, at 1.0, and 1.0 is the correct value.
+    //
+    // 2. Everywhere p_dyn is ADDED to p_stat, which really is in bar, it must be converted
+    //    first. That is this factor:  p_bar = p_dyn * r_mix * u_0^2 / 1e5 = p_dyn * 0.128.
+    //    Unconverted, p_dyn entered the density and the buoyancy 7.79x too strongly. The
+    //    affected places are the buoyancy anomaly (RHS_Jup_Turb.cpp), its level mean
+    //    (computeBuoyancyRefLevel), the mixture density and Forces() (InitValues_Jup.cpp) and
+    //    the printed/exported field (PrintMsg_Jup.cpp, ParaView_Jup.cpp).
+    //
+    // ATJUP_PDYN_UNITS=0 restores the old reading (p_dyn taken as bar) for A/B work.
+    static bool pdyn_units(){
+        static const bool v = [](){ const char* e = getenv("ATJUP_PDYN_UNITS"); return e ? atoi(e) != 0 : true; }();
+        return v;
+    }
+    // Multiply a p_dyn value by this to get bar. 1.0 with the knob off, i.e. the old behaviour.
+    double p_dyn_to_bar() const {
+        return pdyn_units() ? r_mix * u_0 * u_0 * 1.0e-5 : 1.0;
+    }
+
+    // The pressure the BUOYANCY density is built from, in bar. Hydrostatic only: p_dyn is a
+    // Lagrange multiplier for the velocity constraint, not a thermodynamic variable, and putting
+    // it in the equation of state closes a feedback loop that destroys the run as soon as the
+    // pressure equation is solved rather than smeared. See the long note in RHS_Jup_Turb.cpp.
+    // ATJUP_BUOY_PDYN=1 restores the old (p_stat + p_dyn) reading.
+    static bool buoy_pdyn(){
+        static const bool v = [](){ const char* e = getenv("ATJUP_BUOY_PDYN"); return e && atoi(e) != 0; }();
+        return v;
+    }
+    double buoy_pressure(int i, int j, int k) const {
+        return buoy_pdyn() ? p_stat.x[i][j][k] + p_dyn.x[i][j][k] * p_dyn_to_bar()
+                           : p_stat.x[i][j][k];
+    }
     // The density to use in such a place. Falls back to r_mix where rho_mix is not positive
     // (solid cells, or before the first computeMixtureDensity), so no caller can divide by zero.
     double rho_at(int i, int j, int k) const {

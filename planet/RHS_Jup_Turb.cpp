@@ -226,10 +226,51 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     }
 
 
+    // ===== Nondimensionalisation of the body forces =====
+    //
+    // rhs_u is an acceleration in units of u_0^2/L, L = L_atm*1e3 m. Any term written from
+    // physical constants therefore needs the factor that carries it into those units, and the
+    // three body forces below each need a DIFFERENT one, because each is built from a different
+    // combination of dimensional quantities:
+    //
+    //   Coriolis     2*Omega*u_phys       -> multiply by L/u_0     = 1400
+    //   centrifugal  Omega^2*r_phys       -> multiply by L^2/u_0^2 = 1.96e6   (r_phys = rm*L)
+    //   buoyancy     see the note below   -> multiply by 1e5*L/u_0^2 = 1.4e6
+    //
+    // Without them the terms are not "small", they are in the wrong unit system, and the model
+    // has never felt any of them: Coriolis measures ~1e-4 against transport of order 1.
+    //
+    // These are computed from the model's own u_0 and L_atm rather than written as numbers, so
+    // they follow the configuration instead of silently going stale when it changes.
+    //
+    // WHY ONE SWITCH AND NOT THREE KNOBS TO TASTE. The earlier attempt raised the buoyancy alone
+    // to 1.4e6 and the radial velocity ran to 1535 m/s in 150 iterations; the conclusion drawn
+    // was that the scale "cannot be switched on". That was the wrong conclusion from a right
+    // measurement. Buoyancy at full strength with Coriolis still 1400x too weak is not a more
+    // physical model, it is a NON-ROTATING one being convected: nothing in it can turn a vertical
+    // plume into a balanced flow. On this planet the two belong to one balance and have to arrive
+    // together. ATJUP_NONDIM=1 turns on all three; the individual ATJUP_ND_* switches exist for
+    // attribution, not for production runs.
+    //
+    // The pressure gradient is deliberately NOT in this list. It needs no factor at all — see
+    // p_dyn_to_bar() in cJupiterModel.h for why, and leave ATJUP_PGRAD_SCALE at 1.0.
+    static const int nd_all = [](){ const char* e = getenv("ATJUP_NONDIM"); return e ? atoi(e) : 0; }();
+    static const int nd_cor_on = [](){
+        const char* e = getenv("ATJUP_ND_COR");  return e ? atoi(e) : -1; }();
+    static const int nd_cent_on = [](){
+        const char* e = getenv("ATJUP_ND_CENT"); return e ? atoi(e) : -1; }();
+    static const int nd_buoy_on = [](){
+        const char* e = getenv("ATJUP_ND_BUOY"); return e ? atoi(e) : -1; }();
+
+    const double L_m = L_atm * 1.0e3;                       // shell thickness in metres
+    const double nd_cor  = ((nd_cor_on  >= 0 ? nd_cor_on  : nd_all) != 0) ? L_m / u_0            : 1.0;
+    const double nd_cent = ((nd_cent_on >= 0 ? nd_cent_on : nd_all) != 0) ? L_m * L_m / (u_0*u_0) : 1.0;
+    const double nd_buoy = ((nd_buoy_on >= 0 ? nd_buoy_on : nd_all) != 0) ? 1.0e5 * L_m / (u_0*u_0) : 1.0;
+
     // ===== Coriolis and centrifugal forces =====
-    double Coriolis_rad  = -2.0 * omega * sinthe * w_ijk;
-    double Coriolis_the  = +2.0 * omega * costhe * w_ijk;
-    double Coriolis_phi  = +2.0 * omega * (-costhe * v_ijk + sinthe * u_ijk);
+    double Coriolis_rad  = nd_cor * -2.0 * omega * sinthe * w_ijk;
+    double Coriolis_the  = nd_cor * +2.0 * omega * costhe * w_ijk;
+    double Coriolis_phi  = nd_cor * +2.0 * omega * (-costhe * v_ijk + sinthe * u_ijk);
 
     // Centrifugal acceleration = Omega^2 * s * s_hat, with s = r*sin(theta) the distance from
     // the rotation axis and s_hat = sin(theta)*e_r + cos(theta)*e_theta the unit vector pointing
@@ -247,8 +288,18 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     // hemispheric sign (see cJupiterModel.h::costhe_abs), which is what makes a_theta point
     // toward the equator in BOTH hemispheres rather than southward everywhere.
     const double sinthe_true = sqrt(std::max(0.0, 1.0 - costhe * costhe));
-    double centrifugal_rad = omega * omega * rm * sinthe_true * sinthe_true;
-    double centrifugal_the = omega * omega * rm * sinthe_true * costhe;
+    //
+    // A WARNING about switching this one on, which no factor can fix. At full strength the
+    // radial part is Omega^2*R = 2.17 m/s2 at the equator, 8.4 % of g, and the meridional part
+    // peaks near 1 m/s2. On the real planet nothing has to balance those: they are absorbed into
+    // the geopotential, and the answer is Jupiter's oblateness — the equator sits 4600 km further
+    // from the centre than the poles, and the surfaces of constant effective gravity ARE that
+    // shape. This model has a spherical grid, a spherical lower boundary and a constant radial g,
+    // so the meridional part has nothing to work against and would drive a permanent, entirely
+    // spurious pole-to-equator acceleration. The physical way to carry it is to fold it into an
+    // effective gravity and never write it as a force at all. Measured below.
+    double centrifugal_rad = nd_cent * omega * omega * rm * sinthe_true * sinthe_true;
+    double centrifugal_the = nd_cent * omega * omega * rm * sinthe_true * costhe;
 
     double coeff_energy_p = u_0 * u_0 / (cp_mix * t_ref);
 
@@ -257,8 +308,39 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     double v_invrm = v_ijk * inv_rm;
     double w_invrs = w_ijk * inv_rmsinthe;
 
+    // ===== Compression work, and the adiabatic lapse rate it was missing =====
+    //
+    // coeff_energy_p * v.grad(p) is the correct nondimensional form of (1/(rho*cp)) Dp/Dt: with
+    // p in the same nondimensional kinematic units p_dyn is stored in, u_0^2/(cp*t_ref) times
+    // v.grad(p) reduces term for term to (L/(u_0*t_ref)) * (1/(rho*cp)) Dp/Dt. The form was
+    // never the problem. The problem is WHICH pressure it was given.
+    //
+    // It was given p_dyn alone. But a parcel moving vertically does its work against the
+    // HYDROSTATIC pressure, and that is the entire adiabatic lapse rate: with dp_stat/dz = -rho*g
+    // the term reduces to dT/dt = -(g/cp)*w, which for Jupiter is 2.07 K per kilometre climbed.
+    // Left out, the model has no adiabatic cooling at all, and therefore no static stability: a
+    // parcel pushed up keeps the temperature it started with, arrives warmer than its new
+    // surroundings, and is pushed up again. That is why the buoyancy could not be switched on.
+    // It is not a scaling problem and no factor in rhs_u would have fixed it — with the buoyancy
+    // off, nothing ever moved vertically for long enough to notice the term was absent.
+    //
+    // p_stat is in bar, so it is divided by p_dyn_to_bar() to enter as the same nondimensional
+    // pressure. Only the radial derivative is taken: p_stat is a function of height alone here,
+    // and its horizontal derivatives are zero by construction.
+    //
+    // ATJUP_ADIABATIC=1 switches it on; default 0 is bit-identical. It belongs with
+    // ATJUP_NONDIM — a model that feels buoyancy without it is not stably stratified.
+    static const bool adiabatic = [](){
+        const char* e = getenv("ATJUP_ADIABATIC"); return e && atoi(e) != 0; }();
+
+    double dpstatdr = 0.0;
+    if(adiabatic){
+        const double to_nd = 1.0 / p_dyn_to_bar();      // bar -> nondimensional kinematic
+        dpstatdr = (p_stat.x[i+1][j][k] - p_stat.x[i-1][j][k]) * inv_2dr * exp_rm * to_nd;
+    }
+
     double pressure_t = coeff_energy_p
-        * (u_ijk * dpdr + v_invrm * dpdthe + w_invrs * dpdphi);
+        * (u_ijk * (dpdr + dpstatdr) + v_invrm * dpdthe + w_invrs * dpdphi);
 
     double transport_t = u_ijk * dtdr + v_invrm * dtdthe + w_invrs * dtdphi;
 
@@ -730,15 +812,35 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     // has never felt buoyancy, and ATOM's experience with the same correction (a 336x factor,
     // see cAtmosphereModel.h) was that switching it on cold blows the CFL limit and needs a
     // ramp of a few hundred iterations:
-    //   ATJUP_BUOY_SCALE=1.4e6         the dimensionally consistent value
-    //   ATJUP_BUOY_SCALE=<x>           anything in between, for finding the usable range
+    //   ATJUP_NONDIM=1                 the dimensionally consistent value, together with the
+    //                                  Coriolis and centrifugal factors it belongs with
+    //   ATJUP_BUOY_SCALE=<x>           a MULTIPLIER on top of that, for finding the usable
+    //                                  range; 1.0 = the physical value. (It used to carry the
+    //                                  1.4e6 itself — do not write that number here any more,
+    //                                  ATJUP_NONDIM supplies it and the two would multiply.)
     //   ATJUP_BUOY_RAMP_ITERS=<n>      ramp linearly from 0 to full over the first n iterations
-    // Default scale 1.0 keeps today's magnitude, so this commit changes only the sign.
     //
     // NOT addressed, and worth knowing before the knob is turned up: the anomaly is divided by
     // the CONSTANT r_mix, not by the level mean density. Proper Boussinesq divides by the local
     // reference rho_bar(i), which would weight the anomaly aloft up to 200x more strongly than
     // this does. rho_mix and buoy_ref_level are both available if that is wanted.
+    //
+    // ---- Why the density here is built from p_stat alone (ATJUP_BUOY_PDYN=1 puts p_dyn back) ----
+    //
+    // The buoyancy used to read rho = (p_stat + p_dyn)/(R*T), which closes a loop that has no
+    // physics in it: buoyancy drives a divergence, the divergence sets p_dyn, p_dyn changes the
+    // density, and the density feeds the buoyancy again. In a Boussinesq or anelastic system the
+    // density anomaly is a THERMODYNAMIC quantity — it comes from temperature and composition
+    // against a hydrostatic reference pressure — while p_dyn is a Lagrange multiplier enforcing
+    // the velocity constraint. The two are not the same kind of object and the second does not
+    // belong in the equation of state.
+    //
+    // The loop was invisible as long as p_dyn was a local smear of the divergence: with one
+    // Gauss-Seidel sweep per step p_dyn stays near 0.002 bar against a p_stat of several bar. It
+    // becomes fatal the moment the elliptic problem is actually solved. Measured, 99 iterations,
+    // buoyancy at full scale: 1 sweep max|u| = 277 m/s, 50 sweeps 127, and at 300 sweeps the run
+    // reaches 69775 m/s by iteration 33 and collapses, with p_dyn at +-60 bar. More convergence
+    // made it worse, which is the signature of a feedback rather than of a discretisation error.
     static const double buoy_scale = [](){
         const char* e = getenv("ATJUP_BUOY_SCALE"); return e ? atof(e) : 1.0; }();
     static const int buoy_ramp_iters = [](){
@@ -751,8 +853,8 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     // velocity, and the advection stencil of every neighbour then carried inf - inf = NaN
     // outwards, roughly doubling the affected volume each iteration.
     const double buoyancy_u = (t.x[i][j][k] > 0.0)
-        ? -buoy_scale * buoy_ramp * buoyancy
-          * (g * (p_stat.x[i][j][k] + p_dyn.x[i][j][k])
+        ? -nd_buoy * buoy_scale * buoy_ramp * buoyancy
+          * (g * buoy_pressure(i, j, k)
                / (r_mix * R_mix * t.x[i][j][k] * t_ref)
              - buoy_ref_level[i])
         : 0.0;
@@ -830,6 +932,15 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
                 // the spherical metric group. Which one carries the +4 tells the difference
                 // between "the flow really accelerates round the flank" (r/theta/phi advection)
                 // and "the curvature terms are unbalanced at the wall" (metric).
+                // Temperature budget of the same cell. dT/dt is nondimensional; multiplied by
+                // dt*t_ref it is the temperature change per stage in kelvin, which is the form
+                // to compare against the adiabatic lapse rate when ATJUP_ADIABATIC is on.
+                printf("      PROBET %4d  T=%8.3fK rhs_t=%11.4e | compr=%11.4e"
+                       " (dyn=%11.4e stat=%11.4e) transp=%11.4e diff=%11.4e rad=%11.4e\n",
+                       iter_n, t.x[i][j][k] * t_ref, rhs_t.x[i][j][k], pressure_t,
+                       coeff_energy_p * (u_ijk * dpdr + v_invrm * dpdthe + w_invrs * dpdphi),
+                       coeff_energy_p * u_ijk * dpstatdr, -transport_t,
+                       diffusion_t * (1.0 / (re * pr) + nue_t_s), radiation_t);
                 printf("      PROBEADV %4d  u*dwdr=%11.4f  v/r*dwdthe=%11.4f"
                        "  w/(r sin)*dwdphi=%11.4f  metric=%11.4f | dwdr=%10.3f dwdthe=%10.3f"
                        " dwdphi=%10.3f\n",
