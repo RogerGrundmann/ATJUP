@@ -52,6 +52,59 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     const double v_ijk = v.x[i][j][k];
     const double w_ijk = w.x[i][j][k];
 
+    // ===== Wall condition on the PRESSURE GRADIENT at the SeaMount (ATJUP_PGRAD_WALL) =====
+    //
+    // The momentum equation and the Poisson solver were using different wall conditions for the
+    // same face. PressureSolverJup (ATJUP_PRESS_WALL, default on) strikes solid faces out of both
+    // the numerator and the denominator of its stencil, i.e. it imposes dp/dn = 0 there. rhs_u/v/w
+    // then differentiated p_dyn straight through that face with a plain centred difference, and
+    // bcSolidGround does not leave a value behind that makes it zero: it writes the 2-point
+    // extrapolation f[s] = (4/3)f[a] - (1/3)f[b] into the surface solid cell, which gives the first
+    // fluid cell a gradient of exactly (2/3)(f[b]-f[a])/h. Zero is what the solver assumed;
+    // two thirds of the interior one-sided gradient is what the momentum equation got.
+    //
+    // That residual is not balanced by anything, because the pressure the solver returns was never
+    // built to balance it. MEASURED on the iteration-300 restart, mean |change this makes| against
+    // the mean |gradient| in the interior:
+    //     dpdr   (top face, feeds rhs_u)   5025 cells   0.1094 vs 0.1007   ->  1.1x
+    //     dpdthe (flanks,   feeds rhs_v)   3444 cells   3.5962 vs 0.4364   ->  8.2x
+    //     dpdphi (flanks,   feeds rhs_w)   3444 cells   2.8856 vs 0.2026   -> 14.2x
+    // The flank terms are the large ones: a cell beside the cone carried a horizontal pressure
+    // force an order of magnitude above anything in the interior, pointing in a direction nobody
+    // chose. Both blow-up modes this model has shown live exactly there: yesterday's w growth on
+    // the cone FLANK (the dpdthe/dpdphi pair, against which wall_nue was the band-aid) and today's
+    // u growth one cell above the cone APEX (dpdr, the mild one of the three).
+    //
+    // The fix is to mirror the pressure across a solid face, which is dp/dn = 0 written into the
+    // difference itself, so both halves of the projection now say the same thing. The projection
+    // stays self-consistent by construction: aux_u adds back the very same dpdr_term it removed.
+    //
+    // ATJUP_PGRAD_WALL=0 restores the old behaviour for A/B measurement.
+    static const bool pgrad_wall_on = [](){
+        const char* e = getenv("ATJUP_PGRAD_WALL"); return e ? atoi(e) != 0 : true; }();
+
+    // Centred difference of a pressure-like field with the solid faces mirrored out.
+    // RHSJup is only ever called for 1 <= i <= im-2, 3 <= j <= jm-4, 1 <= k <= km-2, so the
+    // neighbour indices below are always in range.
+    // The replacement is the LOCAL cell value, which is the ghost-cell form of dp/dn = 0 at the
+    // FACE and is exactly what PressureSolverJup's press_wall branch does: striking a solid face
+    // out of numerator and denominator turns (p[i+1] - 2p[i] + p[i-1])/h^2 into
+    // (p[i+1] - p[i])/h^2, i.e. it assumes ghost = p[i]. Replacing the solid neighbour by the
+    // OPPOSITE fluid neighbour instead would force the whole difference to zero, which is a
+    // different and stronger condition than the solver's and would also throw away the legitimate
+    // fluid-side variation. This matches the k*/dis* land-face branch further down in this same
+    // function, which is the model's established treatment.
+    auto pgrad = [&](const Array& P, int di, int dj, int dk, double inv_2d) -> double {
+        const double loc = P.x[i][j][k];
+        double hi = P.x[i+di][j+dj][k+dk];
+        double lo = P.x[i-di][j-dj][k-dk];
+        if(pgrad_wall_on){
+            if(SeaMount.x[i+di][j+dj][k+dk] == 1.0) hi = loc;
+            if(SeaMount.x[i-di][j-dj][k-dk] == 1.0) lo = loc;
+        }
+        return (hi - lo) * inv_2d;
+    };
+
     // ---- First-order derivative storage ----
     double dudr, dvdr, dwdr, dtdr, dpdr;
     double dh2odr, dh2ocdr, dh2oidr;
@@ -121,7 +174,7 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     COMPUTE_DR(nh4sh,     dnh4shdr,d2nh4shdr2)
     COMPUTE_DR(tke,       dtkedr,  d2tkedr2)
     COMPUTE_DR(dis,       ddisdr,  d2disdr2)
-    dpdr = (p_dyn.x[i+1][j][k] - p_dyn.x[i-1][j][k]) * inv_2dr * exp_rm;
+    dpdr = pgrad(p_dyn, 1, 0, 0, inv_2dr) * exp_rm;
     #undef COMPUTE_DR
 
 
@@ -147,7 +200,7 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     COMPUTE_DTHE(nh4sh,     dnh4shdthe,d2nh4shdthe2)
     COMPUTE_DTHE(tke,       dtkedthe,  d2tkedthe2)
     COMPUTE_DTHE(dis,       ddisdthe,  d2disdthe2)
-    dpdthe = (p_dyn.x[i][j+1][k] - p_dyn.x[i][j-1][k]) * inv_2dthe;
+    dpdthe = pgrad(p_dyn, 0, 1, 0, inv_2dthe);
     #undef COMPUTE_DTHE
 
 
@@ -173,7 +226,7 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     COMPUTE_DPHI(nh4sh,     dnh4shdphi,d2nh4shdphi2)
     COMPUTE_DPHI(tke,       dtkedphi,  d2tkedphi2)
     COMPUTE_DPHI(dis,       ddisdphi,  d2disdphi2)
-    dpdphi = (p_dyn.x[i][j][k+1] - p_dyn.x[i][j][k-1]) * inv_2dphi;
+    dpdphi = pgrad(p_dyn, 0, 0, 1, inv_2dphi);
     #undef COMPUTE_DPHI
 
 
@@ -465,8 +518,10 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
 
     double dphdthe_term = 0.0, dphdphi_term = 0.0;
     if(hydro_split != 0){
-        dphdthe_term = (p_hydro.x[i][j+1][k] - p_hydro.x[i][j-1][k]) * inv_2dthe * inv_rm;
-        dphdphi_term = (p_hydro.x[i][j][k+1] - p_hydro.x[i][j][k-1]) * inv_2dphi * inv_rmsinthe;
+        // Same wall treatment as p_dyn above: p_hydro is integrated radially through the obstacle
+        // as well, so its horizontal difference across a flank face is just as meaningless.
+        dphdthe_term = pgrad(p_hydro, 0, 1, 0, inv_2dthe) * inv_rm;
+        dphdphi_term = pgrad(p_hydro, 0, 0, 1, inv_2dphi) * inv_rmsinthe;
     }
 
     // ===== Radiative heating source (step 4, opt-in) =====
