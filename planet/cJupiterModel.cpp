@@ -160,6 +160,47 @@ PressureSolverJup& cJupiterModel::getPressureSolver(){
     return *m_pressure;
 }
 
+// Does the radius the metric uses equal the radius Jupiter has?
+//
+// Ported from ATOM_Precipitation (aee862d/0c19e06), where the same ambiguity cost a working day.
+// The point is not that the answer is unknown — it is written in a comment at r0's definition
+// ("value much too small, Jupiter radius 72000km") and in several notes — but that a run gives no
+// sign of which state it is in. RungeKuttaJup takes geo.rm = rad.z[i] and uses it as the PLANETARY
+// radius in v/r d/dthe, 1/(r sinthe) d/dphi and every Laplacian, and rad.z runs 1.000 .. 2.000
+// unless ATJUP_METRIC_RADIUS moves it. One rad.z unit is L_atm = 140 km (see
+// metricShellLength_km), so the metric puts Jupiter's surface at 140 km from the centre instead
+// of 69911, and every horizontal derivative is 499x too large.
+//
+// It WARNS and continues, because that is the model's default state rather than a regression, and
+// a hard stop would prevent every unconverted run from starting. ATJUP_METRIC_STRICT=1 makes it
+// fatal — for use once ATJUP_METRIC_RADIUS is the default, so the two cannot drift apart again.
+void cJupiterModel::checkMetricConsistency() const {
+    const double L_unit_km  = metricShellLength_km();      // km per rad.z unit
+    const double r_metric_km = rad.z[0] * L_unit_km;       // radius the metric implies
+    const double ratio = (r_metric_km > 0.0) ? R_planet_km / r_metric_km : 0.0;
+    const bool consistent = std::fabs(ratio - 1.0) < 1.0e-3;
+
+    printf("\n      ATJUP: metric check - core radius = %.1f km (rad.z[0] %.3f x %.1f km per unit),"
+           " planet radius = %.1f km\n", r_metric_km, rad.z[0], L_unit_km, R_planet_km);
+
+    if(consistent){
+        printf("      ATJUP: metric check - consistent.\n");
+        return;
+    }
+
+    printf("      ATJUP: metric check - MISMATCH by a factor of %.3f.\n", ratio);
+    printf("            Horizontal metric terms (inv_rm, inv_rmsinthe in RungeKutta_Jup_Turb,\n"
+           "            PressureSolverJup, TurbulenceJup) are that factor too large.\n");
+    printf("            Set ATJUP_METRIC_RADIUS=%.0f to correct it.\n", R_planet_km);
+
+    static const bool strict = [](){
+        const char* e = getenv("ATJUP_METRIC_STRICT"); return e && atoi(e) != 0; }();
+    if(strict){
+        printf("      ATJUP: metric check - ATJUP_METRIC_STRICT is set, stopping.\n");
+        std::exit(1);
+    }
+}
+
 // Shapiro de-checkerboarding of the velocity fields. Order 4 preserves the resolved
 // zonal-jet shear (∂w/∂θ) and the GRS wake far better than the 1-2-1 (order 2) while
 // still annihilating the 2Δ grid mode; order 2 reproduces the previous behaviour.
@@ -279,6 +320,8 @@ void cJupiterModel::Run(){
                    metric_R_km, L_atm, rad.z[0], rad.z[im-1], 1.0 + (im-1)*dr);
         }
     }
+
+    checkMetricConsistency();
 
     cout.precision(6);
     cout.setf(ios::fixed);

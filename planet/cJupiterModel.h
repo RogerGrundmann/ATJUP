@@ -554,9 +554,30 @@ private:
         float h = L_atm/(im-1);
         for(int i=0; i<im; i++){
             m_layer_heights.push_back(i * h);
-        } 
+        }
         return;
     }
+
+    // Jupiter's mean radius [km]. Deliberately a named constant rather than a config parameter:
+    // nothing in the model reads a planetary radius today, which is the whole problem. It exists
+    // so checkMetricConsistency() has something to compare the metric against, and so
+    // ATJUP_METRIC_RADIUS has a documented target instead of a number people copy from a note.
+    static constexpr double R_planet_km = 69911.0;
+
+    // Physical length that ONE unit of rad.z represents, in km.
+    //
+    // Simpler here than in ATOM, and worth stating because there it is the trap: ATJUP's
+    // init_layer_heights above is LINEAR (i * L_atm/(im-1)) — the exponentially stretched variant
+    // sits commented out right below it — and the shell spans exactly (im-1)*dr = 1.0 in rad.z.
+    // So one rad.z unit is L_atm, 140 km, full stop. In ATOM the same quantity is the shell
+    // thickness while L_atm is only the stretch amplitude, and the two differ by 1/dr = 40.
+    double metricShellLength_km() const {
+        const double span = rad.z[im-1] - rad.z[0];
+        return (span > 0.0) ? (L_atm / span) : L_atm;
+    }
+
+    // Startup check: does the radius the metric uses equal the radius the planet has?
+    void checkMetricConsistency() const;
 
 /*
     void init_layer_heights(){
