@@ -208,6 +208,9 @@ species equations. A run described as "with k-ω SST" that set only the XML had 
 | `ATJUP_CONV_ADJ` | *follows `ATJUP_NONDIM`* | dry convective adjustment of superadiabatic columns |
 | `ATJUP_CONV_ADJ_LAPSE` | 1 | scale its critical lapse rate (1 = the dry adiabat) |
 | `ATJUP_CONV_ADJ_PASSES` | 64 | cap on sweeps per column; a warning is printed if it is reached |
+| `ATJUP_THERMAL_WIND` | *follows `ATJUP_NONDIM`* | put the zonal wind's shear into thermal-wind balance at startup |
+| `ATJUP_TW_LAT_TAPER` | 10 | latitude band about the equator where the balance is not imposed |
+| `ATJUP_TW_MERIDIONAL` | 0 | also adjust v, from the zonal density gradient |
 | `ATJUP_BUOY_SCALE` | 1 | multiplier on top of the buoyancy's physical value |
 | `ATJUP_BUOY_RAMP_ITERS` | 0 | ramp the buoyancy in linearly over n iterations |
 | `ATJUP_BUOY_PDYN` | 0 | put p_dyn back into the buoyancy density (the old, unstable reading) |
@@ -350,11 +353,40 @@ exactly where the run stood when it died. The
 model's horizontal temperature structure and its velocity field are simply not solutions of the same
 equations, and nothing made them be while the buoyancy was switched off.
 
-Two things follow. The remedy is not another factor: it is to **initialise in thermal-wind balance**,
-or to ramp the buoyancy in over the ~2000 iterations geostrophic adjustment needs at this timestep
-(`ATJUP_BUOY_RAMP_ITERS`). And the contrast is if anything understated above, because the anomaly is
-divided by the constant r_mix = 1.2844 rather than by the level mean density, which at 105 km is
-0.083 — proper Boussinesq weighting would make the upper levels 15× stronger still.
+The contrast is if anything understated above, because the anomaly is divided by the constant
+r_mix = 1.2844 rather than by the level mean density, which at 105 km is 0.083 — proper Boussinesq
+weighting would make the upper levels 15× stronger still.
+
+*What the pressure does about it, measured.* On a restart taken 100 iterations into such a run, with
+both terms in the units `rhs_u` is written in:
+
+| height | rms buoyancy | rms −∂p_dyn/∂r | rms of their sum | cancelled |
+|---|---|---|---|---|
+| 7 km | 13.5 | 10.5 | 6.1 | 55 % |
+| 28 km | 11.6 | 10.3 | 4.2 | 63 % |
+| 49 km | 9.3 | 10.4 | 7.1 | 24 % |
+| 80 km | 5.9 | 7.4 | 5.7 | 3 % |
+| 101 km | 3.8 | 5.7 | 4.8 | **−29 %** |
+| 112 km | 2.8 | 5.4 | 5.0 | **−80 %** |
+
+The pressure is not ignoring the buoyancy — it is the same size as it everywhere, so the projection
+is responding. But it cancels only 55–63 % of it in the lower half, nothing at all by 80 km, and
+above 90 km it *adds* to it. What is left is 4–8 against transport terms of order one, i.e. 0.36
+m/s² where the observed acceleration is 0.62. **This residual is the thing to explain**, and it is
+now a question about the pressure equation rather than about the physics.
+
+*Four things it is not*, each measured rather than argued: the superadiabatic layer (a convective
+adjustment removes it and moves the blow-up from iteration 233 to 245); the turbulence closure
+(`ATJUP_TURB=1 ATJUP_TURB_COUPLING=1` gives 244, and `nue` reaches only 0.0013 against 1/re = 0.001);
+the convergence of the relaxation (max|u| at iteration 60 is 139 with one sweep, 93 with fifty, 90
+with two hundred — it saturates); and the thermal-wind imbalance of the initial state
+(`ThermalWindJup` removes 99.8 % of the residual and changes the growth by 0.05 %).
+
+A candidate for what remains, offered as a candidate: `p_dyn` is given ∂p/∂n = 0 at **both** radial
+walls, while hydrostatic balance requires ∂p/∂r = B ≠ 0 there. That over-determines the discrete
+Neumann problem when the source is hydrostatic, and it fits the other odd observation — that at 300
+sweeps p_dyn drifts to ±14 bar instead of converging. Settling it needs an experiment on the
+boundary condition itself, which has not been done.
 
 The trigger is the temperature going through absolute zero. Tracked every 25 iterations, the
 coldest cell in the model holds at −163 °C until iteration 125 and then falls away:

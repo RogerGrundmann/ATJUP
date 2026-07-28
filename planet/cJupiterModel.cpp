@@ -21,6 +21,7 @@
 #include "PrecipitationJup.h"
 #include "TurbulenceJup.h"
 #include "ConvectiveAdjustmentJup.h"
+#include "ThermalWindJup.h"
 
 #include <cstdlib>   // getenv/atof/atoi for the Shapiro velocity-filter knobs
 
@@ -69,6 +70,21 @@ static int    precip_enabled()     { static const int    v = [](){ const char* e
 static int    conv_adj_enabled(){
     static const int v = [](){
         const char* e = getenv("ATJUP_CONV_ADJ");
+        if(e) return atoi(e);
+        const char* n = getenv("ATJUP_NONDIM");
+        return n ? atoi(n) : 0;
+    }();
+    return v;
+}
+
+// Thermal-wind initialisation (ThermalWindJup), once, at the end of the initial state. Also
+// defaults to ATJUP_NONDIM: with the body forces off there is no buoyancy for the wind to
+// balance and the adjustment would be a change for nothing, while with them on an unbalanced
+// initial state is the single largest thing wrong with the model. ATJUP_THERMAL_WIND=0/1 forces
+// it either way.
+static int    thermal_wind_enabled(){
+    static const int v = [](){
+        const char* e = getenv("ATJUP_THERMAL_WIND");
         if(e) return atoi(e);
         const char* n = getenv("ATJUP_NONDIM");
         return n ? atoi(n) : 0;
@@ -423,6 +439,11 @@ void cJupiterModel::Run(){
     computeMixtureDensity();
     Latent_Heat();
     init_PressureDynamic();
+
+    // Put the horizontal wind into thermal-wind balance with the density field it has to live
+    // with. Here, at the end of the initial state: the temperature, the species and p_stat are
+    // final, and the boundary conditions below then tidy the edges of the field it rewrites.
+    if(thermal_wind_enabled()) ThermalWindJup(*this).run();
 
     BC_Jup(*this).bcRadius();                                           // extrapolation in i-direction alomg grid boundaries
     BC_Jup(*this).bcTheta();                                            // extrapolation in j-direction alomg grid boundaries

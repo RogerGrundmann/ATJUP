@@ -62,6 +62,7 @@ class cJupiterModel{
     friend class PrecipitationJup;
     friend class TurbulenceJup;
     friend class ConvectiveAdjustmentJup;
+    friend class ThermalWindJup;
 
 public:
 
