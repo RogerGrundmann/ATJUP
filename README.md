@@ -104,7 +104,8 @@ elsewhere. Read the per-species fields, not only the total.
 ```
 ATJUP/
 ├── planet/          # core model (RHS, RK4, thermodynamics, chemistry, radiation,
-│                    #   precipitation, turbulence, boundary conditions, I/O)
+│                    #   precipitation, turbulence, convective adjustment,
+│                    #   boundary conditions, I/O)
 ├── lib/             # array types, config parser, FFT, utilities
 ├── cli/             # command-line driver (jup)
 ├── python/          # Cython bindings (pyatjup)
@@ -174,6 +175,12 @@ variable to enable.
 | `ATJUP_NUE_MAX` | 1e5 | eddy-viscosity ceiling [m²/s] — a runaway guard, not the operative limiter |
 | `ATJUP_ABL_TAPER` | 0 | restore ATOM's boundary-layer taper of the eddy viscosity |
 
+Worth stating plainly, because it is easy to believe otherwise: **`turb_model` in the XML does not
+switch the closure on.** It only selects which closure `ATJUP_TURB=1` would run. Without that
+variable `tke` and `nue` are identically zero however the XML is written, and without
+`ATJUP_TURB_COUPLING=1` the eddy viscosity is computed but never reaches the momentum, heat or
+species equations. A run described as "with k-ω SST" that set only the XML had no turbulence in it.
+
 **Initial and boundary conditions**
 
 | Variable | Default | Effect |
@@ -195,9 +202,18 @@ variable to enable.
 | `ATJUP_WALL_NUE` | 4 | wall eddy viscosity at the obstacle, in multiples of 1/re; 0 disables |
 | `ATJUP_WALL_NUE_LAYERS` | 3 | its ramp depth in cells |
 | `ATJUP_LOCAL_RHO` | 0 | use the local density instead of the constant r_mix in q_sat, latent heat and the Lewis groups |
-| `ATJUP_BUOY_SCALE` | 1 | buoyancy scale; 1.4e6 is the dimensionally consistent value — see *Scaling* |
+| `ATJUP_NONDIM` | 0 | put the body forces into the units `rhs_u` is written in — see *Scaling* |
+| `ATJUP_ND_BUOY` `_COR` `_CENT` | *follow `ATJUP_NONDIM`* | the three factors individually, for attribution |
+| `ATJUP_ADIABATIC` | *follows `ATJUP_NONDIM`* | compression work against p_stat, i.e. the dry adiabatic lapse rate |
+| `ATJUP_CONV_ADJ` | *follows `ATJUP_NONDIM`* | dry convective adjustment of superadiabatic columns |
+| `ATJUP_CONV_ADJ_LAPSE` | 1 | scale its critical lapse rate (1 = the dry adiabat) |
+| `ATJUP_CONV_ADJ_PASSES` | 64 | cap on sweeps per column; a warning is printed if it is reached |
+| `ATJUP_BUOY_SCALE` | 1 | multiplier on top of the buoyancy's physical value |
 | `ATJUP_BUOY_RAMP_ITERS` | 0 | ramp the buoyancy in linearly over n iterations |
-| `ATJUP_PGRAD_SCALE` | 1 | pressure-gradient scale; 7.79 is the consistent value |
+| `ATJUP_BUOY_PDYN` | 0 | put p_dyn back into the buoyancy density (the old, unstable reading) |
+| `ATJUP_PDYN_UNITS` | 1 | read p_dyn as the nondimensional kinematic pressure it is; 0 reads it as bar |
+| `ATJUP_PGRAD_SCALE` | 1 | pressure-gradient scale — **1 is correct**, see *Scaling* |
+| `ATJUP_POISSON_METRIC` | 1 | the Laplacian's own metric factors; 0 restores the divergence's |
 | `ATJUP_PRESS_WALL` | 1 | dp/dn = 0 at the obstacle in the Poisson stencil |
 | `ATJUP_PRESS_SWEEPS` | 1 | relaxation sweeps of the pressure equation per call |
 | `ATJUP_TURB_CURV` | 1 | spherical curvature terms in the turbulence production |
@@ -277,16 +293,17 @@ physical anisotropy for a 140 km shell on a 70000 km planet. Measured over 99 it
 metric radius it moves p_dyn by 1 % and the velocities not at all; in the original geometry it moves
 p_dyn by 30–45 %.
 
-*The buoyancy density contained p_dyn, which is a feedback loop.* ρ = (p_stat + p_dyn)/(R·T) lets
-buoyancy drive a divergence, the divergence set p_dyn, p_dyn change the density and the density
-feed the buoyancy again. In a Boussinesq system the density anomaly is thermodynamic and p_dyn is a
+*The buoyancy density contained p_dyn, which is a feedback loop.* With ρ = (p_stat + p_dyn)/(R·T),
+buoyancy drives a divergence, the divergence sets p_dyn, p_dyn changes the density and the density
+feeds the buoyancy again. In a Boussinesq system the density anomaly is thermodynamic and p_dyn is a
 Lagrange multiplier for the velocity constraint; it does not belong in the equation of state. The
 loop is invisible while p_dyn is a local smear of the divergence and fatal once the elliptic problem
 is actually solved: at full buoyancy, 1 relaxation sweep gives max|u| = 277 m/s after 99 iterations,
 50 sweeps 127, and 300 sweeps reaches 69775 m/s by iteration 33 and collapses, with p_dyn at ±60
 bar. **More convergence made it worse** — the signature of a feedback, not of a discretisation
 error. The buoyancy now reads p_stat alone (`ATJUP_BUOY_PDYN=1` restores the old behaviour), after
-which 300 sweeps is stable.
+which 300 sweeps no longer collapses and simply follows the same convective growth as every other
+sweep count — see below.
 
 *The temperature equation had no adiabatic term.* `pressure_t` is the correct nondimensional form of
 (1/ρcₚ)Dp/Dt, but it was given p_dyn only. A parcel moving vertically does its work against the
@@ -297,28 +314,94 @@ again. This is the reason the buoyancy could not be switched on, and no factor i
 have fixed it — with the buoyancy off, nothing moved vertically for long enough to notice.
 `ATJUP_ADIABATIC=1` adds it; at the probe it is 20 % of the temperature tendency.
 
-**What the model does once it can feel all this: it convects, because its own profile is
-superadiabatic.** Measured from the restart file of the 500-iteration reference run, the
-horizontally averaged lapse rate against g/cₚ = 2.067 K/km:
+**What the model does once it can feel all this: it accelerates to about 300 m/s and dies.** A run
+with `ATJUP_NONDIM=1 ATJUP_ND_CENT=0 ATJUP_PRESS_SWEEPS=50` grows steadily — max|u| = 80, 129, 171,
+241, 323 m/s at iterations 50 to 250 — and goes non-finite at **iteration 233**, in i[10..15], which
+is 35 to 52 km. The collapse is not at the pole; the polar maxima that appear at iteration 300 are
+already a corrupted field being read.
 
-| height | dT/dz | Γ_d + dT/dz | N² | |
-|---|---|---|---|---|
-| 3.5–10.5 km | −0.8 … −1.8 K/km | +1.29 … +0.29 | 1.0e-4 … 2.3e-5 | stable |
-| **14–66 km** | **−2.08 … −2.45 K/km** | **−0.01 … −0.39** | **down to −3.7e-5** | **unstable** |
-| 70–136 km | −2.05 … 0 K/km | +0.02 … +2.07 | 2.7e-6 … 4.7e-4 | stable |
+*Why, and what it is not.* The first explanation tried here was convective: the model does carry a
+superadiabatic layer, and it deepens as a run proceeds — two levels near 21–24 km exceeding the dry
+adiabat by 0.016 K/km at iteration 100, five levels from 21 to 35 km by up to 0.125 K/km at
+iteration 500. That is real and worth knowing. It is also far too weak to be the driver, and a
+dry convective adjustment (below) removes it without changing the run at all.
 
-The unstable layer *grows over the run*: at iteration 100 it spans 17–46 km and reaches −0.28 K/km,
-at iteration 500 it spans 14–66 km and reaches −0.39. The model has been storing convective
-instability that its momentum equation had no way to release. The predicted growth rate, |N| =
-5.9e-3 s⁻¹, is an e-folding time of 170 s ≈ 120 iterations — and the measured growth of max|u| with
-the buoyancy on e-folds in about 82 iterations. **The growth is convection at the rate the profile
-demands, not a numerical runaway.** What the model needs next is therefore not another scaling
-factor but a convective adjustment, the way every giant-planet GCM handles a superadiabatic column;
-that is a modelling decision and has not been taken here.
+Getting that right depends on one number. **Use the model's own cₚ.** `ChemistryJup` computes
+cp_mix = 10655.4 J/(kg·K) for the mixture; the textbook 12000 that looks right for H₂/He moves the
+dry adiabat from 2.33 to 2.07 K/km, and 0.26 K/km is twice the whole superadiabatic excess the model
+develops. With the wrong value the unstable layer appears to span 14–66 km at 0.39 K/km — three
+times too strong and nearly four times too thick.
 
-Elsewhere the stratification is very weak, so a buoyancy experiment has to be long: N⁻¹ in the stable
-layers is 0.08–1 h against a timestep of 1.4 s, so 99 iterations covers 139 s of Jupiter time and
-cannot decide a stability question at all.
+*What actually drives it is the horizontal contrast.* The buoyancy is an anomaly about the
+horizontal mean of each level, so what feeds it is the spread of density **within** a level, and
+that spread has never had to be in balance with anything. Measured per level from the reference
+run's restart file:
+
+| height | mean T | sd(T) across the level | span(T) | g·sd(ρ)/r_mix | in units of u₀²/L |
+|---|---|---|---|---|---|
+| 0 km | 318 K | 3.9 K | 21 K | 0.67 m/s² | **9.3** |
+| 35 km | 250 K | 13.2 K | 68 K | 0.65 m/s² | **9.1** |
+| 77 km | 159 K | 20.8 K | 82 K | 0.63 m/s² | **8.8** |
+| 119 km | 111 K | 2.3 K | 18 K | 0.08 m/s² | 1.2 |
+
+A body force of 8–10 against transport terms of order one is not a perturbation. Transport scales as
+ũ², so balancing the two needs ũ ≈ 3 in units of u₀ = 100 m/s: **about 300 m/s** — and 323 m/s is
+exactly where the run stood when it died. The
+model's horizontal temperature structure and its velocity field are simply not solutions of the same
+equations, and nothing made them be while the buoyancy was switched off.
+
+Two things follow. The remedy is not another factor: it is to **initialise in thermal-wind balance**,
+or to ramp the buoyancy in over the ~2000 iterations geostrophic adjustment needs at this timestep
+(`ATJUP_BUOY_RAMP_ITERS`). And the contrast is if anything understated above, because the anomaly is
+divided by the constant r_mix = 1.2844 rather than by the level mean density, which at 105 km is
+0.083 — proper Boussinesq weighting would make the upper levels 15× stronger still.
+
+The trigger is the temperature going through absolute zero. Tracked every 25 iterations, the
+coldest cell in the model holds at −163 °C until iteration 125 and then falls away:
+
+| iteration | 100 | 125 | 150 | 175 | 200 | 225 |
+|---|---|---|---|---|---|---|
+| min T | −163.2 °C | −163.3 | −163.7 | −164.7 | −168.6 | **−252.9 °C = 20 K** |
+
+Eight iterations later the field is non-finite. A runaway updraft cools adiabatically at 2.33 K per
+kilometre climbed, and at several hundred m/s it climbs faster than anything can warm it back. The
+alternative candidate — a diffusive limit from a large turbulent viscosity — is ruled out: `tke` and
+`nue` are identically zero, because **`ATJUP_TURB` defaults to 0 regardless of the `turb_model` set
+in the XML**. With the closure off the only dissipation is 1/re = 0.001 plus the wall viscosity near
+the obstacle, so the flow is very nearly inviscid, which is why it accelerates that far.
+
+The practical consequence: **the body forces are correct but the model is not yet ready to run with
+them.** `ATJUP_NONDIM` defaults to off, and with it the adiabatic term and the convective
+adjustment, so an unchanged command line still gets the previous model.
+
+### The dry convective adjustment
+
+`ConvectiveAdjustmentJup` (Manabe & Strickler 1964) sweeps each column from the bottom, finds every
+block steeper than the dry adiabat, and mixes the whole block onto the adiabat while conserving its
+mass-weighted enthalpy. It runs after the Runge-Kutta step and its boundary conditions, before the
+n-level copies are refreshed, and follows `ATJUP_NONDIM` by default.
+
+Two choices in it are worth knowing. The weights are Δp taken from the hydrostatic `p_stat`, **not a
+density** — ρ = p/(R·T) makes ρ·T identically p/R, so a density weight would conserve nothing at all.
+And whole segments are mixed rather than adjacent pairs: both converge to the same profile, but
+pairwise mixing moves heat one layer per sweep, and a test with `ATJUP_CONV_ADJ_LAPSE=0.5` (which
+makes nearly every column qualify) needed 137 million pair operations and still hit the 64-sweep cap
+where the segment form settles in two. Conservation is checked in the run itself: the reported
+enthalpy drift is 2e-14, which is round-off.
+
+It mixes **temperature only, not composition**, and uses the dry adiabat rather than the saturated
+one where cloud is present. Both are deliberate; both are reasonable extensions.
+
+On this model it is close to a no-op, and that is the useful measurement: it fires on 4 to 14 columns
+out of 65341 and moves them by 0.03 K, max|u| at iteration 100 is 128.80 with it against 128.78
+without, and the run goes non-finite at iteration 245 instead of 233. The superadiabatic layer is
+real; it is not what is wrong.
+
+**Timescales, before designing any longer experiment.** The timestep is 1.4 s of Jupiter time, so 500
+iterations is twelve minutes. N⁻¹ in the stable layers is 0.08–1 h, and geostrophic adjustment needs
+1/f ≈ 2800 s ≈ 2000 iterations. A 99-iteration run covers 139 s and cannot decide a stability
+question at all; this is worth remembering against every "stable over N iterations" claim in this
+file, including the ones above.
 
 `Forces()` needed two corrections of its own, both in `PresGradForce`: it read p_dyn as bar, and it
 divided by `L_atm` where L_atm is in kilometres, making the diagnostic 1000× too large. The other
