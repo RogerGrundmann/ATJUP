@@ -11,6 +11,7 @@ LIB_OBJ = lib/Array.o lib/Array_2D.o lib/Array_1D.o lib/Config.o lib/Utils.o lib
 ATJUP_OBJ = planet/cJupiterModel.o planet/PrintMsg_Jup.o planet/RungeKutta_Jup_Turb.o \
 planet/RHS_Jup_Turb.o planet/ParaView_Jup.o planet/Thermo_Jup.o \
 planet/InitValues_Jup.o planet/SaturationAdjustmentJup.o \
+planet/ConvectiveAdjustmentJup.o \
 planet/FileIO_Jup.o
 
 XML_OBJ = tinyxml2/tinyxml2.o

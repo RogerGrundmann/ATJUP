@@ -328,10 +328,16 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     // pressure. Only the radial derivative is taken: p_stat is a function of height alone here,
     // and its horizontal derivatives are zero by construction.
     //
-    // ATJUP_ADIABATIC=1 switches it on; default 0 is bit-identical. It belongs with
-    // ATJUP_NONDIM — a model that feels buoyancy without it is not stably stratified.
+    // It DEFAULTS TO ATJUP_NONDIM rather than to off, because a model that feels buoyancy without
+    // it is not stably stratified and there is no configuration in which that is what you want.
+    // ATJUP_ADIABATIC=0 forces it off even with the body forces on, which is how its contribution
+    // was measured; =1 forces it on without them. With ATJUP_NONDIM unset it is off and the run is
+    // bit-identical to before.
     static const bool adiabatic = [](){
-        const char* e = getenv("ATJUP_ADIABATIC"); return e && atoi(e) != 0; }();
+        const char* e = getenv("ATJUP_ADIABATIC");
+        if(e) return atoi(e) != 0;
+        const char* n = getenv("ATJUP_NONDIM");
+        return n && atoi(n) != 0; }();
 
     double dpstatdr = 0.0;
     if(adiabatic){

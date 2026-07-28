@@ -20,6 +20,7 @@
 #include "RadiationJup.h"
 #include "PrecipitationJup.h"
 #include "TurbulenceJup.h"
+#include "ConvectiveAdjustmentJup.h"
 
 #include <cstdlib>   // getenv/atof/atoi for the Shapiro velocity-filter knobs
 
@@ -57,6 +58,23 @@ static int    radiation_enabled()  { static const int    v = [](){ const char* e
 // scalar equations if ATJUP_TURB_COUPLING is also set.
 static int    turb_enabled()       { static const int    v = [](){ const char* e = getenv("ATJUP_TURB");                 return e ? atoi(e) : 0;   }(); return v; }
 static int    precip_enabled()     { static const int    v = [](){ const char* e = getenv("ATJUP_PRECIP");               return e ? atoi(e) : 0;   }(); return v; }
+
+// Dry convective adjustment (ConvectiveAdjustmentJup). It DEFAULTS TO ATJUP_NONDIM rather than to
+// off, because the two belong together: switching the buoyancy on without it gives a model that
+// releases its superadiabatic layer and has no way to relieve it, and that run dies at iteration
+// 233. ATJUP_CONV_ADJ=0 forces it off even with the body forces on, which is how the measurement
+// of what it is worth was made; ATJUP_CONV_ADJ=1 forces it on without them, which shows what the
+// stratification does on its own. With ATJUP_NONDIM unset the default is off and every run is
+// bit-identical to before.
+static int    conv_adj_enabled(){
+    static const int v = [](){
+        const char* e = getenv("ATJUP_CONV_ADJ");
+        if(e) return atoi(e);
+        const char* n = getenv("ATJUP_NONDIM");
+        return n ? atoi(n) : 0;
+    }();
+    return v;
+}
 
 
 cJupiterModel* cJupiterModel::m_model = NULL;
@@ -536,6 +554,12 @@ void cJupiterModel::Run(){
 
 //        BC_Jup(*this).bcScalarSurfSur();                                // scalar variable at surfaces extrapolated by von Neumann
         BC_Jup(*this).bcSolidGround();                                  // values inside mountains
+
+        // Dry convective adjustment. It runs on the state the Runge-Kutta step just produced,
+        // after the boundary conditions so that bcSolidGround has already written the solid
+        // cells it must not mix across, and before restoreVar so that the adjusted temperature
+        // is what the n-level copies carry into the next step. Off unless ATJUP_NONDIM is set.
+        if(conv_adj_enabled()) ConvectiveAdjustmentJup(*this).run();
 
 //        RungeKuttaJup();
 
