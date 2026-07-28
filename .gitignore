@@ -16,12 +16,11 @@ python/build/
 # Cython generated C++
 python/pyatjup.cpp
 
-# Simulation output data
-/output-Jupiter/
-python/output-Jupiter/
-python/output-Jupiter_vor_Claude/
-jupiter/output-Jupiter/
-planet/output-Jupiter*/
+# Simulation output data (any run directory, any location — these run to gigabytes)
+output*-Jupiter*/
+
+# Run logs
+*.log
 
 # Executables
 cli/jup

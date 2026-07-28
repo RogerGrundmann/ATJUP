@@ -1,0 +1,56 @@
+<!-- THIS FILE IS GENERATED AUTOMATICALLY BY param.py. DO NOT EDIT. --><atjup>    <common>
+        <verbose>false</verbose>  <!--  (bool) -->
+        <output_path>output_500_20260727</output_path>  <!-- directory where model outputs should be placed (must end in /) (string) -->
+        <paraview_panorama_vts_flag>true</paraview_panorama_vts_flag>  <!-- flag to control if create paraview panorama (bool) -->
+    </common>
+    <jupiter>
+        <nm>500</nm>  <!-- the maximum number of iterations (int) -->
+        <checkpoint>100</checkpoint>  <!-- control when to write output files (int) -->
+        <panorama_print>100</panorama_print>  <!-- control when to write panorama files (int) -->
+        <checkpoint_save_iter>-1</checkpoint_save_iter>  <!-- dump the full 3D prognostic state to output_path/jup_restart_<iter>.bin when iter_n reaches this; -1 disables (int) -->
+        <restart_from_iter>-1</restart_from_iter>  <!-- load output_path/jup_restart_<iter>.bin and resume the iteration loop at iter+1, skipping the spin-up; -1 disables (int) -->
+        <Coriolis>1</Coriolis>  <!-- Coriolis force (double) -->
+        <centrifugal>1</centrifugal>  <!-- centrifugal force (double) -->
+        <buoyancy>1</buoyancy>  <!-- buoyancy force (double) -->
+        <chemical_reaction>1</chemical_reaction>  <!-- chemical reactions included (double) -->
+        <coord_stretching>false</coord_stretching>  <!-- vertical coordinate stretching application (bool) -->
+        <turb_model>k_omega_SST</turb_model>  <!-- turbulence model: none, k_epsilon, k_omega, k_omega_SST (string) -->
+        <L_atm>140.0</L_atm>  <!-- extension of the atmosphere shell in km, 120km/40 steps = 3.0km (double) -->
+        <tropopause_pole>115.0</tropopause_pole>  <!-- extension of the troposphere at the poles in km (double) -->
+        <tropopause_equator>125.0</tropopause_equator>  <!-- extension of the troposphere at the equator in km (double) -->
+        <re>1000.0</re>  <!-- Reynolds number: ratio viscous to inertia forces, Re = u * L/nue (double) -->
+        <ec>0.00044</ec>  <!-- Eckert number: ratio kinetic energy to enthalpy, Ec = u²/cp T (double) -->
+        <ep>0.623</ep>  <!-- ratio of the gas constants of dry air to water vapour [/] (double) -->
+        <hp>6.1078</hp>  <!-- water vapour pressure at T = 0°C: E = 6.1 hPa (double) -->
+        <lv>2520000.0</lv>  <!-- specific latent evaporation heat(condensation heat) in J/kg (double) -->
+        <ls>2830000.0</ls>  <!-- specific latent vaporisation heat(sublimation heat) in J/kg (double) -->
+        <cp_l>1005.0</cp_l>  <!-- specific heat capacity of dry air at constant pressure and 20°C in J/(kg K) (double) -->
+        <pr>0.69</pr>  <!-- Prandtl number of h2oe for laminar flows (double) -->
+        <g>25.92</g>  <!-- gravitational acceleration of Jupiter in m/s² (double) -->
+        <omega>0.000176</omega>  <!-- rotation number of Jupiter in 1/s (double) -->
+        <gam>2.0</gam>  <!-- temperature lapse rate   gam = 2.0 K/km (double) -->
+        <u_0>100.0</u_0>  <!-- maximum value of velocity in 100 m/s compares to 360 km/h (double) -->
+        <r_0_water>997.0</r_0_water>  <!-- reference density of fresh water in kg/m3 (double) -->
+        <ua>0.0</ua>  <!-- initial velocity component in r-direction (double) -->
+        <va>0.0</va>  <!-- initial velocity component in theta-direction (double) -->
+        <wa>0.0</wa>  <!-- initial velocity component in phi-direction (double) -->
+        <pa>0.0</pa>  <!-- initial value for the pressure field (double) -->
+        <ca>0.0</ca>  <!-- value 0.04 stands for the maximum value of 40 g/kg water vapour (double) -->
+        <ta>1.0</ta>  <!-- initial value for the temperature field, 1.0 compares to 0° or 273.15 K (double) -->
+        <t_ref>165.0</t_ref>  <!-- temperature in K compare to 0°C (double) -->
+        <t_equator>330.0</t_equator>  <!-- temperature at the equator 56.85°C compares to 330K (double) -->
+        <t_pole>310.0</t_pole>  <!-- temperature at the poles 26.85°C compares to 300 K (double) -->
+        <p_ref>1.0</p_ref>  <!-- pressure in bar (double) -->
+        <R_ref>3.75</R_ref>  <!-- average gas constant in J/(g*K) after Sanchez et. al. (double) -->
+        <t_tropopause>0.4064</t_tropopause>  <!-- temperature in the tropopause -145°C compares to 110K (double) -->
+        <t_react_onset>0.842</t_react_onset>  <!-- temperature when reaction starts -33°C compares to 230K (double) -->
+        <p_tropopause>0.14</p_tropopause>  <!-- static pressure in the tropopause 0.14 bar (double) -->
+        <h2_tropopause>0.0</h2_tropopause>  <!-- minimum water vapour at tropopause h2_tropopause = 0.001 compares to 0.001 kg/kg (double) -->
+        <he_tropopause>0.0</he_tropopause>  <!-- minimum water vapour at tropopause he_tropopause = 0.001 compares to 0.001 kg/kg (double) -->
+        <h2o_tropopause>0.0</h2o_tropopause>  <!-- minimum water vapour at tropopause h2o_tropopause = 0.001 compares to 0.001 kg/kg (double) -->
+        <h2s_tropopause>0.0</h2s_tropopause>  <!-- minimum water vapour at tropopause h2s_tropopause = 0.001 compares to 0.001 kg/kg (double) -->
+        <nh3_tropopause>0.0</nh3_tropopause>  <!-- minimum rate nh3 at tropopause nh3_tropopause = 0.001 compares to 0.001 kg/kg (double) -->
+        <nh4sh_tropopause>0.0</nh4sh_tropopause>  <!-- minimum rate nh4sh at tropopause nh4sh_tropopause = 0.001 compares to 0.001 kg/kg (double) -->
+        <ch4_tropopause>0.246</ch4_tropopause>  <!-- minimum ch4 at tropopause kg/kg (double) -->
+    </jupiter>
+</atjup>
