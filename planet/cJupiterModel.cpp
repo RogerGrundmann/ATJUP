@@ -105,7 +105,17 @@ const double cJupiterModel::phi0 = 0.0;             // zero meridian in Greenwic
 
 const double cJupiterModel::r0 = 1.0; // value much too small, Jupiter radius 72000km
 
-const double cJupiterModel::dr = 0.025;    // 0.025 x 40 = 1.0 compares to 16 km : 40 = 400 m for 1 radial step
+// 0.025 x 40 = 1.0 spans the whole shell, so ONE rad.z unit is L_atm = 140 km and one radial step
+// is 3.5 km. The "16 km : 40 = 400 m" that stood here was copied from ATOM and is that model's
+// geometry, not this one's — a leftover of exactly the kind that cost a day in ATOM, where L_atm
+// is NOT the rad.z unit (there the map is exponential and L_atm = 400 m is only its amplitude,
+// so the rad.z unit is the 16 km shell and the two differ by 1/dr = 40).
+//
+// That difference is the reason ATJUP has ONE length error and ATOM had two. ATJUP's coefficients
+// divide by L_atm (see L_m in RHS_Jup_Turb.cpp) and its grid measures in L_atm, so the two agree;
+// the whole error was the metric radius, factor 69911/140 = 499.364, now corrected by default.
+// Nobody needs to go looking for a second factor here.
+const double cJupiterModel::dr = 0.025;
 const double cJupiterModel::dthe = the_degree/pi180; 
 const double cJupiterModel::dphi = phi_degree/pi180;
 
@@ -310,14 +320,31 @@ void cJupiterModel::Run(){
     //     (FileIO_Jup.cpp) is commented out, so nothing renders wrong today; the radial, longal,
     //     zonal and panorama writers do not use rad.z at all.
     {
+        // DEFAULT SINCE 2026-07-28: on, at R_planet_km. Unset means "use Jupiter's radius";
+        // ATJUP_METRIC_RADIUS=0 restores the old rad.z = 1..2 metric for A/B work.
         static const double metric_R_km = [](){
-            const char* e = getenv("ATJUP_METRIC_RADIUS"); return e ? atof(e) : 0.0; }();
-        if(metric_R_km > 0.0){
+            const char* e = getenv("ATJUP_METRIC_RADIUS");
+            return e ? atof(e) : R_planet_km; }();
+
+        // The one incompatibility that would be silent, so it is not left to the reader: with
+        // coord_stretching on, exp_rm = 1/(rm+1) becomes 1/500 instead of 1/2 and rescales every
+        // radial derivative by ~250. Refuse the metric radius rather than produce a wrong run.
+        if(metric_R_km > 0.0 && coord_stretching){
+            printf("      ATJUP: metric radius NOT applied - coord_stretching is on, and"
+                   " exp_rm = 1/(rm+1) would rescale every radial derivative by ~250.\n"
+                   "             Switch coord_stretching off, or set ATJUP_METRIC_RADIUS=0"
+                   " deliberately.\n");
+        }
+        else if(metric_R_km > 0.0){
             const double r0_metric = metric_R_km / L_atm;
             rad.Coordinates(im, r0_metric, dr);
             printf("      ATJUP: metric radius set from ATJUP_METRIC_RADIUS = %.0f km,"
                    " L_atm = %.1f km  ->  rad.z = %.3f .. %.3f (was 1.000 .. %.3f)\n",
                    metric_R_km, L_atm, rad.z[0], rad.z[im-1], 1.0 + (im-1)*dr);
+        }
+        else{
+            printf("      ATJUP: ATJUP_METRIC_RADIUS = 0 - horizontal metric left on the grid"
+                   " coordinate (pre-2026-07-28 behaviour)\n");
         }
     }
 
