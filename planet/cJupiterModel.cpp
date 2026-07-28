@@ -741,6 +741,7 @@ void cJupiterModel::resetArrays(){
 
     thermalmassflux.initArray(im, jm, km, 0.0);   // thermal massflux_h2s
 
+    p_hydro.initArray(im, jm, km, 0.0);          // hydrostatic pressure perturbation
     p_dyn.initArray(im, jm, km, pa);                // dynamic pressure
     p_dynn.initArray(im, jm, km, pa);               // dynamic pressure (n+1)
     p_stat.initArray(im, jm, km, 1.0);                // static pressure

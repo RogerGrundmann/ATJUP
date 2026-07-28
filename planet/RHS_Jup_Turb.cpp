@@ -450,6 +450,25 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     double dpdthe_term = pgrad_scale * dpdthe * inv_rm;
     double dpdphi_term = pgrad_scale * dpdphi * inv_rmsinthe;
 
+    // ---- Hydrostatic split (ATJUP_HYDRO_SPLIT, follows ATJUP_NONDIM) ----
+    //
+    // With the split on, the radial buoyancy is carried by p_hydro instead of appearing in rhs_u
+    // (see computeHydrostaticPressure in RungeKutta_Jup_Turb.cpp for why), and what enters the
+    // momentum equation from it is the HORIZONTAL gradient of that pressure. Those two terms are
+    // the whole of the change: rhs_u loses a term of order ten, rhs_v and rhs_w gain one of order
+    // a hundredth, and the difference between those two magnitudes is the point.
+    static const int hydro_split = [](){
+        const char* e = getenv("ATJUP_HYDRO_SPLIT");
+        if(e) return atoi(e);
+        const char* n = getenv("ATJUP_NONDIM");
+        return n ? atoi(n) : 0; }();
+
+    double dphdthe_term = 0.0, dphdphi_term = 0.0;
+    if(hydro_split != 0){
+        dphdthe_term = (p_hydro.x[i][j+1][k] - p_hydro.x[i][j-1][k]) * inv_2dthe * inv_rm;
+        dphdphi_term = (p_hydro.x[i][j][k+1] - p_hydro.x[i][j][k-1]) * inv_2dphi * inv_rmsinthe;
+    }
+
     // ===== Radiative heating source (step 4, opt-in) =====
     // Convert the diagnostic radiative flux divergence Q_rad [W/m3] (RadiationJup) into a
     // nondimensional temperature tendency and add it to rhs_t. Physically dT/dt = Q_rad/(rho*cp);
@@ -865,9 +884,11 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
              - buoy_ref_level[i])
         : 0.0;
 
+    // With the hydrostatic split on, buoyancy_u is zero here: the radial force is balanced by
+    // p_hydro, exactly and by construction, and the model is hydrostatic in the vertical.
     rhs_u.x[i][j][k] =
         - dpdr_term
-        + buoyancy_u
+        + ((hydro_split != 0) ? 0.0 : buoyancy_u)
         - transport_u
         + diffusion_u * (1.0 / re + nue_t + nue_wall)
         - Coriolis    * Coriolis_rad
@@ -901,6 +922,7 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
 
     rhs_v.x[i][j][k] =
         - dpdthe_term
+        - dphdthe_term
         - transport_v
         + diffusion_v * (1.0 / re + nue_t + nue_wall)
         - Coriolis    * Coriolis_the
@@ -908,6 +930,7 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
 
     rhs_w.x[i][j][k] =
         - dpdphi_term
+        - dphdphi_term
         - transport_w
         + diffusion_w * (1.0 / re + nue_t + nue_wall)
         - Coriolis    * Coriolis_phi;

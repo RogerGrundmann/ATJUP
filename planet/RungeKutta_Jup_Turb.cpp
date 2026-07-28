@@ -64,12 +64,113 @@ void cJupiterModel::computeBuoyancyRefLevel(){
     }
 }
 
+// ---------------------------------------------------------------------------------------------
+// Hydrostatic pressure perturbation: split the buoyancy so the pressure equation is asked only
+// for what it can actually deliver.
+//
+// THE PROBLEM THIS SOLVES. With the body forces in their proper units the buoyancy is 8 to 13 in
+// the units rhs_u is written in, against transport terms of order one, and it points radially. In
+// a real atmosphere almost all of that is carried by the hydrostatic pressure gradient and never
+// accelerates anything; only the small residual drives vertical motion. This model expected
+// PressureSolverJup to produce that balance from the projection. Measured on a restart, it does
+// not: the pressure cancels 55-63 % of the buoyancy low down, nothing by 80 km, and above 90 km it
+// ADDS to it. What is left over, 4 to 8, is what accelerates the radial wind to 300 m/s in 250
+// iterations until the run dies.
+//
+// It is not a solver-convergence problem — max|u| at iteration 60 is 139 with one relaxation
+// sweep, 93 with fifty and 90 with two hundred, so it has saturated. The projection cannot build a
+// hydrostatic pressure because p_dyn is given a zero normal gradient at BOTH radial walls, while
+// hydrostatic balance needs dp/dr = B there. That over-determines the discrete Neumann problem, and
+// the same defect shows up as p_dyn drifting to +-14 bar at 300 sweeps instead of converging.
+//
+// THE SPLIT. p = p_hydro + p_dyn, with p_hydro defined by integration rather than by an elliptic
+// solve:
+//     p_hydro(r) = INTEGRAL from the base to r of the buoyancy,     dp_hydro/dr = buoyancy
+// The radial force is then balanced exactly and by construction, and what remains of the buoyancy
+// in the momentum equation is the HORIZONTAL gradient of p_hydro, which is the term that actually
+// drives a circulation. On this grid that is about 0.012 against transport of order one, because
+// the horizontal derivative carries a factor 1/r with r = 500 — small, baroclinic, and physically
+// what a thin shell on a large planet should feel. p_dyn is left with the barotropic and
+// non-hydrostatic remainder, which is precisely the part it CAN represent, because that part does
+// not require a nonzero normal gradient at the walls.
+//
+// WHAT IS GIVEN UP. Exactly balancing the radial force makes the model hydrostatic in the vertical:
+// buoyancy no longer accelerates u directly. At 3.5 km vertical against ~1000 km horizontal
+// resolution that is the correct approximation and the one every large-scale GCM makes; a model
+// that cannot solve for a non-hydrostatic pressure gains nothing by pretending to carry one.
+//
+// THE CONSTANT OF INTEGRATION is a free function of (theta, phi) and it is not cosmetic: it sets
+// the barotropic part of the horizontal pressure gradient, i.e. a depth-independent horizontal
+// force felt through the whole column. It is a modelling decision about where the atmosphere is
+// anchored, and it has been taken: **the base is the reference isobaric surface**, so the integral
+// runs upward from it. That is the natural anchor here — the base of this shell is the deep, dense
+// boundary at 11 bar, where the gas is some fifty times denser than at the top and horizontal
+// pressure contrasts are correspondingly harder to sustain, while the model top at 0.02 bar is an
+// arbitrary cut through a continuing atmosphere with nothing to anchor it. ATJUP_HYDRO_REF=1
+// integrates downward from the top instead, and exists so the choice can be measured rather than
+// argued; it is not the intended configuration.
+//
+// Computed once per Runge-Kutta step, like buoy_ref_level, so it is the state at the start of the
+// step and is held fixed through the four stages.
+void cJupiterModel::computeHydrostaticPressure(){
+    static const bool ref_top = [](){
+        const char* e = getenv("ATJUP_HYDRO_REF"); return e && atoi(e) != 0; }();
+
+    // The same factor rhs_u puts on the buoyancy, read the same way, so the two cannot drift apart.
+    static const double nd_buoy_local = [](){
+        const char* e = getenv("ATJUP_ND_BUOY");
+        const char* n = getenv("ATJUP_NONDIM");
+        const int on = e ? atoi(e) : (n ? atoi(n) : 0);
+        return on != 0 ? 1.0 : 0.0; }();
+    static const double buoy_scale_local = [](){
+        const char* e = getenv("ATJUP_BUOY_SCALE"); return e ? atof(e) : 1.0; }();
+
+    const double nd = (nd_buoy_local != 0.0) ? 1.0e5 * (L_atm * 1.0e3) / (u_0 * u_0) : 1.0;
+
+    #pragma omp parallel for collapse(2) schedule(static)
+    for(int j = 0; j < jm; j++){
+        for(int k = 0; k < km; k++){
+            // Only the fluid part of the column carries a hydrostatic integral; solid cells hold
+            // bcSolidGround values and are left at zero so their gradients cannot leak into a
+            // neighbouring fluid cell as a spurious force.
+            int i0 = 0;
+            while(i0 < im && SeaMount.x[i0][j][k] == 1.0){ p_hydro.x[i0][j][k] = 0.0; i0++; }
+            if(i0 >= im) continue;
+            int i1 = i0;
+            while(i1 + 1 < im && SeaMount.x[i1 + 1][j][k] != 1.0) i1++;
+            for(int i = i1 + 1; i < im; i++) p_hydro.x[i][j][k] = 0.0;
+
+            auto buoy = [&](int i)->double{
+                const double T = t.x[i][j][k];
+                if(!(T > 0.0)) return 0.0;
+                const double b = g * buoy_pressure(i, j, k) / (r_mix * R_mix * T * t_ref)
+                               - buoy_ref_level[i];
+                const double f = -nd * buoy_scale_local * buoyancy * b;
+                return std::isfinite(f) ? f : 0.0;
+            };
+
+            if(!ref_top){
+                p_hydro.x[i0][j][k] = 0.0;
+                for(int i = i0 + 1; i <= i1; i++)
+                    p_hydro.x[i][j][k] = p_hydro.x[i-1][j][k]
+                                       + 0.5 * (buoy(i-1) + buoy(i)) * dr;
+            } else {
+                p_hydro.x[i1][j][k] = 0.0;
+                for(int i = i1 - 1; i >= i0; i--)
+                    p_hydro.x[i][j][k] = p_hydro.x[i+1][j][k]
+                                       - 0.5 * (buoy(i+1) + buoy(i)) * dr;
+            }
+        }
+    }
+}
+
 void cJupiterModel::RungeKuttaJup(){
     cout << endl << "      ATJUP: RungeKuttaJup" << endl;
 
     auto begin = std::chrono::high_resolution_clock::now();
 
-    computeBuoyancyRefLevel();   // refresh the buoyancy base state for this RK4 step
+    computeBuoyancyRefLevel();     // refresh the buoyancy base state for this RK4 step
+    computeHydrostaticPressure();  // and the hydrostatic pressure built from it
 
     // ---- k* ceiling, as in ATOM's turbulent RK4 ----
     // The k production term is linear in k while its sink beta*.k.omega is linear too, so an

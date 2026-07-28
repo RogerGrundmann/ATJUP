@@ -33,7 +33,8 @@ by Imke de Pater and Jack J. Lissauer was inevitable.
     law above it, the two being different physical regimes
   - Boussinesq buoyancy, formed as an anomaly against the area-weighted horizontal mean at each
     level, so only horizontal density contrasts drive vertical motion and the mean is left to
-    hydrostatic balance. Its scale is currently inert — see *Geometry and scaling*
+    hydrostatic balance. Inert unless `ATJUP_NONDIM` is set, which also splits its radial part off
+    into a hydrostatic pressure — see *Geometry and scaling*
   - Clausius-Clapeyron / Sanchez-Lavega SVP formulation for saturation vapour pressures
   - Tao mixed-phase (liquid + ice) saturation adjustment
 - **Numerical filtering:** Shapiro de-checkerboarding of the velocity fields, selectable between the
@@ -104,8 +105,8 @@ elsewhere. Read the per-species fields, not only the total.
 ```
 ATJUP/
 ├── planet/          # core model (RHS, RK4, thermodynamics, chemistry, radiation,
-│                    #   precipitation, turbulence, convective adjustment,
-│                    #   boundary conditions, I/O)
+│                    #   precipitation, turbulence, convective adjustment, thermal
+│                    #   wind, boundary conditions, I/O)
 ├── lib/             # array types, config parser, FFT, utilities
 ├── cli/             # command-line driver (jup)
 ├── python/          # Cython bindings (pyatjup)
@@ -211,6 +212,8 @@ species equations. A run described as "with k-ω SST" that set only the XML had 
 | `ATJUP_THERMAL_WIND` | *follows `ATJUP_NONDIM`* | put the zonal wind's shear into thermal-wind balance at startup |
 | `ATJUP_TW_LAT_TAPER` | 10 | latitude band about the equator where the balance is not imposed |
 | `ATJUP_TW_MERIDIONAL` | 0 | also adjust v, from the zonal density gradient |
+| `ATJUP_HYDRO_SPLIT` | *follows `ATJUP_NONDIM`* | carry the radial buoyancy in p_hydro, leaving p_dyn the rest |
+| `ATJUP_HYDRO_REF` | 0 | 0 = integrate up from the base (intended), 1 = down from the top |
 | `ATJUP_BUOY_SCALE` | 1 | multiplier on top of the buoyancy's physical value |
 | `ATJUP_BUOY_RAMP_ITERS` | 0 | ramp the buoyancy in linearly over n iterations |
 | `ATJUP_BUOY_PDYN` | 0 | put p_dyn back into the buoyancy density (the old, unstable reading) |
@@ -382,11 +385,48 @@ the convergence of the relaxation (max|u| at iteration 60 is 139 with one sweep,
 with two hundred — it saturates); and the thermal-wind imbalance of the initial state
 (`ThermalWindJup` removes 99.8 % of the residual and changes the growth by 0.05 %).
 
-A candidate for what remains, offered as a candidate: `p_dyn` is given ∂p/∂n = 0 at **both** radial
-walls, while hydrostatic balance requires ∂p/∂r = B ≠ 0 there. That over-determines the discrete
-Neumann problem when the source is hydrostatic, and it fits the other odd observation — that at 300
-sweeps p_dyn drifts to ±14 bar instead of converging. Settling it needs an experiment on the
-boundary condition itself, which has not been done.
+The reason is the boundary condition: `p_dyn` is given ∂p/∂n = 0 at **both** radial walls, while
+hydrostatic balance requires ∂p/∂r = B ≠ 0 there. That over-determines the discrete Neumann problem
+whenever the source is hydrostatic, which is also why p_dyn drifts to ±14 bar at 300 sweeps instead
+of converging. The projection is being asked for something it cannot represent.
+
+### Splitting the hydrostatic pressure off
+
+`computeHydrostaticPressure()` (`RungeKutta_Jup_Turb.cpp`, once per Runge-Kutta step) forms
+
+    p_hydro(r) = ∫ from the base to r of the buoyancy,   so   ∂p_hydro/∂r = buoyancy
+
+by integration rather than by an elliptic solve. The radial force is then balanced exactly and by
+construction, `rhs_u` loses a term of order ten, and what enters the momentum equation from the
+buoyancy is the **horizontal** gradient of p_hydro — of order 0.01, because the horizontal
+derivative carries a factor 1/r with r = 500. That term is the one that physically drives a
+circulation. `p_dyn` is left with the barotropic and non-hydrostatic remainder, which is exactly the
+part it *can* represent, because that part needs no normal gradient at the walls.
+
+This makes the model **hydrostatic in the vertical**: buoyancy no longer accelerates u directly. At
+3.5 km vertical against ~1000 km horizontal resolution that is the correct approximation and the one
+every large-scale GCM makes. A model that cannot solve for a non-hydrostatic pressure gains nothing
+by pretending to carry one.
+
+The constant of integration is a free function of (θ, φ) and sets the barotropic part of the
+horizontal pressure gradient — a depth-independent force felt through the whole column. **The base
+is the reference isobaric surface**: it is the deep, dense boundary at 11 bar, where the gas is some
+fifty times denser than at the top and horizontal pressure contrasts are correspondingly harder to
+sustain, while the model top at 0.02 bar is an arbitrary cut through a continuing atmosphere.
+`ATJUP_HYDRO_REF=1` integrates downward from the top instead, so the choice can be measured; it is
+not the intended configuration.
+
+*Measured.* The runaway is gone. max|u| at iterations 1/20/40/60 is 38.5/38.4/38.4/38.4 against
+37.9/42.4/65.4/92.6 without the split, and p_dyn settles at ±0.06 bar where it used to reach ±2.4.
+Over 500 iterations the model is **flat through iteration 250** — 38.5 m/s, where the unsplit run
+was already at 320 — and the blow-up moves from iteration 233 to **431**.
+
+It is not a complete cure, and what is left is a different, older problem. The non-finite cells at
+iteration 431 sit at i[34..36], 119–126 km, which is the model **top**, not the buoyancy layer, and
+span 17–44° S at all longitudes. That is the slow lid mode already on record before any of this
+work: it grows about seven times more slowly than the obstacle mode did and is present with the
+obstacle removed entirely. Removing the fast buoyancy runaway has simply left it as the fastest
+thing remaining.
 
 The trigger is the temperature going through absolute zero. Tracked every 25 iterations, the
 coldest cell in the model holds at −163 °C until iteration 125 and then falls away:
@@ -402,9 +442,10 @@ alternative candidate — a diffusive limit from a large turbulent viscosity —
 in the XML**. With the closure off the only dissipation is 1/re = 0.001 plus the wall viscosity near
 the obstacle, so the flow is very nearly inviscid, which is why it accelerates that far.
 
-The practical consequence: **the body forces are correct but the model is not yet ready to run with
-them.** `ATJUP_NONDIM` defaults to off, and with it the adiabatic term and the convective
-adjustment, so an unchanged command line still gets the previous model.
+The practical consequence at the time: **the body forces were correct but the model was not yet
+ready to run with them.** That is what the hydrostatic split below addresses. `ATJUP_NONDIM` still
+defaults to off, and with it the adiabatic term, the convective adjustment, the thermal-wind
+initialisation and the split, so an unchanged command line gets the previous model.
 
 ### The dry convective adjustment
 

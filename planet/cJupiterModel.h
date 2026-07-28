@@ -620,6 +620,7 @@ private:
     // once per RK4 step. See RungeKutta_Jup_Turb.cpp for why this exists.
     std::vector<double> buoy_ref_level;
     void computeBuoyancyRefLevel();
+    void computeHydrostaticPressure();
 
     // Fills wall_nue from the SeaMount contour. Call once, after bcSeaMount().
     void computeWallViscosity();
@@ -916,6 +917,10 @@ private:
     Array difflux_nh4sh;   // diffusive flux nh4sh
 
     Array thermalmassflux;   // thermal massflux_h2s
+
+    // Hydrostatic pressure perturbation, the r-integral of the buoyancy. Filled once per
+    // Runge-Kutta step by computeHydrostaticPressure(); see the note there.
+    Array p_hydro;
 
     Array p_dyn;                // dynamic pressure
     Array p_dynn;                // dynamic pressure
