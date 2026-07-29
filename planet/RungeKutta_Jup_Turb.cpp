@@ -215,6 +215,44 @@ void cJupiterModel::RungeKuttaJup(){
     const double inv_dthe2 = 1.0 / (dthe * dthe);
     const double inv_dphi2 = 1.0 / (dphi * dphi);
 
+    static const int nh4sh_cap_on = [](){
+        const char* e = getenv("ATJUP_NH4SH_CAP"); return e ? atoi(e) : 0; }();
+    long nh4sh_cap_hits = 0;
+
+    // ====================================================================================
+    // Monotonicity limiter for the temperature transport (ATJUP_T_LIMITER, default 0 = off,
+    // every existing run bit-identical).
+    //
+    // WHY. The advection of t is centred and unlimited, and centred differences are not
+    // monotone: at a sharp front they under- and overshoot. Measured, dt=0.025, 200 sweeps,
+    // level i=20, minimum of t over the level:
+    //
+    //     initial global minimum anywhere in the model   110.0000 K  (-163.1500 degC)
+    //     without the obstacle, iter 55..100             -163.19 .. -163.30 degC, flat
+    //     with the obstacle,     iter 60 / 65 / 85 / 90  -166.2 / -171.5 / -171.8 / -581842
+    //
+    // Without the cone the field transports the cold isothermal stratosphere down, lands on
+    // its value and stays there — correct. With the cone it goes 8.4 K BELOW the coldest value
+    // that exists anywhere in the initial data, and from there to NaN at iteration 89.
+    // Advection cannot create a new extremum; a field that leaves the range of its own initial
+    // data is a scheme error, and the sharpest front in the model is the staircase wall of the
+    // cone. The 110 K itself is imposed exactly once, by the clamp in init_temperature
+    // (InitValues_Jup.cpp:245) — there is no relaxation term anywhere in the time loop.
+    //
+    // What this does: after the RK4 update, clip t to the range spanned by the cell and its six
+    // face neighbours IN THE OLD STATE (tn, untouched during the update). That is the clipping
+    // step of an FCT scheme — it cannot create a new local extremum, and it leaves any update
+    // that stays inside the local bounds exactly as it was. Solid neighbours are skipped: their
+    // tn is an extrapolated value, not a state. It reports how often it bites, because a limiter
+    // that acts silently would hide the front it is standing in for.
+    //
+    // The species already have their guard (FluxLimiterNH4SH, damp_wiggles on the mass fluxes);
+    // t had none, and is also the only prognostic field with no bound of any kind.
+    // ====================================================================================
+    static const int t_limiter_on = [](){
+        const char* e = getenv("ATJUP_T_LIMITER"); return e ? atoi(e) : 0; }();
+    long t_clip_hits = 0;
+
     #pragma omp parallel for collapse(2) schedule(static)
     for(int i = 1; i < im-1; i++){
         for(int j = 3; j < jm-3; j++){
@@ -404,7 +442,30 @@ void cJupiterModel::RungeKuttaJup(){
 
                 // ----- Final RK4 update -----
                 const double one_sixth = 1.0 / 6.0;
-                t.x[i][j][k]         = tn_ijk    + dt * (kt1     + 2.0*kt2     + 2.0*kt3     + kt4    ) * one_sixth;
+                {
+                    double t_new = tn_ijk + dt * (kt1 + 2.0*kt2 + 2.0*kt3 + kt4) * one_sixth;
+                    if(t_limiter_on){
+                        // Local bounds from the OLD state; solid neighbours carry extrapolated
+                        // values, not states, so they do not take part.
+                        double lo = tn_ijk, hi = tn_ijk;
+                        auto take = [&](int ii, int jj, int kk){
+                            if(SeaMount.x[ii][jj][kk] == 1.0) return;
+                            const double v = tn.x[ii][jj][kk];
+                            if(v < lo) lo = v;
+                            if(v > hi) hi = v;
+                        };
+                        take(i-1,j,k); take(i+1,j,k);
+                        take(i,j-1,k); take(i,j+1,k);
+                        take(i,j,k-1); take(i,j,k+1);
+                        if(t_new < lo){ t_new = lo;
+                            #pragma omp atomic
+                            ++t_clip_hits; }
+                        else if(t_new > hi){ t_new = hi;
+                            #pragma omp atomic
+                            ++t_clip_hits; }
+                    }
+                    t.x[i][j][k] = t_new;
+                }
                 u.x[i][j][k]         = un_ijk    + dt * (ku1     + 2.0*ku2     + 2.0*ku3     + ku4    ) * one_sixth;
                 v.x[i][j][k]         = vn_ijk    + dt * (kv1     + 2.0*kv2     + 2.0*kv3     + kv4    ) * one_sixth;
                 w.x[i][j][k]         = wn_ijk    + dt * (kw1     + 2.0*kw2     + 2.0*kw3     + kw4    ) * one_sixth;
@@ -418,7 +479,36 @@ void cJupiterModel::RungeKuttaJup(){
                 ch4.x[i][j][k]       = std::max(0.0, ch4n_ijk  + dt * (kch41   + 2.0*kch42   + 2.0*kch43   + kch44  ) * one_sixth);
                 ch4_cloud.x[i][j][k] = std::max(0.0, ch4cn_ijk + dt * (kch4c1  + 2.0*kch4c2  + 2.0*kch4c3  + kch4c4 ) * one_sixth);
                 ch4_ice.x[i][j][k]   = std::max(0.0, ch4in_ijk + dt * (kch4i1  + 2.0*kch4i2  + 2.0*kch4i3  + kch4i4 ) * one_sixth);
-                nh4sh.x[i][j][k]     = std::max(0.0, nh4shn_ijk + dt * (knh4sh1 + 2.0*knh4sh2 + 2.0*knh4sh3 + knh4sh4) * one_sixth);
+                // NH4SH ceiling (ATJUP_NH4SH_CAP, DEFAULT 0 = off). A dressing, not a cure; it
+                // belongs after the two rate-law repairs in ChemistryJup.h.
+                //
+                // IT IS OFF BECAUSE THE BOUND BELOW IS WRONG, and the measurement says so.
+                // The intent was r_max[j], the bound the INITIAL field is built with
+                // (InitValues_Jup.cpp:536, `if (cv >= r_max[j]) cv = r_max[j]`). But `r_max` is
+                // a SCRATCH vector that every species initialiser rebuilds for itself — CH4,
+                // H2O, NH3 and finally H2S at InitValues_Jup.cpp:611, which is the one that
+                // survives into the time loop. By the time RungeKuttaJup reads it, r_max[j]
+                // carries the H2S bound, not an NH4SH bound. Switched on it therefore bit in
+                // 385 000 to 513 000 cells PER ITERATION and drove NH4SH to zero everywhere.
+                //
+                // A correct ceiling has to be built for NH4SH and kept (e.g. the maximum of the
+                // initial NH4SH field, stored once at init), which is a decision about the model
+                // rather than a line of code. Until that exists, this stays off: the two rate-law
+                // repairs are the treatment, and a cap on a wrong bound would only hide them.
+                //
+                // When on it reports itself per iteration — a clamp that acts silently would
+                // conceal exactly the defect it stands in for.
+                {
+                    double nh4sh_new = nh4shn_ijk
+                                     + dt * (knh4sh1 + 2.0*knh4sh2 + 2.0*knh4sh3 + knh4sh4) * one_sixth;
+                    if(nh4sh_new < 0.0) nh4sh_new = 0.0;
+                    if(nh4sh_cap_on && nh4sh_new > r_max[j]){
+                        nh4sh_new = r_max[j];
+                        #pragma omp atomic
+                        ++nh4sh_cap_hits;
+                    }
+                    nh4sh.x[i][j][k] = nh4sh_new;
+                }
                 tke.x[i][j][k]       = safe_clamp(tken_ijk + dt * (ktke1 + 2.0*ktke2 + 2.0*ktke3 + ktke4) * one_sixth,
                                                   0.0, tke_max_nd);
                 dis.x[i][j][k]       = std::max(dis_min_nd,
@@ -426,6 +516,13 @@ void cJupiterModel::RungeKuttaJup(){
             }
         }
     }
+
+    if(nh4sh_cap_hits > 0)
+        printf("      ATJUP: NH4SH cap bit in %ld cells this iteration (ATJUP_NH4SH_CAP=0 to lift it)\n",
+               nh4sh_cap_hits);
+    if(t_clip_hits > 0)
+        printf("      ATJUP: t limiter clipped %ld cells this iteration (ATJUP_T_LIMITER=0 to lift it)\n",
+               t_clip_hits);
 
     auto end = std::chrono::high_resolution_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);

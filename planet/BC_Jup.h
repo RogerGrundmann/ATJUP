@@ -91,6 +91,35 @@ namespace BCJupKnobs {
     // the copy is only first-order accurate and would degrade every transported field.
     inline int radius_copy(){ static const int v = env_int("ATJUP_BC_RADIUS_COPY", 0); return v; }
 
+    // (8) Obstacle surface: plain copy f[s] = f[a] instead of the (4/3,-1/3) extrapolation for
+    // the scalars in the SeaMount surface cells. DIAGNOSTIC KNOB, default 0 (off).
+    //
+    // WHY IT EXISTS. The fluid cells flanking the cone cool without stopping. Measured on level
+    // i=20, both flanks, pairwise symmetric about the cone longitude k_0=180:
+    //
+    //   dt=0.001, 450 iter (10.5 min Jupiter time):  (95,166) -12.6 K   (105,159) -22.0 K
+    //                                                (95,194) -12.5 K   (105,201) -22.0 K
+    //   dt=0.025, 100 iter (52 min):   (94,166) -83.2 -> -153.6 degC, then NaN at iteration 89
+    //
+    // The rate per unit PHYSICAL time agrees between the two timesteps (4.08 K in 630 s against
+    // 5.1 K in 700 s at the same cell), so it is not a timestep artifact — the large step only
+    // reaches the end sooner. ATJUP_NANCHECK names t in a solid cell (20,94,170) as the first
+    // non-finite value, before any velocity.
+    //
+    // The suspected loop runs across the wall: a fluid cell beside the obstacle still forms its
+    // advection with CENTRED differences, so it reads the solid neighbour, whose value is this
+    // extrapolation. With (4/3,-1/3) that value OVERSHOOTS past the near fluid cell whenever the
+    // profile falls towards the wall, the fluid cell advects the too-cold ghost in, cools, and
+    // the next extrapolation overshoots further. The comment at the lambda puts the per-step
+    // amplification at 5/3 and expects fluid diffusion to bound it; on these timescales it does
+    // not. A plain copy cannot overshoot, so this knob separates "the extrapolation amplifies it"
+    // from "the advection scheme itself does" WITHOUT changing the advection.
+    //
+    // It is deliberately NOT the repair and not the default: the copy is only first-order and
+    // the physical fix is one-sided differencing at the obstacle face, so that nothing is
+    // differenced through the boundary at all.
+    inline int mount_copy() { static const int v = env_int("ATJUP_BC_MOUNT_COPY", 0); return v; }
+
     // (4) number of 1-2-1 Shapiro passes across the phi seam. DEFAULT 0 (off): unlike the
     // others this one is NOT supported by ATJUP evidence. A direct zonal-roughness measurement
     // at iteration 100 found the seam SMOOTHER than the interior wherever real dynamics exist
@@ -565,11 +594,17 @@ inline void BC_Jup::bcSolidGround()
                 // and causes blow-up near the obstacle surface around iter_n=32.
                 // The 2-point formula limits amplification to (5/3)x, which the fluid
                 // diffusion keeps bounded.
+                // ATJUP_BC_MOUNT_COPY=1 replaces it by the plain copy f[s] = f[a], which cannot
+                // overshoot — see the knob's comment for the flank-cooling measurement it is
+                // meant to settle.
+                const bool mount_copy = BCJupKnobs::mount_copy() != 0;
                 auto extrap = [&](int ia, int ja, int ka,
                                   int ib, int jb, int kb) {
                     for(int f = 0; f < ns; f++){
                         double*** x = scalars[f]->x;
-                        x[i][j][k] = c43*x[ia][ja][ka] - c13*x[ib][jb][kb];
+                        x[i][j][k] = mount_copy
+                                   ? x[ia][ja][ka]
+                                   : c43*x[ia][ja][ka] - c13*x[ib][jb][kb];
                     }
                 };
 
