@@ -60,6 +60,20 @@ static int    radiation_enabled()  { static const int    v = [](){ const char* e
 static int    turb_enabled()       { static const int    v = [](){ const char* e = getenv("ATJUP_TURB");                 return e ? atoi(e) : 0;   }(); return v; }
 static int    precip_enabled()     { static const int    v = [](){ const char* e = getenv("ATJUP_PRECIP");               return e ? atoi(e) : 0;   }(); return v; }
 
+// Timestep, nondimensional. The time unit is L/u_0 = 140 km / 100 m/s = 1400 s, so the 0.001
+// default is 1.4 s of Jupiter time per iteration — a 450-iteration run spans 10.5 minutes, i.e.
+// 1.8 % of a rotation. A grid cell is 3.5 km radially but 1220 km zonally (factor 350), and the
+// zonal wind needs ~10 100 iterations to cross ONE cell at this dt. That is why nothing horizontal
+// happens in these runs: no wake behind the obstacle, no precipitation, no circulation.
+//
+// Room to raise it: at max|u| = 38.5 m/s the radial Courant number is only 0.015, and the
+// diffusive limit dr^2/(2 * WALL_NUE_FACTOR/re) is 0.078. dt = 0.02 is radial CFL 0.3 and still
+// below the diffusive limit, i.e. 28 s per iteration and ~1.6 Jupiter days in 5000 iterations.
+// The caveat is that the numerical modes that ended the earlier runs grow in PHYSICAL time
+// (1.16 %/iteration at dt=0.001 is an e-folding in 2 minutes), so a larger dt reaches them in
+// proportionally fewer iterations rather than avoiding them.
+static double timestep()           { static const double v = [](){ const char* e = getenv("ATJUP_DT");                   return e ? atof(e) : 0.001; }(); return v; }
+
 // Dry convective adjustment (ConvectiveAdjustmentJup). It DEFAULTS TO ATJUP_NONDIM rather than to
 // off, because the two belong together: switching the buoyancy on without it gives a model that
 // releases its superadiabatic layer and has no way to relieve it, and that run dies at iteration
@@ -360,7 +374,9 @@ void cJupiterModel::Run(){
 
     resetArrays();
 
-    dt = 0.001;                                                         //  no dimension
+    dt = timestep();                                                    //  no dimension, ATJUP_DT
+    printf("      ATJUP: dt = %.5g nondimensional = %.4g s of Jupiter time per iteration\n",
+           dt, dt * L_atm * 1000.0 / u_0);
     iter_n = 0;
 
     init_layer_heights();

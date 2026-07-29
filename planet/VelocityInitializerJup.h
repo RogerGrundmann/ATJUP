@@ -6,6 +6,7 @@
 #include <iostream>
 #include <vector>
 #include <chrono>
+#include <cstdlib>   // getenv/atof for ATJUP_U_INIT_SCALE
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -30,6 +31,8 @@ public:
     void compute()
     {
         std::cout << "\n\n\n      ATJUP: VelocityInitializerJup::compute" << std::endl;
+        printf("      ATJUP: ATJUP_U_INIT_SCALE = %.4g  ->  radial cell branch peaks at %.3g m/s\n",
+               u_init_scale(), 0.5 * 80.0 * u_init_scale());
 
         auto begin = std::chrono::high_resolution_clock::now();
 
@@ -388,13 +391,36 @@ private:
     cJupiterModel& m;
 
     // ========================================================================
-    // Zonal wind amplitude at latitude index j (sign × u_max, u_max = 80 m/s)
+    // Amplitude of the RADIAL branch of the overturning cells at latitude j.
+    //
+    // The names below (P/R, "prograde"/"retrograde") and the magnitude 80 m/s are a zonal-jet
+    // vocabulary, but init_u() writes them into u, which is the radial component
+    // (cJupiterModel.h:898). The zonal jet is w and is seeded separately in compute(), with
+    // 13..162 m/s. The ancestor this construction came from, ATOM's
+    // VelocityInitializer::init_u, uses 0.0116..0.0289 m/s here — three orders of magnitude
+    // less — so the 80 is very likely a zonal number on the wrong component.
+    //
+    // What the grid allows: a cell is 1216 km zonally against 3.5 km radially, so continuity
+    // (du/dr = -div_h v_h) caps the radial velocity at ~11 m/s for a structure one cell wide
+    // and at ~1 m/s for a cell spanning several degrees of latitude. The realised peak here is
+    // ratio 0.5 x 80 = 40 m/s, above both.
+    //
+    // ATJUP_U_INIT_SCALE multiplies the amplitude so the two can be separated by measurement
+    // without committing to either reading. Default 1.0 = unchanged.
     // ========================================================================
+    static double u_init_scale()
+    {
+        static const double v = [](){
+            const char* e = getenv("ATJUP_U_INIT_SCALE"); return e ? atof(e) : 1.0; }();
+        return v;
+    }
+
     static double u_amplitude(int j)
     {
-        constexpr double P =  80.0;   // prograde jet
-        constexpr double R = -80.0;   // retrograde jet
-        constexpr double Z =   0.0;   // cell centre (node)
+        const double s = u_init_scale();
+        const double P =  80.0 * s;   // prograde jet
+        const double R = -80.0 * s;   // retrograde jet
+        const double Z =   0.0;       // cell centre (node)
 
         switch (j) {
             // northern hemisphere — 8 cell pairs
