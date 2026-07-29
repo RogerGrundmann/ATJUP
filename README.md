@@ -225,7 +225,14 @@ species equations. A run described as "with k-ω SST" that set only the XML had 
 | `ATJUP_TURB_CURV` | 1 | spherical curvature terms in the turbulence production |
 | `ATJUP_COSTHE_ABS` | 0 | restore the old, non-reversing cos θ (diagnostic only) |
 | `ATJUP_NO_SEAMOUNT` | 0 | build no obstacle at all (diagnostic) |
+| `ATJUP_U_INIT_SCALE` | 1.0 | scale the prescribed **radial** branch of the initial overturning cells; 1.0 peaks at 40 m/s, 0.025 at 1 m/s |
+| `ATJUP_DT` | 0.001 | nondimensional timestep. 0.001 = 1.4 s of Jupiter time; radial CFL is only 0.015, so 0.02 (CFL 0.3) is 28 s/iteration |
 | `ATJUP_BC_RADIUS_COPY` | 0 | plain copy instead of extrapolation at the radial walls (diagnostic) |
+| `ATJUP_BC_MOUNT_COPY` | 0 | plain copy instead of extrapolation for the scalars in the obstacle surface cells (diagnostic; separates the extrapolation overshoot from the advection scheme in the flank-cooling runaway) |
+| `ATJUP_T_LIMITER` | 0 | FCT-style clip of the temperature update to the local bounds of the old state — stops `t` leaving the range of its own initial data at the obstacle |
+| `ATJUP_CHEM_GATE_ZERO` | 1 | zero the NH3/H2S/NH4SH reaction rates outside the 200–230 K window instead of freezing the last value |
+| `ATJUP_CHEM_MOLAR_CONC` | 0 | plain molar concentration `c = rho·w/m` in the NH4SH rate law instead of the `r_mix/sum_c` renormalisation. **Off by default**: dimensionally right, but it collapses the forward rate by ~6 orders and removes the NH4SH cloud entirely — `A`/`T_d` were calibrated against the inflated concentrations and would have to be re-fitted first |
+| `ATJUP_NH4SH_CAP` | 0 | NH4SH ceiling; **off, the bound it uses (`r_max`) is a scratch vector left over from the H2S initialiser** |
 | `ATJUP_NO_CLAMP` | 0 | disable the zero floor on the species |
 
 **Diagnostics**

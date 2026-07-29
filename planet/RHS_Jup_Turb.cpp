@@ -1012,6 +1012,35 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
                        -dpdphi_term, -transport_w,
                        diffusion_w * (1.0 / re + nue_t + nue_wall),
                        -Coriolis * Coriolis_phi, nue_t, nue_wall);
+                // RADIAL budget of the same cell. This is the one that matters at the obstacle:
+                // measured at (22,94,169), dt=0.025, 200 pressure sweeps, u runs from -0.4 to
+                // -38.5 m/s between iterations 40 and 75 while dw/dr holds at 5-6, so the whole
+                // of transport_w is u*dw/dr and the zonal wind is a passenger. What drives u
+                // itself was not measurable until this line existed: PROBE prints rhs_w only.
+                // The six terms below sum to rhs_u exactly, so the budget can be checked by eye
+                // — note buoyancy is identically zero while ATJUP_HYDRO_SPLIT is on, the radial
+                // force being carried by p_hydro instead.
+                printf("      PROBEU %4d  u=%9.3f | rhs_u=%11.4f dpdr=%11.4f buoy=%11.4f"
+                       " transp=%11.4f diff=%11.4f cor=%11.4f cfg=%11.4f\n",
+                       iter_n, u_ijk * u_0, rhs_u.x[i][j][k],
+                       -dpdr_term,
+                       (hydro_split != 0) ? 0.0 : buoyancy_u,
+                       -transport_u,
+                       diffusion_u * (1.0 / re + nue_t + nue_wall),
+                       -Coriolis * Coriolis_rad,
+                       centrifugal * centrifugal_rad);
+                // transport_u split the same way as PROBEADV does for w: the three directional
+                // derivatives, then the spherical metric group -(v^2 + w^2)/r, which is the
+                // curvature term that turns horizontal motion into a radial force. Printed with
+                // the sign each carries INTO rhs_u (i.e. already negated), so the four add up to
+                // the transp column above. The raw derivatives follow, to tell a large term
+                // caused by a steep gradient from one caused by a large velocity.
+                printf("      PROBEUADV %4d  u*dudr=%11.4f  v/r*dudthe=%11.4f"
+                       "  w/(r sin)*dudphi=%11.4f  metric=%11.4f | dudr=%10.3f dudthe=%10.3f"
+                       " dudphi=%10.3f\n",
+                       iter_n, -u_ijk * dudr, -v_invrm * dudthe, -w_invrs * dudphi,
+                       (v_ijk * v_ijk + w_ijk * w_ijk) * inv_rm,
+                       dudr, dudthe, dudphi);
                 // Advection broken into its four pieces: the three directional derivatives and
                 // the spherical metric group. Which one carries the +4 tells the difference
                 // between "the flow really accelerates round the flank" (r/theta/phi advection)
