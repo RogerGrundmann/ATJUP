@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>   // getenv/atoi for the NH4SH rate-law knobs
 #include <iostream>
 
 #ifdef _OPENMP
@@ -40,6 +41,69 @@ public:
         const double A   = 15000.0;
         const double B   = -0.5;
         const double T_d = 3020.0;
+
+        // ====================================================================================
+        // TWO DEFECTS IN THE RATE LAW BELOW, EACH WITH A KNOB THAT RESTORES THE OLD BEHAVIOUR.
+        //
+        // What they cost, measured: two runs of 450 iterations at dt=0.001, identical except
+        // <chemical_reaction> 0 against 1. On the meridional slice k=180 the whole NH4SH field
+        // is the chemistry's doing — with the switch off it is not merely smaller but exactly
+        // zero everywhere, so neither transport nor Stokes settling contributes anything:
+        //
+        //     i=12 j=9   (81N)   245.4  ->  0        i=13 j=151 (61S)   242.7  ->  0
+        //     i=12 j=8   (82N)   205.2  ->  0        i=12 j=152 (62S)   151.1  ->  0
+        //
+        // And the balance does not close: producing 245.4 units of NH4SH moved NH3 by 1e-4
+        // (0.0067 against 0.0068) and the temperature not at all. Six orders of magnitude.
+        // The vertical profile at j=9 is a geometric series, factor 4-6 per level over ten
+        // levels, peaking at i=12 — which is BELOW the 200..230 K reaction layer (i=14..19
+        // there), i.e. where the gate is shut.
+        //
+        // (1) ATJUP_CHEM_GATE_ZERO — the temperature gate had no else branch. w_nh3/w_h2s/
+        //     w_nh4sh are only assigned inside `if (t_00 <= t_u <= t_0)`; they are persistent
+        //     Arrays, so a cell that LEAVES the window keeps the last rate it ever had and goes
+        //     on applying it to the tendency every iteration for the rest of the run. All the
+        //     hot spots sit outside the window: (12,9) 243.5 K, (12,151) 240.0 K, (13,151)
+        //     236.2 K. Default 1 zeroes the three rates outside the window; 0 is the old freeze.
+        //
+        // (2) ATJUP_CHEM_MOLAR_CONC — DEFAULT 0, and the default is a modelling decision, not an
+        //     endorsement of the old formula. Measured, 450 iterations at dt=0.001, otherwise
+        //     identical runs, NH4SH on the meridional slice at iteration 450:
+        //
+        //         old normalisation   i=12 j=9  245.5    i=13 j=151  242.7    max 245.5
+        //         (1) alone            "        12.38     "           33.49   max  82.08
+        //         (1) + this           "         0        "            0      max   0
+        //
+        //     The repair is dimensionally right and it removes the NH4SH cloud completely (below
+        //     the 1e-6 output precision). The arithmetic says why: the old denominator inflated
+        //     r_mix = 0.42 to r_mix/sum_c ~ 1000, a factor ~2400 per concentration and ~6e6 in
+        //     the quadratic kf*c_nh3*c_h2s, so switching to the true concentration collapses the
+        //     forward rate by those six orders. A = 15000 and T_d = 3020 above were evidently
+        //     calibrated against the inflated values; correcting the concentrations without
+        //     recalibrating the rate leaves no ammonium hydrosulfide at all. Until the rate is
+        //     re-fitted, the shipped default keeps the old normalisation and relies on (1),
+        //     which lowers the hot spots by a factor 20 and touches no calibration.
+        //
+        //     What it does when set to 1: the concentrations were renormalised by
+        //         denom = r_mix / sum_c,   sum_c = nh3/m_nh3 + h2s/m_h2s + nh4sh/m_nh4sh
+        //     which forces c_nh3 + c_h2s + c_nh4sh = r_mix: three trace species rescaled to
+        //     carry the ENTIRE mixture density. Measured at the hot spots, NH4SH then holds
+        //     99.99 % of sum_c (75 % already at NH4SH = 0.064), so c_nh4sh = r_mix to four
+        //     digits no matter how large the field grows — the back reaction kb*c_nh4sh
+        //     saturates and the rate law stops seeing its own product. It is also a unit
+        //     mismatch: nh3 and h2s are mass fractions [kg/kg] while the NH4SH initial field is
+        //     built as CORR_NH4SH * r_mix * q_Rain, a density [kg/m3], and sum_c adds them.
+        //     Set to 1 it uses the plain molar concentration c_x = rho_mix * w_x / m_x
+        //     [kmol/m3]; 0 (the default, see above) keeps the normalisation.
+        //
+        // rho_mix is refreshed by computeMixtureDensity() AFTER this routine in the physics
+        // block (cJupiterModel.cpp), so on the first iteration it is still empty; fall back to
+        // the scalar r_mix then, as the RHS does for the same reason.
+        // ====================================================================================
+        static const int gate_zero  = [](){
+            const char* e = getenv("ATJUP_CHEM_GATE_ZERO");  return e ? atoi(e) : 1; }();
+        static const int molar_conc = [](){
+            const char* e = getenv("ATJUP_CHEM_MOLAR_CONC"); return e ? atoi(e) : 0; }();
 
         // Zero the polar ghost bands (j < 3 and j > jm-4) that lie outside the
         // RungeKutta domain (which runs j = 3..jm-4).  Concentrations there are
@@ -91,10 +155,18 @@ public:
                     const double kb  = kf / keq;
 
                     if ((t_u <= m.t_0_nh4sh) && (t_u >= m.t_00_nh4sh)) {
-                        const double sum_c   = m.nh3.x[i][j][k]   / m.m_nh3
-                                             + m.h2s.x[i][j][k]   / m.m_h2s
-                                             + m.nh4sh.x[i][j][k] / m.m_nh4sh;
-                        const double denom   = (sum_c == 0.0) ? 0.0 : m.r_mix / sum_c;
+                        double denom;
+                        if (molar_conc) {
+                            // c_x = rho * w_x / m_x, the plain molar concentration [kmol/m3].
+                            double rho = m.rho_mix.x[i][j][k];
+                            if (!(rho > 0.0)) rho = m.r_mix;   // first iteration: not filled yet
+                            denom = rho;
+                        } else {
+                            const double sum_c = m.nh3.x[i][j][k]   / m.m_nh3
+                                               + m.h2s.x[i][j][k]   / m.m_h2s
+                                               + m.nh4sh.x[i][j][k] / m.m_nh4sh;
+                            denom = (sum_c == 0.0) ? 0.0 : m.r_mix / sum_c;
+                        }
 
                         const double c_nh3   = m.nh3.x[i][j][k]   / m.m_nh3   * denom;
                         const double c_h2s   = m.h2s.x[i][j][k]   / m.m_h2s   * denom;
@@ -105,6 +177,13 @@ public:
                         m.w_nh3.x[i][j][k]   = -m.m_nh3   * R_diff;
                         m.w_h2s.x[i][j][k]   = -m.m_h2s   * R_diff;
                         m.w_nh4sh.x[i][j][k] =  m.m_nh4sh * R_diff;
+                    } else if (gate_zero) {
+                        // Outside the 200..230 K formation window there is no reaction, so the
+                        // rates are zero — not "whatever they were the last time this cell was
+                        // inside the window".
+                        m.w_nh3.x[i][j][k]   = 0.0;
+                        m.w_h2s.x[i][j][k]   = 0.0;
+                        m.w_nh4sh.x[i][j][k] = 0.0;
                     }
 
                     // PLUS, not minus. massflux_* is added to the species tendency in
