@@ -19,17 +19,63 @@ void cJupiterModel::TropopauseLocation(){
 //    cout << endl << "      ATJUP: TropopauseLocation" << endl;
 
 // parabolic tropopause location distribution from pole to pole assumed
+//
+// WHERE THE END POINTS COME FROM (ATJUP_TROPO_FROM_CONFIG, default 1).
+//
+// im_tropopause is what bounds the overturning cells vertically: VelocityInitializerJup::init_u
+// reads nothing else to decide how high the radial branch of the Hadley/Ferrel cells reaches,
+// and init_v_or_w uses it to split the linear profile from the above-tropopause decay. The
+// hard-coded end points are i_max = 40 and i_beg = 30, labelled "about 125 km" and "about 100 km"
+// in cJupiterModel.h -- but a layer on this grid is L_atm/(im-1) = 140/40 = 3.5 km, so 40 is
+// 140 km, the MODEL LID, and 30 is 105 km. Measured in the initial state at j=112, k=90: the
+// ramp peaks at 19.4 m/s at 91 km and returns to zero only at i=40, i.e. one triangular branch
+// spanning the entire shell.
+//
+// The heights are already configured, in km, as tropopause_equator (125.0) and tropopause_pole
+// (115.0). Those had no effect on this: init_tropopause_layers() computes tropopause_layers from
+// them, but the getter at cJupiterModel.h:118 overwrites it with im_tropopause[j] before anyone
+// reads it, so the hard-coded pair won. They now set the end points, looked up against the actual
+// layer heights rather than assuming a spacing, so the construction survives coord_stretching.
+// On the default grid this gives i_max = 36 (126 km) and i_beg = 33 (115.5 km).
+//
+// This bounds the branch below the lid; it does NOT make the cells shorter than the troposphere.
+// init_u has no vertical stacking at all -- one ramp per latitude, up to 2/3 of the tropopause
+// height and back down -- and the cell structure comes entirely from the sign alternation across
+// latitude in u_amplitude. A circulation that closes lower than the tropopause needs a different
+// ramp, which is a decision about the intended physics.
+//
+// ATJUP_TROPO_FROM_CONFIG=0 restores the hard-coded 40/30 for A/B work.
+    static const int from_config = [](){
+        const char* e = getenv("ATJUP_TROPO_FROM_CONFIG"); return e ? atoi(e) : 1; }();
+
+    auto layer_for_height = [&](double h_km){
+        int best = 0; double best_d = 1.0e30;
+        for(int i = 0; i < im; i++){
+            const double d = std::fabs((double)get_layer_height(i) - h_km);
+            if(d < best_d){ best_d = d; best = i; }
+        }
+        return best;
+    };
+
+    const int i_max_eff = from_config ? layer_for_height(tropopause_equator) : i_max;
+    const int i_beg_eff = from_config ? layer_for_height(tropopause_pole)    : i_beg;
+
+    printf("      ATJUP: tropopause equator = layer %d (%.1f km), pole = layer %d (%.1f km)%s\n",
+           i_max_eff, (double)get_layer_height(i_max_eff),
+           i_beg_eff, (double)get_layer_height(i_beg_eff),
+           from_config ? "" : "  [hard-coded 40/30, ATJUP_TROPO_FROM_CONFIG=0]");
+
     im_tropopause = std::vector<int>(jm, 0);
     int j_half = (jm-1)/2;
     double d_j_half = (double)j_half;
-    double trop_u2_eff = (double)(i_beg - i_max);
+    double trop_u2_eff = (double)(i_beg_eff - i_max_eff);
 //    double trop_u2_eff = (double)(i_beg_trop - i_max_trop);
 // computation of the tropopause from pole to pole
     #pragma omp parallel for
     for(int j = 0; j < jm; j++){
         double d_j = (double)j;
         im_tropopause[j] = (int)((trop_u2_eff * (d_j * d_j/(d_j_half * d_j_half)
-            - 2.0 * d_j/d_j_half)) + (double)i_beg);
+            - 2.0 * d_j/d_j_half)) + (double)i_beg_eff);
 //            - 2.0 * d_j/d_j_half)) + (double)i_beg_trop);
 // cout << "   j = " << j << "   im_tropopause[j] = " << im_tropopause[j] << endl;
     }

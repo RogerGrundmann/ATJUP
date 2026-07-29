@@ -380,6 +380,40 @@ public:
             }
         }
 
+        // --------------------------------------------------------------------
+        // The six latitude bands the integrator never reaches (ATJUP_ZERO_GHOST_BANDS)
+        // --------------------------------------------------------------------
+        // RungeKuttaJup runs j = 3 .. jm-4, so j = 0,1,2 and j = jm-3..jm-1 are never advanced:
+        // whatever is written here stays, bit for bit, to the end of the run. Measured at
+        // iteration 450 of a 6.4-hour run: j = 0,1,2 held -10.0, -10.0, -20.0 m/s of RADIAL
+        // velocity and j = 178,179,180 held -40.0, -20.0, -20.0, all identical to iteration 0,
+        // while the largest |u| anywhere in the integrated range was 7.1 m/s. They are therefore
+        // not initial data at all but a permanent boundary condition on the computed domain, five
+        // times stronger than the solution it borders, and nothing in the model can relax them.
+        // ChemMassRateJup already zeroes the same bands for its own reasons: without a dynamical
+        // sink the quadratic reaction term there grows without bound.
+        //
+        // Setting them to zero is a diagnostic, not a repair — the honest repair is either to
+        // integrate them or to give them a proper polar boundary condition. This knob measures
+        // what that prescribed forcing is worth. Default 0 = every existing run bit-identical.
+        static const int zero_bands = [](){
+            const char* e = getenv("ATJUP_ZERO_GHOST_BANDS"); return e ? atoi(e) : 0; }();
+        if(zero_bands){
+            printf("      ATJUP: ATJUP_ZERO_GHOST_BANDS - zeroing u,v,w in j=0..2 and j=%d..%d\n",
+                   m.jm - 3, m.jm - 1);
+            #pragma omp parallel for collapse(2) schedule(static)
+            for (int i = 0; i < m.im; i++) {
+                for (int k = 0; k < m.km; k++) {
+                    for (int b = 0; b < 6; b++) {
+                        const int j = (b < 3) ? b : m.jm - 6 + b;
+                        m.u.x[i][j][k] = 0.0;
+                        m.v.x[i][j][k] = 0.0;
+                        m.w.x[i][j][k] = 0.0;
+                    }
+                }
+            }
+        }
+
         auto end     = std::chrono::high_resolution_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
         printf(" Time measured: %.3f seconds for VelocityInitializerJup\n",
