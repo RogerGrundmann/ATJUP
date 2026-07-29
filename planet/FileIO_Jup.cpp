@@ -357,25 +357,51 @@ bool cJupiterModel::nan_watch(int iter){
 //
 // One line per level, prefixed WPROF and space-separated, so a run log can be reduced with
 // grep/awk without parsing the surrounding report. Velocities are printed in m/s.
+// TWO DEFECTS FIXED HERE, both of which had been misread for a whole day of measurements.
+//
+// (1) The scan ran over j = 0 .. jm-1, but RungeKuttaJup integrates only j = 3 .. jm-4. The six
+//     latitude bands outside that range are NEVER advanced: they carry what init_u wrote into
+//     them, bit for bit, to the end of the run. Measured at iteration 450 of a 6.4-hour run with
+//     the Shapiro filter off, level i=20:
+//
+//         j = 0,1,2      u = -10.0000, -10.0000, -20.0000   identical to iteration 0
+//         j = 178,179,180    u = -40.0000, -20.0000, -20.0000   identical to iteration 0
+//         max|u| over j = 3..177   =   7.1187 m/s   <- the actual solution
+//         max|u| over all j        =  40.0000 m/s   <- what this routine used to report
+//
+//     So every max|u| trace was dominated by frozen initial data once the solution decayed below
+//     it, and the plateaus that looked like steady states (24.062 with the filter on, 40.000 with
+//     it off) were those bands: with the filter on they are pulled onto its linear fixed point,
+//     with it off they stay the pristine init_u ramp. The interior is reported alone now, and the
+//     bands are printed separately so they stay visible instead of contaminating the solution.
+//
+// (2) jmax/kmax tracked the location of max|w| while sitting at the end of a row whose first
+//     column is max|u|. They are now carried per field.
 void cJupiterModel::momentum_profile(int iter){
-    printf("      ATJUP: ===== MOMENTUM PROFILE at iteration %d =====\n", iter);
+    const int j_lo = 3, j_hi = jm - 4;          // the range RungeKuttaJup actually integrates
+
+    printf("      ATJUP: ===== MOMENTUM PROFILE at iteration %d ===== (j = %d..%d, the integrated range)\n",
+           iter, j_lo, j_hi);
     printf("      WPROF iter    i   z[km]     max|u|     max|v|     max|w|"
-           "      <u>        <v>        <w>      rms(w)   jmax kmax\n");
+           "      <u>        <v>        <w>      rms(w)    ju   ku    jv   kv    jw   kw\n");
+
+    double gu = 0.0, gv = 0.0, gw = 0.0;        // frozen-band maxima over the whole shell
+    int gui = -1, guj = -1, gvi = -1, gwi = -1;
 
     for(int i = 0; i < im; i++){
         double mu = 0.0, mv = 0.0, mw = 0.0;
         double su = 0.0, sv = 0.0, sw = 0.0, sww = 0.0, wsum = 0.0;
-        int bj = -1, bk = -1;
+        int uj = -1, uk = -1, vj = -1, vk = -1, wj = -1, wk = -1;
 
-        for(int j = 0; j < jm; j++){
+        for(int j = j_lo; j <= j_hi; j++){
             const double wgt = sin(the.z[j]);          // spherical area weight, as in computeBuoyancyRefLevel
             for(int k = 0; k < km; k++){
                 if(SeaMount.x[i][j][k] == 1.0) continue;      // solid cell: not part of the fluid budget
                 const double uu = u.x[i][j][k], vv = v.x[i][j][k], ww = w.x[i][j][k];
                 if(!std::isfinite(uu) || !std::isfinite(vv) || !std::isfinite(ww)) continue;
-                if(fabs(uu) > mu) mu = fabs(uu);
-                if(fabs(vv) > mv) mv = fabs(vv);
-                if(fabs(ww) > mw){ mw = fabs(ww); bj = j; bk = k; }
+                if(fabs(uu) > mu){ mu = fabs(uu); uj = j; uk = k; }
+                if(fabs(vv) > mv){ mv = fabs(vv); vj = j; vk = k; }
+                if(fabs(ww) > mw){ mw = fabs(ww); wj = j; wk = k; }
                 su   += wgt * uu;
                 sv   += wgt * vv;
                 sw   += wgt * ww;
@@ -384,11 +410,28 @@ void cJupiterModel::momentum_profile(int iter){
             }
         }
         const double n = (wsum > 0.0) ? wsum : 1.0;
-        printf("      WPROF %4d %4d %7.2f %10.3f %10.3f %10.3f %10.4f %10.4f %10.4f %10.4f %5d %5d\n",
+        printf("      WPROF %4d %4d %7.2f %10.3f %10.3f %10.3f %10.4f %10.4f %10.4f %10.4f"
+               " %5d %4d %5d %4d %5d %4d\n",
                iter, i, get_layer_height(i) , mu * u_0, mv * u_0, mw * u_0,
                (su / n) * u_0, (sv / n) * u_0, (sw / n) * u_0,
-               sqrt(sww / n) * u_0, bj, bk);
+               sqrt(sww / n) * u_0, uj, uk, vj, vk, wj, wk);
+
+        // The bands the integrator never touches, scanned separately.
+        for(int b = 0; b < 6; b++){
+            const int j = (b < 3) ? b : jm - 6 + b;
+            for(int k = 0; k < km; k++){
+                if(SeaMount.x[i][j][k] == 1.0) continue;
+                const double uu = u.x[i][j][k], vv = v.x[i][j][k], ww = w.x[i][j][k];
+                if(std::isfinite(uu) && fabs(uu) > gu){ gu = fabs(uu); gui = i; guj = j; }
+                if(std::isfinite(vv) && fabs(vv) > gv){ gv = fabs(vv); gvi = i; }
+                if(std::isfinite(ww) && fabs(ww) > gw){ gw = fabs(ww); gwi = i; }
+            }
+        }
     }
+
+    printf("      WPROF-FROZEN %4d  bands j=0..2 and j=%d..%d are NOT integrated:"
+           " max|u|=%.3f (i=%d j=%d)  max|v|=%.3f (i=%d)  max|w|=%.3f (i=%d)\n",
+           iter, jm - 3, jm - 1, gu * u_0, gui, guj, gv * u_0, gvi, gw * u_0, gwi);
 }
 
 // Floor the condensable species at zero, and keep the books on what that costs.
