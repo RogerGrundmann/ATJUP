@@ -321,9 +321,38 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     const double nd_buoy = ((nd_buoy_on >= 0 ? nd_buoy_on : nd_all) != 0) ? 1.0e5 * L_m / (u_0*u_0) : 1.0;
 
     // ===== Coriolis and centrifugal forces =====
+    //
+    // With theta the COLATITUDE and v the theta-component (so +v points south), the rotation
+    // vector is Omega*(cos(theta) e_r - sin(theta) e_theta) and the Coriolis acceleration
+    // -2*Omega x u is
+    //
+    //     a_r     = +2*Omega*sin(theta)*w
+    //     a_theta = +2*Omega*cos(theta)*w
+    //     a_phi   = -2*Omega*(cos(theta)*v + sin(theta)*u)
+    //
+    // The three terms below are named with the opposite sign because each enters rhs_* through
+    // a MINUS, so each must hold -a. Coriolis_rad did. TWO OF THE THREE DID NOT.
+    //
+    // Coriolis_the had +2*Omega*cos*w and so delivered -a_theta: an eastward wind in the
+    // northern hemisphere was turned NORTHWARD, i.e. deflected to the LEFT. Physical check:
+    // eastward flow at northern mid-latitudes must go right, which is south, which is +e_theta.
+    //
+    // Coriolis_phi had +2*Omega*(-cos*v + sin*u). The sin*u half was right; the cos*v half
+    // carried the wrong sign, so southward flow in the northern hemisphere was turned EAST
+    // instead of west — again to the left. That mixture is why this survived so long: it made
+    // Coriolis_phi not plus-or-minus any consistent vector component, so no single overall sign
+    // could repair it and no overall sign looked obviously wrong either.
+    //
+    // Found while auditing ATSAT's forces on 2026-07-30; ATSAT carried the identical two errors
+    // in the identical two lines, having inherited them from here, and was corrected first.
+    //
+    // NOT FIXED HERE, and worth a separate look: sinthe below is the FLOORED metric sine
+    // (sinthe_min, 0.55 = 33.4 deg). The centrifugal block twenty lines down reconstructs
+    // sinthe_true from the cosine precisely because "that floor has no business in a body
+    // force" — and the Coriolis terms are body forces too, still reading the floored value.
     double Coriolis_rad  = nd_cor * -2.0 * omega * sinthe * w_ijk;
-    double Coriolis_the  = nd_cor * +2.0 * omega * costhe * w_ijk;
-    double Coriolis_phi  = nd_cor * +2.0 * omega * (-costhe * v_ijk + sinthe * u_ijk);
+    double Coriolis_the  = nd_cor * -2.0 * omega * costhe * w_ijk;
+    double Coriolis_phi  = nd_cor * +2.0 * omega * (+costhe * v_ijk + sinthe * u_ijk);
 
     // Centrifugal acceleration = Omega^2 * s * s_hat, with s = r*sin(theta) the distance from
     // the rotation axis and s_hat = sin(theta)*e_r + cos(theta)*e_theta the unit vector pointing
