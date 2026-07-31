@@ -500,7 +500,19 @@ private:
 // CH4 (methane) parameters — ported from ATNEPT
 // ============================================================================
     double t_0_ch4  = 90.69;                                            // in K, triple point
-    double t_00_ch4 = 190.56;                                           // in K, ch4-ice cloud formation
+    // WAS 190.56 K, which is methane's CRITICAL temperature, not an ice-cloud bound — it sat 100 K
+    // ABOVE t_0_ch4 and so inverted the ordering every other species has. The consequence was exact
+    // and total: PrecipitationJup/Sat gate ice autoconversion on (T < t_frz && T >= t_low), which
+    // for CH4 read (T < 90.69 && T >= 190.56) — an EMPTY band, so methane ice could never convert
+    // to snow at any temperature. ATSAT was carrying a 45.6 g/m3 methane ice deck with zero methane
+    // snow, and its clamp budget showed ch4_ice clipping 110 % of its own mass per 12 iterations
+    // because the field had no sink at all.
+    //
+    // 67.36 K is t_0_ch4 scaled by the H2O/NH3 proportion, on Roger's instruction: H2O sits at
+    // 210.15/273.15 = 0.7694 of its triple point and NH3 at 140.0/195.5 = 0.7161, mean 0.7427, and
+    // 0.7427 * 90.69 = 67.36. That makes the CH4 ice band 67.36 .. 90.69 K. It is a proportion
+    // carried across from two other substances, not a measured property of methane ice.
+    double t_00_ch4 = 67.36;   // in K == -205.79 degC, ch4-ice cloud formation
     double p_0_ch4  = 0.1;                                              // in bar
     double p_00_ch4 = 1.1;                                              // in bar
 
@@ -992,6 +1004,24 @@ private:
     Array P_ch4_graupel;        // CH4 graupel precipitation flux [kg/m2/s]
     Array P_nh4sh;              // NH4SH crystal sedimentation flux [kg/m2/s]
     Array Q_precip;             // latent heating rate from precip phase changes [W/m3] (diagnostic)
+
+    // Precipitation SOURCE TERMS for the moisture equations, as NONDIMENSIONAL tendencies
+    // (physical rate [kg/m3/s] already multiplied by L_atm[m]/u_0, the model's time unit), so
+    // RHSJup adds them straight into rhs_*. Filled by PrecipitationJup only when
+    // ATJUP_PRECIP_COUPLING is on; zero otherwise. See the note at the writeback in
+    // PrecipitationJup.h for why the alternative — writing the depleted field in place — does
+    // not survive the Runge-Kutta.
+    // NH4SH needs no entry here: its Stokes settling is already a term in rhs_nh4sh, and
+    // PrecipitationJup::sedimentNH4SH only diagnoses the flux.
+    Array S_precip_h2o;         // vapour source (rain evaporating back)   [nondim tendency]
+    Array S_precip_h2o_cloud;   // cloud sink (autoconversion, accretion, riming)
+    Array S_precip_h2o_ice;     // ice sink (ice autoconversion)
+    Array S_precip_nh3;
+    Array S_precip_nh3_cloud;
+    Array S_precip_nh3_ice;
+    Array S_precip_ch4;
+    Array S_precip_ch4_cloud;
+    Array S_precip_ch4_ice;
 
     // --- Turbulence closure (TurbulenceJup.h): k-epsilon / k-omega / k-omega SST ---
     // Mirrors the array set of ATOM's TurbulenceAtm.h, and the same DIMENSIONLESS

@@ -631,7 +631,11 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     // (and whose own latent heat it converts with /(cp_mix*r_mix)). The r_mix therefore
     // cancels, leaving the true mixing-ratio tendency; using the local density here would
     // instead inflate the heating by r_mix/rho_local (~13x at the cloud decks).
-    static const double precip_coupling = [](){ const char* e = getenv("ATJUP_PRECIP_COUPLING"); return e ? atof(e) : 0.0; }();
+    // DEFAULT 1.0 since 2026-07-31. It gates BOTH halves of the coupling: this latent-heat term
+    // and the condensate depletion that PrecipitationJup reports into S_precip_* below. They are
+    // one physical statement — the heat a conversion releases and the mass it moved have to
+    // enter the model together, or the budget is inconsistent by construction.
+    static const double precip_coupling = [](){ const char* e = getenv("ATJUP_PRECIP_COUPLING"); return e ? atof(e) : 1.0; }();
     double precip_t = 0.0;
     if(precip_coupling != 0.0){
         const double L_rad = L_atm * 1.0e3;                     // atmosphere thickness [m]
@@ -1103,17 +1107,24 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
         }
     }
 
+    // The precipitation source terms. Zero unless ATJUP_PRECIP and ATJUP_PRECIP_COUPLING are
+    // both on; S_precip_*_cloud and _ice are negative (condensate leaving as rain, snow and
+    // graupel) and S_precip_<species> positive (rain evaporating back to vapour on the way
+    // down). They arrive already nondimensional — see the writeback in PrecipitationJup.h.
     rhs_h2o.x[i][j][k] =
         - transport_h2o
-        + diffusion_h2o * (1.0 / (sc_h2o * re) + nue_t_s);
+        + diffusion_h2o * (1.0 / (sc_h2o * re) + nue_t_s)
+        + precip_coupling * S_precip_h2o.x[i][j][k];
 
     rhs_h2o_cloud.x[i][j][k] =
         - transport_h2o_cloud
-        + diffusion_h2o_cloud * (1.0 / (sc_h2o * re) + nue_t_s);
+        + diffusion_h2o_cloud * (1.0 / (sc_h2o * re) + nue_t_s)
+        + precip_coupling * S_precip_h2o_cloud.x[i][j][k];
 
     rhs_h2o_ice.x[i][j][k] =
         - transport_h2o_ice
-        + diffusion_h2o_ice * (1.0 / (sc_h2o * re) + nue_t_s);
+        + diffusion_h2o_ice * (1.0 / (sc_h2o * re) + nue_t_s)
+        + precip_coupling * S_precip_h2o_ice.x[i][j][k];
 
     rhs_h2s.x[i][j][k] =
         - transport_h2s
@@ -1123,27 +1134,33 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     rhs_nh3.x[i][j][k] =
         - transport_nh3
         + diffusion_nh3 * (1.0 / (sc_nh3 * re) + nue_t_s)
-        + chemical_reaction * massflux_nh3.x[i][j][k];
+        + chemical_reaction * massflux_nh3.x[i][j][k]
+        + precip_coupling * S_precip_nh3.x[i][j][k];
 
     rhs_nh3_cloud.x[i][j][k] =
         - transport_nh3_cloud
-        + diffusion_nh3_cloud * (1.0 / (sc_nh3 * re) + nue_t_s);
+        + diffusion_nh3_cloud * (1.0 / (sc_nh3 * re) + nue_t_s)
+        + precip_coupling * S_precip_nh3_cloud.x[i][j][k];
 
     rhs_nh3_ice.x[i][j][k] =
         - transport_nh3_ice
-        + diffusion_nh3_ice * (1.0 / (sc_nh3 * re) + nue_t_s);
+        + diffusion_nh3_ice * (1.0 / (sc_nh3 * re) + nue_t_s)
+        + precip_coupling * S_precip_nh3_ice.x[i][j][k];
 
     rhs_ch4.x[i][j][k] =
         - transport_ch4
-        + diffusion_ch4 * (1.0 / (sc_ch4 * re) + nue_t_s);
+        + diffusion_ch4 * (1.0 / (sc_ch4 * re) + nue_t_s)
+        + precip_coupling * S_precip_ch4.x[i][j][k];
 
     rhs_ch4_cloud.x[i][j][k] =
         - transport_ch4_cloud
-        + diffusion_ch4_cloud * (1.0 / (sc_ch4 * re) + nue_t_s);
+        + diffusion_ch4_cloud * (1.0 / (sc_ch4 * re) + nue_t_s)
+        + precip_coupling * S_precip_ch4_cloud.x[i][j][k];
 
     rhs_ch4_ice.x[i][j][k] =
         - transport_ch4_ice
-        + diffusion_ch4_ice * (1.0 / (sc_ch4 * re) + nue_t_s);
+        + diffusion_ch4_ice * (1.0 / (sc_ch4 * re) + nue_t_s)
+        + precip_coupling * S_precip_ch4_ice.x[i][j][k];
 
     // Stokes terminal velocity for NH4SH crystals falling in the -r direction.
     // v_stokes [m/s] = (2/9) * r_p² * (rho_crystal - rho_mix) * g / mue_mix
