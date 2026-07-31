@@ -61,7 +61,10 @@ class cJupiterModel{
     friend class RadiationJup;
     friend class PrecipitationJup;
     friend class TurbulenceJup;
-    friend class ConvectiveAdjustmentJup;
+    // The shared physics headers are templates on the model class, so the friendship is
+    // granted to the TEMPLATE, not to a per-planet name. A `friend class Xjup;` here would
+    // also declare a class of that name and collide with the typedef in the binding header.
+    template<class M> friend class ConvectiveAdjustment;
     friend class ThermalWindJup;
 
 public:
@@ -693,6 +696,11 @@ private:
     // trade, not a fix, which is why it stays at 0.55 by default and is now merely VISIBLE and
     // measurable rather than hard-coded in two files that had to be kept in step by hand.
     // ATJUP_SINTHE_MIN=<x> sets it; see the measurement in the commit that introduced the knob.
+    // The model's own name, used by the SHARED physics headers for their log prefix and to
+    // build their environment-variable names (ATJUP_CONV_ADJ_LAPSE and so on). It is the only
+    // thing those files know about which planet they are running on.
+    static const char* planet_tag(){ return "ATJUP"; }
+
     static double sinthe_min(){
         static const double v = [](){
             const char* e = getenv("ATJUP_SINTHE_MIN");
