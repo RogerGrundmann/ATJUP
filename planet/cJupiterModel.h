@@ -60,10 +60,7 @@ class cJupiterModel{
     friend class VelocityInitializerJup;
     friend class RadiationJup;
     friend class PrecipitationJup;
-    friend class TurbulenceJup;
-    // The shared physics headers are templates on the model class, so the friendship is
-    // granted to the TEMPLATE, not to a per-planet name. A `friend class Xjup;` here would
-    // also declare a class of that name and collide with the typedef in the binding header.
+    template<class M> friend class Turbulence;
     template<class M> friend class ConvectiveAdjustment;
     friend class ThermalWindJup;
 
@@ -700,6 +697,18 @@ private:
     // build their environment-variable names (ATJUP_CONV_ADJ_LAPSE and so on). It is the only
     // thing those files know about which planet they are running on.
     static const char* planet_tag(){ return "ATJUP"; }
+
+    // ---- The surface of a column, for the SHARED physics headers ----
+    //
+    // ATJUP marks solid cells with SeaMount.x == 1.0 and carries the per-column surface index in
+    // i_topography (the Great Red Spot obstacle).
+    //
+    // Every shared header reaches the topography through these two and never touches SeaMount or
+    // i_topography directly, which is what lets one implementation serve a model with an obstacle
+    // and one without. They were extracted when Turbulence was shared: all six real differences
+    // between TurbulenceJup.h and TurbulenceSat.h were this one concept, spelled out inline.
+    int  surface_index(int j, int k) const { return i_topography[j][k]; }
+    bool is_solid(int i, int j, int k) const { return SeaMount.x[i][j][k] == 1.0; }
 
     static double sinthe_min(){
         static const double v = [](){
