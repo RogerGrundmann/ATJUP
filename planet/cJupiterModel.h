@@ -882,9 +882,10 @@ private:
     // each column (i_topography, so the GRS solid is respected). Per-species totals plus their
     // sum, so a single lat-lon view shows which condensate dominates where. Zero unless
     // ATJUP_PRECIP is set. ParaView writes these as mm/day.
-    Array_2D precip_srf_total;  // H2O + NH3 + NH4SH
+    Array_2D precip_srf_total;  // H2O + NH3 + CH4 + NH4SH
     Array_2D precip_srf_h2o;    // H2O rain + snow + graupel
     Array_2D precip_srf_nh3;    // NH3 rain + snow + graupel
+    Array_2D precip_srf_ch4;    // CH4 rain + snow + graupel
     Array_2D precip_srf_nh4sh;  // NH4SH settling crystals
     Array_2D precipitable_water;// areas of precipitable water in the air
     Array_2D nh3_total;            // areas of higher nh3 concentration
@@ -986,6 +987,9 @@ private:
     Array P_nh3_rain;           // NH3 rain    precipitation flux [kg/m2/s]
     Array P_nh3_snow;           // NH3 snow    precipitation flux [kg/m2/s]
     Array P_nh3_graupel;        // NH3 graupel precipitation flux [kg/m2/s]
+    Array P_ch4_rain;           // CH4 rain    precipitation flux [kg/m2/s]
+    Array P_ch4_snow;           // CH4 snow    precipitation flux [kg/m2/s]
+    Array P_ch4_graupel;        // CH4 graupel precipitation flux [kg/m2/s]
     Array P_nh4sh;              // NH4SH crystal sedimentation flux [kg/m2/s]
     Array Q_precip;             // latent heating rate from precip phase changes [W/m3] (diagnostic)
 

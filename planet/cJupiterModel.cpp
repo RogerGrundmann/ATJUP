@@ -769,6 +769,7 @@ void cJupiterModel::resetArrays(){
     precip_srf_total.initArray_2D(jm, km, 0.0);      // all-species surface precipitation [kg/m2/s]
     precip_srf_h2o.initArray_2D(jm, km, 0.0);        // H2O   rain + snow + graupel
     precip_srf_nh3.initArray_2D(jm, km, 0.0);        // NH3   rain + snow + graupel
+    precip_srf_ch4.initArray_2D(jm, km, 0.0);        // CH4   rain + snow + graupel
     precip_srf_nh4sh.initArray_2D(jm, km, 0.0);      // NH4SH settling crystals
     precipitable_water.initArray_2D(jm, km, 0.0);    // areas of precipitable water in the air
     nh3_total.initArray_2D(jm, km, 0.0);             // areas of higher nh3 concentration
@@ -870,6 +871,9 @@ void cJupiterModel::resetArrays(){
     P_nh3_rain.initArray(im, jm, km, 0.0);           // NH3 rain    precipitation flux [kg/m2/s]
     P_nh3_snow.initArray(im, jm, km, 0.0);           // NH3 snow    precipitation flux [kg/m2/s]
     P_nh3_graupel.initArray(im, jm, km, 0.0);        // NH3 graupel precipitation flux [kg/m2/s]
+    P_ch4_rain.initArray(im, jm, km, 0.0);           // CH4 rain    precipitation flux [kg/m2/s]
+    P_ch4_snow.initArray(im, jm, km, 0.0);           // CH4 snow    precipitation flux [kg/m2/s]
+    P_ch4_graupel.initArray(im, jm, km, 0.0);        // CH4 graupel precipitation flux [kg/m2/s]
     P_nh4sh.initArray(im, jm, km, 0.0);              // NH4SH crystal sedimentation flux [kg/m2/s]
     Q_precip.initArray(im, jm, km, 0.0);             // latent heating rate from precip [W/m3]
     tke.initArray(im, jm, km, 0.0);                   // turbulent kinetic energy k*

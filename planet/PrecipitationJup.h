@@ -1,6 +1,6 @@
 /*
  * Jupiter Atmosphere Circulation Model (ATJUP)
- * Ice / precipitation microphysics — PHASE 3 (H2O, NH3, NH4SH).
+ * Ice / precipitation microphysics — PHASE 3 (H2O, NH3, CH4, NH4SH).
  *
  * Friend class of cJupiterModel (idiom of SaturationAdjustmentJup / RadiationJup).
  * Ported from ATOM_Precipitation ThreeCatIceScheme.h (COSMO three-category rain/snow/
@@ -106,7 +106,7 @@ private:
 #include "SaturationAdjustmentJup.h"
 
 inline void PrecipitationJup::run(){
-    std::cout << std::endl << "      ATJUP: PrecipitationJup (H2O+NH3 3-cat + NH4SH settling)" << std::endl;
+    std::cout << std::endl << "      ATJUP: PrecipitationJup (H2O+NH3+CH4 3-cat + NH4SH settling)" << std::endl;
     auto begin = std::chrono::high_resolution_clock::now();
 
     // Zero the shared latent-heat diagnostic; each species adds into it.
@@ -133,6 +133,28 @@ inline void PrecipitationJup::run(){
     nh3.C_i = m.C_nh3_ice; nh3.L0_i = m.L0_nh3_ice; nh3.del_alf_i = m.del_alf_nh3_ice; nh3.del_bet_i = m.del_bet_nh3_ice;
     nh3.ep = m.ep_nh3; nh3.Lv = m.lv_nh3; nh3.Ls = m.ls_nh3; nh3.t_frz = m.t_0_nh3; nh3.t_low = m.t_00_nh3;
     column(nh3);
+
+    // --- CH4 three-category ---
+    //
+    // The third condensable, and until now the one the scheme ignored. CH4 has vapour, cloud and
+    // ice fields, its own saturation-vapour-pressure pair and its own latent heats, and
+    // SaturationAdjustmentJup has been called for it on every iteration since the beginning —
+    // it condensed, and then the condensate had nowhere to go. Everything it made stayed
+    // suspended, so the CH4 budget could only grow.
+    //
+    // WHAT TO EXPECT ON JUPITER: very little. CH4 there is far above its condensation
+    // temperature through the whole modelled shell (t_0_ch4 is ~90 K against a tropopause at
+    // 110 K), so ch4_cloud and ch4_ice are zero almost everywhere and these fluxes will be too.
+    // That is the correct answer and it is worth being able to SEE it, rather than having a
+    // species that is silently exempt from the scheme. On Saturn, where the same code runs
+    // through PrecipitationSat and the upper atmosphere is much colder, it is not decorative.
+    Species ch4;
+    ch4.vapour = &m.ch4; ch4.cloud = &m.ch4_cloud; ch4.ice = &m.ch4_ice;
+    ch4.P_r = &m.P_ch4_rain; ch4.P_s = &m.P_ch4_snow; ch4.P_g = &m.P_ch4_graupel;
+    ch4.C = m.C_ch4; ch4.L0 = m.L0_ch4; ch4.R = m.R_ch4; ch4.del_alf = m.del_alf_ch4; ch4.del_bet = m.del_bet_ch4;
+    ch4.C_i = m.C_ch4_ice; ch4.L0_i = m.L0_ch4_ice; ch4.del_alf_i = m.del_alf_ch4_ice; ch4.del_bet_i = m.del_bet_ch4_ice;
+    ch4.ep = m.ep_ch4; ch4.Lv = m.lv_ch4; ch4.Ls = m.ls_ch4; ch4.t_frz = m.t_0_ch4; ch4.t_low = m.t_00_ch4;
+    column(ch4);
 
     // --- NH4SH crystal sedimentation ---
     sedimentNH4SH();
@@ -326,12 +348,16 @@ inline void PrecipitationJup::surfaceMap(){
             const double nh3_srf = m.P_nh3_rain.x[i_base][j][k]
                                  + m.P_nh3_snow.x[i_base][j][k]
                                  + m.P_nh3_graupel.x[i_base][j][k];
+            const double ch4_srf = m.P_ch4_rain.x[i_base][j][k]
+                                 + m.P_ch4_snow.x[i_base][j][k]
+                                 + m.P_ch4_graupel.x[i_base][j][k];
             const double nh4sh_srf = m.P_nh4sh.x[i_base][j][k];
 
             m.precip_srf_h2o.y[j][k]   = h2o_srf;
             m.precip_srf_nh3.y[j][k]   = nh3_srf;
+            m.precip_srf_ch4.y[j][k]   = ch4_srf;
             m.precip_srf_nh4sh.y[j][k] = nh4sh_srf;
-            m.precip_srf_total.y[j][k] = h2o_srf + nh3_srf + nh4sh_srf;
+            m.precip_srf_total.y[j][k] = h2o_srf + nh3_srf + ch4_srf + nh4sh_srf;
         }
     }
 }
