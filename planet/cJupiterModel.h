@@ -785,6 +785,8 @@ private:
     void reportClampBudget();
     std::vector<double> clamp_added;        // cumulative mass added by the floor, per field
     std::vector<long>   clamp_cells;        // cumulative number of clipped cells, per field
+    std::vector<double> clamp_added_bnd;    // ... of which on the two radial boundary planes
+    std::vector<long>   clamp_cells_bnd;    // ... which bcRadius extrapolates rather than integrates
 
     void BC_phi();
     void BC_radius();
