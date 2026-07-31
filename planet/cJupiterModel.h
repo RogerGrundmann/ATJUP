@@ -59,7 +59,7 @@ class cJupiterModel{
     friend class BC_Jup;
     friend class VelocityInitializerJup;
     friend class RadiationJup;
-    friend class PrecipitationJup;
+    template<class M> friend class Precipitation;
     template<class M> friend class Turbulence;
     template<class M> friend class ConvectiveAdjustment;
     friend class ThermalWindJup;
