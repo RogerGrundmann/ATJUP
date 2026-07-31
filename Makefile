@@ -78,3 +78,8 @@ clean:
 	\rm -vf $(LIB_OBJ) $(ATJUP_OBJ) $(XML_OBJ) $(ATJUP_CLI_OBJ) $(PARAM_OUTPUTS) jup libatjup.a $(ALL_DEPS)
 	\rm -vf python/*.so python/*.o python/pyatjup.cpp
 	\rm -rf python/build/
+
+# Verify the shared physics headers have not diverged between the planet models.
+.PHONY: check-shared
+check-shared:
+	@grep -v '^#' planet/SHARED.md5 | md5sum -c - && echo "shared headers OK"
