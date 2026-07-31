@@ -28,7 +28,10 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     // All geometric quantities come from the precomputed struct —
     // NO sin(), cos(), division, or reciprocal computation here.
     const double rm                  = geo.rm;
-    const double sinthe              = geo.sinthe;
+    // geo.sinthe (the FLOORED sine) is deliberately not aliased here: with the Coriolis terms
+    // moved onto sinthe_true it has no consumer left in this function that is not a metric
+    // group. Everything below reaches it only through inv_rmsinthe / inv_rm2sinthe2 / geo.sinthe2,
+    // where the floor belongs, so a bare sinthe in a new term is now a mistake by construction.
     const double costhe              = geo.costhe;
     const double cotanthe            = geo.cotanthe;
     const double inv_rm              = geo.inv_rm;
@@ -346,13 +349,21 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     // Found while auditing ATSAT's forces on 2026-07-30; ATSAT carried the identical two errors
     // in the identical two lines, having inherited them from here, and was corrected first.
     //
-    // NOT FIXED HERE, and worth a separate look: sinthe below is the FLOORED metric sine
-    // (sinthe_min, 0.55 = 33.4 deg). The centrifugal block twenty lines down reconstructs
-    // sinthe_true from the cosine precisely because "that floor has no business in a body
-    // force" — and the Coriolis terms are body forces too, still reading the floored value.
-    double Coriolis_rad  = nd_cor * -2.0 * omega * sinthe * w_ijk;
+    // The sine here is the TRUE one, not the metric's floored sinthe. sinthe is clamped to
+    // >= sinthe_min (0.55 = 33.4 deg of colatitude) so that the 1/sin^2 divisions of the
+    // phi-Laplacian stay stable; that floor is a property of the DIFFERENCE SCHEME and has no
+    // business in a body force, exactly as the centrifugal block below already argues. Read
+    // floored, the Coriolis sine is too large everywhere poleward of 56.6 deg latitude and never
+    // reaches zero at the pole, where the rotation vector is purely vertical and the horizontal
+    // Coriolis components must vanish. theta = j degrees from the north pole and the Runge-Kutta
+    // integrates j = 3..177, so the worst band is j = 3: the floor claims sin = 0.55 for a true
+    // sin(3 deg) = 0.052, a factor of 10.5. 62 of the 175 integrated bands are affected, which is
+    // 16.5 % of the planet's surface area.
+    const double sinthe_true = sqrt(std::max(0.0, 1.0 - costhe * costhe));
+
+    double Coriolis_rad  = nd_cor * -2.0 * omega * sinthe_true * w_ijk;
     double Coriolis_the  = nd_cor * -2.0 * omega * costhe * w_ijk;
-    double Coriolis_phi  = nd_cor * +2.0 * omega * (+costhe * v_ijk + sinthe * u_ijk);
+    double Coriolis_phi  = nd_cor * +2.0 * omega * (+costhe * v_ijk + sinthe_true * u_ijk);
 
     // Centrifugal acceleration = Omega^2 * s * s_hat, with s = r*sin(theta) the distance from
     // the rotation axis and s_hat = sin(theta)*e_r + cos(theta)*e_theta the unit vector pointing
@@ -364,12 +375,11 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     // sin^2 at all (full strength at the poles, where it must vanish), and the meridional part
     // had |sin| in place of sin*cos, which is neither the right magnitude nor equator-directed.
     //
-    // sinthe here is CLAMPED to >= 0.55 for the 1/sin^2 metric divisions; that floor has no
-    // business in a body force, so the true sine is recovered from the cosine. theta runs 0..pi,
-    // so sin(theta) >= 0 and the positive root is the right one. costhe now carries its proper
-    // hemispheric sign (see cJupiterModel.h::costhe_abs), which is what makes a_theta point
-    // toward the equator in BOTH hemispheres rather than southward everywhere.
-    const double sinthe_true = sqrt(std::max(0.0, 1.0 - costhe * costhe));
+    // sinthe_true (defined with the Coriolis terms above) is used here for the same reason: the
+    // metric's 0.55 floor has no business in a body force. theta runs 0..pi, so sin(theta) >= 0
+    // and the positive root is the right one. costhe carries its proper hemispheric sign (see
+    // cJupiterModel.h::costhe_abs), which is what makes a_theta point toward the equator in BOTH
+    // hemispheres rather than southward everywhere.
     //
     // A WARNING about switching this one on, which no factor can fix. At full strength the
     // radial part is Omega^2*R = 2.17 m/s2 at the equator, 8.4 % of g, and the meridional part
