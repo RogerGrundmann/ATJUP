@@ -58,7 +58,10 @@ static int    radiation_enabled()  { static const int    v = [](){ const char* e
 // RungeKutta_Jup_Turb.cpp integrates them, as in ATOM. nue* only reaches the momentum and
 // scalar equations if ATJUP_TURB_COUPLING is also set.
 static int    turb_enabled()       { static const int    v = [](){ const char* e = getenv("ATJUP_TURB");                 return e ? atoi(e) : 0;   }(); return v; }
-static int    precip_enabled()     { static const int    v = [](){ const char* e = getenv("ATJUP_PRECIP");               return e ? atoi(e) : 0;   }(); return v; }
+// DEFAULT ON since 2026-07-31. Rain, snow and graupel are what the condensate is for; leaving
+// the scheme installed and switched off meant every run reported P_rain = 0 and looked like a
+// planet where nothing falls. ATJUP_PRECIP=0 restores the old behaviour exactly.
+static int    precip_enabled()     { static const int    v = [](){ const char* e = getenv("ATJUP_PRECIP");               return e ? atoi(e) : 1;   }(); return v; }
 
 // Timestep, nondimensional. The time unit is L/u_0 = 140 km / 100 m/s = 1400 s, so the 0.001
 // default is 1.4 s of Jupiter time per iteration — a 450-iteration run spans 10.5 minutes, i.e.
@@ -685,6 +688,13 @@ void cJupiterModel::Run(){
         // measurement that says a plain floor is enough here.
         clampNegativeSpecies();
 
+        // Steady-state query: max|f - f_n| per field with its location, plus the continuity
+        // residual. BEFORE restoreVar, which is what makes the differences non-zero — see the
+        // note on the function. Same cadence as printMinMax; ATJUP_STEADY=0 switches it off.
+        static const int steady_on = [](){
+            const char* e = getenv("ATJUP_STEADY"); return e ? atoi(e) : 1; }();
+        if(steady_on && iter_n % checkpoint == 0) steadyQuery();
+
         restoreVar(1.0);
 
         panorama_cnt++;
@@ -925,6 +935,10 @@ void cJupiterModel::restoreVar(double coeff){
                 un.x[i][j][k] = coeff * u.x[i][j][k];
                 vn.x[i][j][k] = coeff * v.x[i][j][k];
                 wn.x[i][j][k] = coeff * w.x[i][j][k];
+                // p_dynn is the previous-iteration dynamic pressure, and until now nothing
+                // maintained it: it kept its initial value for the whole run while steadyQuery
+                // pretended to difference against it. It belongs with the other n-copies.
+                p_dynn.x[i][j][k] = coeff * p_dyn.x[i][j][k];
                 h2on.x[i][j][k] = coeff * h2o.x[i][j][k];
                 h2o_cloudn.x[i][j][k] = coeff * h2o_cloud.x[i][j][k];
                 h2o_icen.x[i][j][k] = coeff * h2o_ice.x[i][j][k];

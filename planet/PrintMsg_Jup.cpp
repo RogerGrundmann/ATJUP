@@ -321,6 +321,26 @@ void cJupiterModel::print_final_msg(){
 /*
 *
 */
+/*
+ * How far is the run from a steady state, and WHERE.
+ *
+ * For each prognostic field it reports max|f - f_n| over the grid with the cell it occurs in,
+ * f_n being the copy restoreVar() made at the end of the previous iteration — so each number is
+ * the largest change that field underwent during ONE iteration. Alongside them, the largest
+ * residual of the continuity equation, which is a statement about the pressure projection rather
+ * than about convergence in time.
+ *
+ * IT MUST RUN BEFORE restoreVar(). After it, every f_n equals its f and all thirteen numbers are
+ * identically zero.
+ *
+ * The routine existed in ATJUP, ATSAT, ATNEPT and ATURAN and was called by none of them, so none
+ * of this had ever been printed. Three things were wrong with it besides:
+ *   - the pressure line assigned p_dynn = p_dyn and then differenced against it, so dp was zero
+ *     by construction; p_dynn is now maintained by restoreVar with the other n-copies;
+ *   - the continuity residual compared a magnitude against a signed accumulator;
+ *   - min_nh4sh/max_nh4sh were never initialised and case 13 printed stack garbage.
+ * See the commit that revived it for the first measurement.
+ */
 void cJupiterModel::steadyQuery(){
     int i_u, j_u, k_u, i_v, j_v, k_v, i_w, j_w, k_w, i_t, j_t, k_t, i_c, 
         j_c, k_c, i_cloud, j_cloud, k_cloud, i_ice, j_ice, k_ice, i_nh3, 
@@ -346,6 +366,7 @@ void cJupiterModel::steadyQuery(){
     min_nh3 = max_nh3 = 0.;
     min_nh3_cloud = max_nh3_cloud = 0.;
     min_nh3_ice = max_nh3_ice = 0.;
+    min_nh4sh = max_nh4sh = 0.;   // was never initialised; case 13 read whatever was on the stack
     double sinthe = 0., costhe = 0., rmsinthe = 0.;
     double dudr = 0., dvdthe = 0., dwdphi = 0.;
     double residuum = 0.;
@@ -362,8 +383,11 @@ void cJupiterModel::steadyQuery(){
                 dwdphi = (w.x[i][j][k+1] - w.x[i][j][k-1])/(2. * dphi);
                 residuum = dudr + 2. * u.x[i][j][k]/rad.z[i] + dvdthe/rad.z[i]
                     + costhe/rmsinthe * v.x[i][j][k] + dwdphi/rmsinthe;
+                // fabs on BOTH sides. It used to compare fabs(residuum) against a `minimum`
+                // holding the SIGNED value, so one negative residual made every later cell
+                // compare true and the reported location became the last cell scanned.
                 if(fabs(residuum) >= minimum){
-                    minimum = residuum;
+                    minimum = fabs(residuum);
                     i_res = i;
                     j_res = j;
                     k_res = k;
@@ -374,7 +398,6 @@ void cJupiterModel::steadyQuery(){
     for(int i = 0; i < im; i++){
         for(int j = 0; j < jm; j++){
             for(int k = 0; k < km; k++){
-                p_dynn.x[i][j][k] = p_dyn.x[i][j][k];
                 max_p = fabs(p_dyn.x[i][j][k] - p_dynn.x[i][j][k]);
                 if(max_p >= min_p){
                     min_p = max_p;
@@ -462,8 +485,6 @@ void cJupiterModel::steadyQuery(){
             }
         }
     }
-cout << "   " << i_p << "   " << j_p << "   " << k_p << "   " << max_p << "   " << min_p << endl;
-cout << "   " << i_t << "   " << j_t << "   " << k_t << "   " << max_t << "   " << min_t << endl;
     cout.precision(6);
     cout.setf(ios::fixed);
     cout << endl << endl;
