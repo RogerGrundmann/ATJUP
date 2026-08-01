@@ -864,6 +864,23 @@ void cJupiterModel::resetArrays(){
     rhs_nh4sh.initArray(im, jm, km, 0.0);                // auxilliar field RHS nh4sh
     rhs_tke.initArray(im, jm, km, 0.0);                // auxilliar field RHS turbulent kinetic energy
     rhs_dis.initArray(im, jm, km, 0.0);                // auxilliar field RHS dissipation
+    acc_t.initArray(im, jm, km, 0.0);   // RK4 stage accumulator
+    acc_u.initArray(im, jm, km, 0.0);   // RK4 stage accumulator
+    acc_v.initArray(im, jm, km, 0.0);   // RK4 stage accumulator
+    acc_w.initArray(im, jm, km, 0.0);   // RK4 stage accumulator
+    acc_h2o.initArray(im, jm, km, 0.0);   // RK4 stage accumulator
+    acc_h2o_cloud.initArray(im, jm, km, 0.0);   // RK4 stage accumulator
+    acc_h2o_ice.initArray(im, jm, km, 0.0);   // RK4 stage accumulator
+    acc_h2s.initArray(im, jm, km, 0.0);   // RK4 stage accumulator
+    acc_nh3.initArray(im, jm, km, 0.0);   // RK4 stage accumulator
+    acc_nh3_cloud.initArray(im, jm, km, 0.0);   // RK4 stage accumulator
+    acc_nh3_ice.initArray(im, jm, km, 0.0);   // RK4 stage accumulator
+    acc_ch4.initArray(im, jm, km, 0.0);   // RK4 stage accumulator
+    acc_ch4_cloud.initArray(im, jm, km, 0.0);   // RK4 stage accumulator
+    acc_ch4_ice.initArray(im, jm, km, 0.0);   // RK4 stage accumulator
+    acc_nh4sh.initArray(im, jm, km, 0.0);   // RK4 stage accumulator
+    acc_tke.initArray(im, jm, km, 0.0);   // RK4 stage accumulator
+    acc_dis.initArray(im, jm, km, 0.0);   // RK4 stage accumulator
 
     aux.initArray(im, jm, km, 0.0);                // auxilliar field u-velocity component
     aux_u.initArray(im, jm, km, 0.0);                // auxilliar field u-velocity component

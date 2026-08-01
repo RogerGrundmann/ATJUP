@@ -1012,6 +1012,30 @@ private:
     Array rhs_tke;                // auxilliar field RHS turbulent kinetic energy k*
     Array rhs_dis;                // auxilliar field RHS dissipation (epsilon* or omega*)
 
+    /*
+     * RK4 STAGE ACCUMULATORS. y_{n+1} = y_n + dt/6 (k1 + 2k2 + 2k3 + k4), and the four k's are now
+     * evaluated in four separate passes over the grid, so the running sum needs somewhere that is
+     * neither the start-of-step state (the *n arrays) nor the current stage input (the live
+     * fields). One per integrated field; see RungeKuttaJup for why the stages had to be separated.
+     */
+    Array acc_t;
+    Array acc_u;
+    Array acc_v;
+    Array acc_w;
+    Array acc_h2o;
+    Array acc_h2o_cloud;
+    Array acc_h2o_ice;
+    Array acc_h2s;
+    Array acc_nh3;
+    Array acc_nh3_cloud;
+    Array acc_nh3_ice;
+    Array acc_ch4;
+    Array acc_ch4_cloud;
+    Array acc_ch4_ice;
+    Array acc_nh4sh;
+    Array acc_tke;
+    Array acc_dis;
+
     Array fluxlim_nh4sh;  // TVD flux-limiter correction for nh4sh advection
 
     Array aux;                // auxilliar field u-velocity component

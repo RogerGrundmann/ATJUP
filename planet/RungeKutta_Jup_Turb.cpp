@@ -253,266 +253,207 @@ void cJupiterModel::RungeKuttaJup(){
         const char* e = getenv("ATJUP_T_LIMITER"); return e ? atoi(e) : 0; }();
     long t_clip_hits = 0;
 
-    #pragma omp parallel for collapse(2) schedule(static)
-    for(int i = 1; i < im-1; i++){
-        for(int j = 3; j < jm-3; j++){
+    // ===== RK4, WITH THE FOUR STAGES SEPARATED =====
+    //
+    // Each stage is now two passes over the grid with an implicit barrier between them: one fills
+    // rhs_* from the current stage input, one folds rhs_* into an accumulator and forms the next
+    // stage input. Eight passes per step instead of one.
+    //
+    // WHY. All four stages used to run inside a single cell loop: RHSJup(i,j,k) then an immediate
+    // overwrite of t, u, v, w and every species AT THAT CELL, four times over, before the loop
+    // moved on. But RHSJup DIFFERENTIATES those same live fields at i+-1, j+-1, k+-1, so a cell
+    // computing its stage 2 read neighbours that had already been advanced to their own stage 1,
+    // or had not been touched yet, depending on where the loop had got to.
+    //
+    // Under OpenMP that is a data race: two runs of this binary at 24 threads differed in 5 of the
+    // 7 output files. Serially it was not a race but it was still not RK4 — every stage
+    // differentiated neighbours sitting at inconsistent stages, so the scheme was a pointwise
+    // four-substep update wearing RK4's coefficients. One cause, one fix.
+    //
+    // Found first in ATSAT, whose loop is the same construction, by bisecting the model one
+    // parallel region at a time; this file has the identical defect and now the identical repair.
+    //
+    // SOLID CELLS are skipped in both passes exactly as the single loop skipped them, so the
+    // SeaMount interior is left untouched and no tendency is ever evaluated inside the body.
+    for(int stage = 0; stage < 4; stage++){
 
-            // Build geometry struct once per (i,j)
-            CellGeometry geo;
-            geo.rm      = rad.z[i];
-            geo.rm2     = geo.rm * geo.rm;
-            geo.exp_rm   = coord_stretching ? 1.0 / (geo.rm + 1.0) : 1.0;
-            geo.exp_2_rm = geo.exp_rm * geo.exp_rm;
-            geo.sinthe  = sinthe_tbl[j];
-            geo.sinthe2 = geo.sinthe * geo.sinthe;
-            geo.costhe  = costhe_tbl[j];
-            if(costhe_abs() && j > 90) geo.costhe = -geo.costhe;
-            geo.cotanthe            = geo.costhe / geo.sinthe;
-            geo.inv_rm              = 1.0 / geo.rm;
-            geo.inv_rm2             = 1.0 / geo.rm2;
-            geo.inv_rmsinthe        = 1.0 / (geo.rm * geo.sinthe);
-            geo.inv_rm2sinthe       = geo.inv_rm2 / geo.sinthe;
-            geo.inv_rm2sinthe2      = geo.inv_rm2 / geo.sinthe2;
-            geo.costhe_inv_rm2sinthe = geo.costhe * geo.inv_rm2sinthe;
-            geo.inv_2dr   = inv_2dr;
-            geo.inv_2dthe = inv_2dthe;
-            geo.inv_2dphi = inv_2dphi;
-            geo.inv_dr2   = inv_dr2;
-            geo.inv_dthe2 = inv_dthe2;
-            geo.inv_dphi2 = inv_dphi2;
+        const double c_in = (stage == 0 || stage == 1) ? 0.5 * dt : (stage == 2 ? dt : 0.0);
+        const double wgt  = (stage == 0 || stage == 3) ? 1.0 : 2.0;
 
-            for(int k = 1; k < km-1; k++){
-
-                if(SeaMount.x[i][j][k] == 1.0) continue;
-
-                double tn_ijk     = tn.x[i][j][k];
-                double un_ijk     = un.x[i][j][k];
-                double vn_ijk     = vn.x[i][j][k];
-                double wn_ijk     = wn.x[i][j][k];
-                double h2on_ijk   = h2on.x[i][j][k];
-                double h2ocn_ijk  = h2o_cloudn.x[i][j][k];
-                double h2oin_ijk  = h2o_icen.x[i][j][k];
-                double h2sn_ijk   = h2sn.x[i][j][k];
-                double nh3n_ijk   = nh3n.x[i][j][k];
-                double nh3cn_ijk  = nh3_cloudn.x[i][j][k];
-                double nh3in_ijk  = nh3_icen.x[i][j][k];
-                double ch4n_ijk   = ch4n.x[i][j][k];
-                double ch4cn_ijk  = ch4_cloudn.x[i][j][k];
-                double ch4in_ijk  = ch4_icen.x[i][j][k];
-                double nh4shn_ijk = nh4shn.x[i][j][k];
-                double tken_ijk   = tken.x[i][j][k];
-                double disn_ijk   = disn.x[i][j][k];
-
-                // ----- RK stage 1 -----
-                cJupiterModel::RHSJup(i, j, k, geo);
-                double kt1     = rhs_t.x[i][j][k];
-                double ku1     = rhs_u.x[i][j][k];
-                double kv1     = rhs_v.x[i][j][k];
-                double kw1     = rhs_w.x[i][j][k];
-                double kc1     = rhs_h2o.x[i][j][k];
-                double kcloud1 = rhs_h2o_cloud.x[i][j][k];
-                double kice1   = rhs_h2o_ice.x[i][j][k];
-                double kh2s1   = rhs_h2s.x[i][j][k];
-                double knh31   = rhs_nh3.x[i][j][k];
-                double knh3c1  = rhs_nh3_cloud.x[i][j][k];
-                double knh3i1  = rhs_nh3_ice.x[i][j][k];
-                double kch41   = rhs_ch4.x[i][j][k];
-                double kch4c1  = rhs_ch4_cloud.x[i][j][k];
-                double kch4i1  = rhs_ch4_ice.x[i][j][k];
-                double knh4sh1 = rhs_nh4sh.x[i][j][k];
-                double ktke1   = rhs_tke.x[i][j][k];
-                double kdis1   = rhs_dis.x[i][j][k];
-
-                t.x[i][j][k]         = tn_ijk    + kt1     * 0.5 * dt;
-                u.x[i][j][k]         = un_ijk    + ku1     * 0.5 * dt;
-                v.x[i][j][k]         = vn_ijk    + kv1     * 0.5 * dt;
-                w.x[i][j][k]         = wn_ijk    + kw1     * 0.5 * dt;
-                h2o.x[i][j][k]       = h2on_ijk  + kc1     * 0.5 * dt;
-                h2o_cloud.x[i][j][k] = h2ocn_ijk + kcloud1 * 0.5 * dt;
-                h2o_ice.x[i][j][k]   = h2oin_ijk + kice1   * 0.5 * dt;
-                h2s.x[i][j][k]       = h2sn_ijk  + kh2s1   * 0.5 * dt;
-                nh3.x[i][j][k]       = nh3n_ijk  + knh31   * 0.5 * dt;
-                nh3_cloud.x[i][j][k] = nh3cn_ijk + knh3c1  * 0.5 * dt;
-                nh3_ice.x[i][j][k]   = nh3in_ijk + knh3i1  * 0.5 * dt;
-                ch4.x[i][j][k]       = ch4n_ijk  + kch41   * 0.5 * dt;
-                ch4_cloud.x[i][j][k] = ch4cn_ijk + kch4c1  * 0.5 * dt;
-                ch4_ice.x[i][j][k]   = ch4in_ijk + kch4i1  * 0.5 * dt;
-                nh4sh.x[i][j][k]     = nh4shn_ijk + knh4sh1 * 0.5 * dt;
-                // k* is positive-definite and dis* strictly positive; clamp at every stage so a
-                // stiff intermediate can never feed a negative k or a zero omega back into the
-                // next RHS evaluation (nue* = k/omega would then be non-finite).
-                tke.x[i][j][k]       = safe_clamp(tken_ijk + ktke1 * 0.5 * dt, 0.0, tke_max_nd);
-                dis.x[i][j][k]       = std::max(dis_min_nd, disn_ijk + kdis1 * 0.5 * dt);
-
-                // ----- RK stage 2 -----
-                cJupiterModel::RHSJup(i, j, k, geo);
-                double kt2     = rhs_t.x[i][j][k];
-                double ku2     = rhs_u.x[i][j][k];
-                double kv2     = rhs_v.x[i][j][k];
-                double kw2     = rhs_w.x[i][j][k];
-                double kc2     = rhs_h2o.x[i][j][k];
-                double kcloud2 = rhs_h2o_cloud.x[i][j][k];
-                double kice2   = rhs_h2o_ice.x[i][j][k];
-                double kh2s2   = rhs_h2s.x[i][j][k];
-                double knh32   = rhs_nh3.x[i][j][k];
-                double knh3c2  = rhs_nh3_cloud.x[i][j][k];
-                double knh3i2  = rhs_nh3_ice.x[i][j][k];
-                double kch42   = rhs_ch4.x[i][j][k];
-                double kch4c2  = rhs_ch4_cloud.x[i][j][k];
-                double kch4i2  = rhs_ch4_ice.x[i][j][k];
-                double knh4sh2 = rhs_nh4sh.x[i][j][k];
-                double ktke2   = rhs_tke.x[i][j][k];
-                double kdis2   = rhs_dis.x[i][j][k];
-
-                t.x[i][j][k]         = tn_ijk    + kt2     * 0.5 * dt;
-                u.x[i][j][k]         = un_ijk    + ku2     * 0.5 * dt;
-                v.x[i][j][k]         = vn_ijk    + kv2     * 0.5 * dt;
-                w.x[i][j][k]         = wn_ijk    + kw2     * 0.5 * dt;
-                h2o.x[i][j][k]       = h2on_ijk  + kc2     * 0.5 * dt;
-                h2o_cloud.x[i][j][k] = h2ocn_ijk + kcloud2 * 0.5 * dt;
-                h2o_ice.x[i][j][k]   = h2oin_ijk + kice2   * 0.5 * dt;
-                h2s.x[i][j][k]       = h2sn_ijk  + kh2s2   * 0.5 * dt;
-                nh3.x[i][j][k]       = nh3n_ijk  + knh32   * 0.5 * dt;
-                nh3_cloud.x[i][j][k] = nh3cn_ijk + knh3c2  * 0.5 * dt;
-                nh3_ice.x[i][j][k]   = nh3in_ijk + knh3i2  * 0.5 * dt;
-                ch4.x[i][j][k]       = ch4n_ijk  + kch42   * 0.5 * dt;
-                ch4_cloud.x[i][j][k] = ch4cn_ijk + kch4c2  * 0.5 * dt;
-                ch4_ice.x[i][j][k]   = ch4in_ijk + kch4i2  * 0.5 * dt;
-                nh4sh.x[i][j][k]     = nh4shn_ijk + knh4sh2 * 0.5 * dt;
-                tke.x[i][j][k]       = safe_clamp(tken_ijk + ktke2 * 0.5 * dt, 0.0, tke_max_nd);
-                dis.x[i][j][k]       = std::max(dis_min_nd, disn_ijk + kdis2 * 0.5 * dt);
-
-                // ----- RK stage 3 -----
-                cJupiterModel::RHSJup(i, j, k, geo);
-                double kt3     = rhs_t.x[i][j][k];
-                double ku3     = rhs_u.x[i][j][k];
-                double kv3     = rhs_v.x[i][j][k];
-                double kw3     = rhs_w.x[i][j][k];
-                double kc3     = rhs_h2o.x[i][j][k];
-                double kcloud3 = rhs_h2o_cloud.x[i][j][k];
-                double kice3   = rhs_h2o_ice.x[i][j][k];
-                double kh2s3   = rhs_h2s.x[i][j][k];
-                double knh33   = rhs_nh3.x[i][j][k];
-                double knh3c3  = rhs_nh3_cloud.x[i][j][k];
-                double knh3i3  = rhs_nh3_ice.x[i][j][k];
-                double kch43   = rhs_ch4.x[i][j][k];
-                double kch4c3  = rhs_ch4_cloud.x[i][j][k];
-                double kch4i3  = rhs_ch4_ice.x[i][j][k];
-                double knh4sh3 = rhs_nh4sh.x[i][j][k];
-                double ktke3   = rhs_tke.x[i][j][k];
-                double kdis3   = rhs_dis.x[i][j][k];
-
-                t.x[i][j][k]         = tn_ijk    + kt3     * dt;
-                u.x[i][j][k]         = un_ijk    + ku3     * dt;
-                v.x[i][j][k]         = vn_ijk    + kv3     * dt;
-                w.x[i][j][k]         = wn_ijk    + kw3     * dt;
-                h2o.x[i][j][k]       = h2on_ijk  + kc3     * dt;
-                h2o_cloud.x[i][j][k] = h2ocn_ijk + kcloud3 * dt;
-                h2o_ice.x[i][j][k]   = h2oin_ijk + kice3   * dt;
-                h2s.x[i][j][k]       = h2sn_ijk  + kh2s3   * dt;
-                nh3.x[i][j][k]       = nh3n_ijk  + knh33   * dt;
-                nh3_cloud.x[i][j][k] = nh3cn_ijk + knh3c3  * dt;
-                nh3_ice.x[i][j][k]   = nh3in_ijk + knh3i3  * dt;
-                ch4.x[i][j][k]       = ch4n_ijk  + kch43   * dt;
-                ch4_cloud.x[i][j][k] = ch4cn_ijk + kch4c3  * dt;
-                ch4_ice.x[i][j][k]   = ch4in_ijk + kch4i3  * dt;
-                nh4sh.x[i][j][k]     = nh4shn_ijk + knh4sh3 * dt;
-                tke.x[i][j][k]       = safe_clamp(tken_ijk + ktke3 * dt, 0.0, tke_max_nd);
-                dis.x[i][j][k]       = std::max(dis_min_nd, disn_ijk + kdis3 * dt);
-
-                // ----- RK stage 4 -----
-                cJupiterModel::RHSJup(i, j, k, geo);
-                double kt4     = rhs_t.x[i][j][k];
-                double ku4     = rhs_u.x[i][j][k];
-                double kv4     = rhs_v.x[i][j][k];
-                double kw4     = rhs_w.x[i][j][k];
-                double kc4     = rhs_h2o.x[i][j][k];
-                double kcloud4 = rhs_h2o_cloud.x[i][j][k];
-                double kice4   = rhs_h2o_ice.x[i][j][k];
-                double kh2s4   = rhs_h2s.x[i][j][k];
-                double knh34   = rhs_nh3.x[i][j][k];
-                double knh3c4  = rhs_nh3_cloud.x[i][j][k];
-                double knh3i4  = rhs_nh3_ice.x[i][j][k];
-                double kch44   = rhs_ch4.x[i][j][k];
-                double kch4c4  = rhs_ch4_cloud.x[i][j][k];
-                double kch4i4  = rhs_ch4_ice.x[i][j][k];
-                double knh4sh4 = rhs_nh4sh.x[i][j][k];
-                double ktke4   = rhs_tke.x[i][j][k];
-                double kdis4   = rhs_dis.x[i][j][k];
-
-                // ----- Final RK4 update -----
-                const double one_sixth = 1.0 / 6.0;
-                {
-                    double t_new = tn_ijk + dt * (kt1 + 2.0*kt2 + 2.0*kt3 + kt4) * one_sixth;
-                    if(t_limiter_on){
-                        // Local bounds from the OLD state; solid neighbours carry extrapolated
-                        // values, not states, so they do not take part.
-                        double lo = tn_ijk, hi = tn_ijk;
-                        auto take = [&](int ii, int jj, int kk){
-                            if(SeaMount.x[ii][jj][kk] == 1.0) return;
-                            const double v = tn.x[ii][jj][kk];
-                            if(v < lo) lo = v;
-                            if(v > hi) hi = v;
-                        };
-                        take(i-1,j,k); take(i+1,j,k);
-                        take(i,j-1,k); take(i,j+1,k);
-                        take(i,j,k-1); take(i,j,k+1);
-                        if(t_new < lo){ t_new = lo;
-                            #pragma omp atomic
-                            ++t_clip_hits; }
-                        else if(t_new > hi){ t_new = hi;
-                            #pragma omp atomic
-                            ++t_clip_hits; }
-                    }
-                    t.x[i][j][k] = t_new;
+        // ---- pass A: tendencies everywhere, from one consistent state ----
+        #pragma omp parallel for collapse(2) schedule(static)
+        for(int i = 1; i < im-1; i++){
+            for(int j = 3; j < jm-3; j++){
+                CellGeometry geo;
+                geo.rm      = rad.z[i];
+                geo.rm2     = geo.rm * geo.rm;
+                geo.exp_rm   = coord_stretching ? 1.0 / (geo.rm + 1.0) : 1.0;
+                geo.exp_2_rm = geo.exp_rm * geo.exp_rm;
+                geo.sinthe  = sinthe_tbl[j];
+                geo.sinthe2 = geo.sinthe * geo.sinthe;
+                geo.costhe  = costhe_tbl[j];
+                if(costhe_abs() && j > 90) geo.costhe = -geo.costhe;
+                geo.cotanthe            = geo.costhe / geo.sinthe;
+                geo.inv_rm              = 1.0 / geo.rm;
+                geo.inv_rm2             = 1.0 / geo.rm2;
+                geo.inv_rmsinthe        = 1.0 / (geo.rm * geo.sinthe);
+                geo.inv_rm2sinthe       = geo.inv_rm2 / geo.sinthe;
+                geo.inv_rm2sinthe2      = geo.inv_rm2 / geo.sinthe2;
+                geo.costhe_inv_rm2sinthe = geo.costhe * geo.inv_rm2sinthe;
+                geo.inv_2dr   = inv_2dr;
+                geo.inv_2dthe = inv_2dthe;
+                geo.inv_2dphi = inv_2dphi;
+                geo.inv_dr2   = inv_dr2;
+                geo.inv_dthe2 = inv_dthe2;
+                geo.inv_dphi2 = inv_dphi2;
+                for(int k = 1; k < km-1; k++){
+                    if(SeaMount.x[i][j][k] == 1.0) continue;
+                    cJupiterModel::RHSJup(i, j, k, geo);
                 }
-                u.x[i][j][k]         = un_ijk    + dt * (ku1     + 2.0*ku2     + 2.0*ku3     + ku4    ) * one_sixth;
-                v.x[i][j][k]         = vn_ijk    + dt * (kv1     + 2.0*kv2     + 2.0*kv3     + kv4    ) * one_sixth;
-                w.x[i][j][k]         = wn_ijk    + dt * (kw1     + 2.0*kw2     + 2.0*kw3     + kw4    ) * one_sixth;
-                h2o.x[i][j][k]       = std::max(0.0, h2on_ijk  + dt * (kc1     + 2.0*kc2     + 2.0*kc3     + kc4    ) * one_sixth);
-                h2o_cloud.x[i][j][k] = std::max(0.0, h2ocn_ijk + dt * (kcloud1 + 2.0*kcloud2 + 2.0*kcloud3 + kcloud4) * one_sixth);
-                h2o_ice.x[i][j][k]   = std::max(0.0, h2oin_ijk + dt * (kice1   + 2.0*kice2   + 2.0*kice3   + kice4  ) * one_sixth);
-                h2s.x[i][j][k]       = std::max(0.0, h2sn_ijk  + dt * (kh2s1   + 2.0*kh2s2   + 2.0*kh2s3   + kh2s4  ) * one_sixth);
-                nh3.x[i][j][k]       = std::max(0.0, nh3n_ijk  + dt * (knh31   + 2.0*knh32   + 2.0*knh33   + knh34  ) * one_sixth);
-                nh3_cloud.x[i][j][k] = std::max(0.0, nh3cn_ijk + dt * (knh3c1  + 2.0*knh3c2  + 2.0*knh3c3  + knh3c4 ) * one_sixth);
-                nh3_ice.x[i][j][k]   = std::max(0.0, nh3in_ijk + dt * (knh3i1  + 2.0*knh3i2  + 2.0*knh3i3  + knh3i4 ) * one_sixth);
-                ch4.x[i][j][k]       = std::max(0.0, ch4n_ijk  + dt * (kch41   + 2.0*kch42   + 2.0*kch43   + kch44  ) * one_sixth);
-                ch4_cloud.x[i][j][k] = std::max(0.0, ch4cn_ijk + dt * (kch4c1  + 2.0*kch4c2  + 2.0*kch4c3  + kch4c4 ) * one_sixth);
-                ch4_ice.x[i][j][k]   = std::max(0.0, ch4in_ijk + dt * (kch4i1  + 2.0*kch4i2  + 2.0*kch4i3  + kch4i4 ) * one_sixth);
-                // NH4SH ceiling (ATJUP_NH4SH_CAP, DEFAULT 0 = off). A dressing, not a cure; it
-                // belongs after the two rate-law repairs in ChemistryJup.h.
-                //
-                // IT IS OFF BECAUSE THE BOUND BELOW IS WRONG, and the measurement says so.
-                // The intent was r_max[j], the bound the INITIAL field is built with
-                // (InitValues_Jup.cpp:536, `if (cv >= r_max[j]) cv = r_max[j]`). But `r_max` is
-                // a SCRATCH vector that every species initialiser rebuilds for itself — CH4,
-                // H2O, NH3 and finally H2S at InitValues_Jup.cpp:611, which is the one that
-                // survives into the time loop. By the time RungeKuttaJup reads it, r_max[j]
-                // carries the H2S bound, not an NH4SH bound. Switched on it therefore bit in
-                // 385 000 to 513 000 cells PER ITERATION and drove NH4SH to zero everywhere.
-                //
-                // A correct ceiling has to be built for NH4SH and kept (e.g. the maximum of the
-                // initial NH4SH field, stored once at init), which is a decision about the model
-                // rather than a line of code. Until that exists, this stays off: the two rate-law
-                // repairs are the treatment, and a cap on a wrong bound would only hide them.
-                //
-                // When on it reports itself per iteration — a clamp that acts silently would
-                // conceal exactly the defect it stands in for.
-                {
-                    double nh4sh_new = nh4shn_ijk
-                                     + dt * (knh4sh1 + 2.0*knh4sh2 + 2.0*knh4sh3 + knh4sh4) * one_sixth;
-                    if(nh4sh_new < 0.0) nh4sh_new = 0.0;
-                    if(nh4sh_cap_on && nh4sh_new > r_max[j]){
-                        nh4sh_new = r_max[j];
-                        #pragma omp atomic
-                        ++nh4sh_cap_hits;
+            }
+        }
+
+        // ---- pass B: fold into the accumulator, then form the next stage input ----
+        #pragma omp parallel for collapse(2) schedule(static)
+        for(int i = 1; i < im-1; i++){
+            for(int j = 3; j < jm-3; j++){
+                for(int k = 1; k < km-1; k++){
+                    if(SeaMount.x[i][j][k] == 1.0) continue;
+                    acc_t.x[i][j][k] = (stage == 0) ? wgt * rhs_t.x[i][j][k]
+                                      : acc_t.x[i][j][k] + wgt * rhs_t.x[i][j][k];
+                    acc_u.x[i][j][k] = (stage == 0) ? wgt * rhs_u.x[i][j][k]
+                                      : acc_u.x[i][j][k] + wgt * rhs_u.x[i][j][k];
+                    acc_v.x[i][j][k] = (stage == 0) ? wgt * rhs_v.x[i][j][k]
+                                      : acc_v.x[i][j][k] + wgt * rhs_v.x[i][j][k];
+                    acc_w.x[i][j][k] = (stage == 0) ? wgt * rhs_w.x[i][j][k]
+                                      : acc_w.x[i][j][k] + wgt * rhs_w.x[i][j][k];
+                    acc_h2o.x[i][j][k] = (stage == 0) ? wgt * rhs_h2o.x[i][j][k]
+                                      : acc_h2o.x[i][j][k] + wgt * rhs_h2o.x[i][j][k];
+                    acc_h2o_cloud.x[i][j][k] = (stage == 0) ? wgt * rhs_h2o_cloud.x[i][j][k]
+                                      : acc_h2o_cloud.x[i][j][k] + wgt * rhs_h2o_cloud.x[i][j][k];
+                    acc_h2o_ice.x[i][j][k] = (stage == 0) ? wgt * rhs_h2o_ice.x[i][j][k]
+                                      : acc_h2o_ice.x[i][j][k] + wgt * rhs_h2o_ice.x[i][j][k];
+                    acc_h2s.x[i][j][k] = (stage == 0) ? wgt * rhs_h2s.x[i][j][k]
+                                      : acc_h2s.x[i][j][k] + wgt * rhs_h2s.x[i][j][k];
+                    acc_nh3.x[i][j][k] = (stage == 0) ? wgt * rhs_nh3.x[i][j][k]
+                                      : acc_nh3.x[i][j][k] + wgt * rhs_nh3.x[i][j][k];
+                    acc_nh3_cloud.x[i][j][k] = (stage == 0) ? wgt * rhs_nh3_cloud.x[i][j][k]
+                                      : acc_nh3_cloud.x[i][j][k] + wgt * rhs_nh3_cloud.x[i][j][k];
+                    acc_nh3_ice.x[i][j][k] = (stage == 0) ? wgt * rhs_nh3_ice.x[i][j][k]
+                                      : acc_nh3_ice.x[i][j][k] + wgt * rhs_nh3_ice.x[i][j][k];
+                    acc_ch4.x[i][j][k] = (stage == 0) ? wgt * rhs_ch4.x[i][j][k]
+                                      : acc_ch4.x[i][j][k] + wgt * rhs_ch4.x[i][j][k];
+                    acc_ch4_cloud.x[i][j][k] = (stage == 0) ? wgt * rhs_ch4_cloud.x[i][j][k]
+                                      : acc_ch4_cloud.x[i][j][k] + wgt * rhs_ch4_cloud.x[i][j][k];
+                    acc_ch4_ice.x[i][j][k] = (stage == 0) ? wgt * rhs_ch4_ice.x[i][j][k]
+                                      : acc_ch4_ice.x[i][j][k] + wgt * rhs_ch4_ice.x[i][j][k];
+                    acc_nh4sh.x[i][j][k] = (stage == 0) ? wgt * rhs_nh4sh.x[i][j][k]
+                                      : acc_nh4sh.x[i][j][k] + wgt * rhs_nh4sh.x[i][j][k];
+                    acc_tke.x[i][j][k] = (stage == 0) ? wgt * rhs_tke.x[i][j][k]
+                                      : acc_tke.x[i][j][k] + wgt * rhs_tke.x[i][j][k];
+                    acc_dis.x[i][j][k] = (stage == 0) ? wgt * rhs_dis.x[i][j][k]
+                                      : acc_dis.x[i][j][k] + wgt * rhs_dis.x[i][j][k];
+
+                    if(stage < 3){
+                        t.x[i][j][k] = tn.x[i][j][k] + c_in * rhs_t.x[i][j][k];
+                        u.x[i][j][k] = un.x[i][j][k] + c_in * rhs_u.x[i][j][k];
+                        v.x[i][j][k] = vn.x[i][j][k] + c_in * rhs_v.x[i][j][k];
+                        w.x[i][j][k] = wn.x[i][j][k] + c_in * rhs_w.x[i][j][k];
+                        h2o.x[i][j][k] = h2on.x[i][j][k] + c_in * rhs_h2o.x[i][j][k];
+                        h2o_cloud.x[i][j][k] = h2o_cloudn.x[i][j][k] + c_in * rhs_h2o_cloud.x[i][j][k];
+                        h2o_ice.x[i][j][k] = h2o_icen.x[i][j][k] + c_in * rhs_h2o_ice.x[i][j][k];
+                        h2s.x[i][j][k] = h2sn.x[i][j][k] + c_in * rhs_h2s.x[i][j][k];
+                        nh3.x[i][j][k] = nh3n.x[i][j][k] + c_in * rhs_nh3.x[i][j][k];
+                        nh3_cloud.x[i][j][k] = nh3_cloudn.x[i][j][k] + c_in * rhs_nh3_cloud.x[i][j][k];
+                        nh3_ice.x[i][j][k] = nh3_icen.x[i][j][k] + c_in * rhs_nh3_ice.x[i][j][k];
+                        ch4.x[i][j][k] = ch4n.x[i][j][k] + c_in * rhs_ch4.x[i][j][k];
+                        ch4_cloud.x[i][j][k] = ch4_cloudn.x[i][j][k] + c_in * rhs_ch4_cloud.x[i][j][k];
+                        ch4_ice.x[i][j][k] = ch4_icen.x[i][j][k] + c_in * rhs_ch4_ice.x[i][j][k];
+                        nh4sh.x[i][j][k] = nh4shn.x[i][j][k] + c_in * rhs_nh4sh.x[i][j][k];
+                        // k* is positive-definite and dis* strictly positive; clamp at every stage
+                        // so a stiff intermediate can never feed a negative k or a zero omega back
+                        // into the next RHS evaluation (nue* = k/omega would then be non-finite).
+                        tke.x[i][j][k] = safe_clamp(tken.x[i][j][k]
+                            + c_in * rhs_tke.x[i][j][k], 0.0, tke_max_nd);
+                        dis.x[i][j][k] = std::max(dis_min_nd, disn.x[i][j][k]
+                            + c_in * rhs_dis.x[i][j][k]);
                     }
-                    nh4sh.x[i][j][k] = nh4sh_new;
                 }
-                tke.x[i][j][k]       = safe_clamp(tken_ijk + dt * (ktke1 + 2.0*ktke2 + 2.0*ktke3 + ktke4) * one_sixth,
-                                                  0.0, tke_max_nd);
-                dis.x[i][j][k]       = std::max(dis_min_nd,
-                                                disn_ijk + dt * (kdis1 + 2.0*kdis2 + 2.0*kdis3 + kdis4) * one_sixth);
+            }
+        }
+    }
+
+    // ===== Final assembly: y_{n+1} = y_n + dt/6 (k1 + 2k2 + 2k3 + k4) =====
+    {
+        const double one_sixth = 1.0 / 6.0;
+        #pragma omp parallel for collapse(2) schedule(static) \
+                reduction(+:t_clip_hits, nh4sh_cap_hits)
+        for(int i = 1; i < im-1; i++){
+            for(int j = 3; j < jm-3; j++){
+                for(int k = 1; k < km-1; k++){
+                    if(SeaMount.x[i][j][k] == 1.0) continue;
+
+                    const double tn_ijk = tn.x[i][j][k];
+                    {
+                        double t_new = tn_ijk + dt * acc_t.x[i][j][k] * one_sixth;
+                        if(t_limiter_on){
+                            double lo = tn_ijk, hi = tn_ijk;
+                            auto take = [&](int ii, int jj, int kk){
+                                const double v = tn.x[ii][jj][kk];
+                                if(v < lo) lo = v;
+                                if(v > hi) hi = v;
+                            };
+                            take(i-1,j,k); take(i+1,j,k);
+                            take(i,j-1,k); take(i,j+1,k);
+                            take(i,j,k-1); take(i,j,k+1);
+                            if(t_new < lo){ t_new = lo; ++t_clip_hits; }
+                            else if(t_new > hi){ t_new = hi; ++t_clip_hits; }
+                        }
+                        t.x[i][j][k] = t_new;
+                    }
+                    u.x[i][j][k] = un.x[i][j][k] + dt * acc_u.x[i][j][k] * one_sixth;
+                    v.x[i][j][k] = vn.x[i][j][k] + dt * acc_v.x[i][j][k] * one_sixth;
+                    w.x[i][j][k] = wn.x[i][j][k] + dt * acc_w.x[i][j][k] * one_sixth;
+                    h2o.x[i][j][k] = std::max(0.0, h2on.x[i][j][k] + dt * acc_h2o.x[i][j][k] * one_sixth);
+                    h2o_cloud.x[i][j][k] = std::max(0.0, h2o_cloudn.x[i][j][k] + dt * acc_h2o_cloud.x[i][j][k] * one_sixth);
+                    h2o_ice.x[i][j][k] = std::max(0.0, h2o_icen.x[i][j][k] + dt * acc_h2o_ice.x[i][j][k] * one_sixth);
+                    h2s.x[i][j][k] = std::max(0.0, h2sn.x[i][j][k] + dt * acc_h2s.x[i][j][k] * one_sixth);
+                    nh3.x[i][j][k] = std::max(0.0, nh3n.x[i][j][k] + dt * acc_nh3.x[i][j][k] * one_sixth);
+                    nh3_cloud.x[i][j][k] = std::max(0.0, nh3_cloudn.x[i][j][k] + dt * acc_nh3_cloud.x[i][j][k] * one_sixth);
+                    nh3_ice.x[i][j][k] = std::max(0.0, nh3_icen.x[i][j][k] + dt * acc_nh3_ice.x[i][j][k] * one_sixth);
+                    ch4.x[i][j][k] = std::max(0.0, ch4n.x[i][j][k] + dt * acc_ch4.x[i][j][k] * one_sixth);
+                    ch4_cloud.x[i][j][k] = std::max(0.0, ch4_cloudn.x[i][j][k] + dt * acc_ch4_cloud.x[i][j][k] * one_sixth);
+                    ch4_ice.x[i][j][k] = std::max(0.0, ch4_icen.x[i][j][k] + dt * acc_ch4_ice.x[i][j][k] * one_sixth);
+                    // NH4SH ceiling (ATJUP_NH4SH_CAP, DEFAULT 0 = off). A dressing, not a cure; it
+                    // belongs after the two rate-law repairs in ChemistryJup.h.
+                    //
+                    // IT IS OFF BECAUSE THE BOUND BELOW IS WRONG, and the measurement says so.
+                    // The intent was r_max[j], the bound the INITIAL field is built with
+                    // (InitValues_Jup.cpp:536). But `r_max` is a SCRATCH vector that every species
+                    // initialiser rebuilds for itself — CH4, H2O, NH3 and finally H2S at
+                    // InitValues_Jup.cpp:611, which is the one that survives into the time loop.
+                    // By the time RungeKuttaJup reads it, r_max[j] carries the H2S bound, not an
+                    // NH4SH bound. Switched on it therefore bit in 385 000 to 513 000 cells PER
+                    // ITERATION and drove NH4SH to zero everywhere.
+                    //
+                    // A correct ceiling has to be built for NH4SH and kept (e.g. the maximum of
+                    // the initial NH4SH field, stored once at init), which is a decision about the
+                    // model rather than a line of code.
+                    {
+                        double nh4sh_new = nh4shn.x[i][j][k]
+                                         + dt * acc_nh4sh.x[i][j][k] * one_sixth;
+                        if(nh4sh_new < 0.0) nh4sh_new = 0.0;
+                        if(nh4sh_cap_on && nh4sh_new > r_max[j]){
+                            nh4sh_new = r_max[j];
+                            ++nh4sh_cap_hits;
+                        }
+                        nh4sh.x[i][j][k] = nh4sh_new;
+                    }
+                    tke.x[i][j][k] = safe_clamp(tken.x[i][j][k]
+                        + dt * acc_tke.x[i][j][k] * one_sixth, 0.0, tke_max_nd);
+                    dis.x[i][j][k] = std::max(dis_min_nd, disn.x[i][j][k]
+                        + dt * acc_dis.x[i][j][k] * one_sixth);
+                }
             }
         }
     }
