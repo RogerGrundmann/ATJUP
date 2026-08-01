@@ -1001,3 +1001,36 @@ void cJupiterModel::restoreVar(double coeff){
 */
 
 
+
+/*
+ * The boundary conditions this model imposes on the aux_ fields before the projection takes their
+ * divergence, called by the SHARED PressureSolver.h. One radial pass of 2-point Neumann — ATSAT's
+ * are different (three passes of 3-point cubic on aux AND rhs, with polar zeroing and a phi
+ * average, inherited from its computePressure()), which is why these stay with the model rather
+ * than moving into the shared solver. They ARE this model's boundary conditions.
+ *
+ * rigid_lid comes from the solver, which owns the knob; the name matches ATJUP_BC_RIGID_LID in
+ * BC_Jup.h and the two must stay in step. aux_u is the wall-NORMAL intermediate velocity and it
+ * feeds du_dr in the Poisson divergence (one-sided stencil at i=0/im-1), so it must carry the same
+ * rigid-wall condition bcRadius applies to u. Extrapolating it instead re-injects a wall-normal
+ * flux into the projection and leaves the column mass budget open, which is exactly what the rigid
+ * lid is there to close.
+ */
+void cJupiterModel::prepareProjectionBoundaries(bool rigid_lid){
+    #pragma omp parallel for collapse(2)
+    for (int j = 1; j < jm-1; j++) {
+        for (int k = 1; k < km-1; k++) {
+            if(rigid_lid){
+                aux_u.x[0][j][k]    = 0.0;
+                aux_u.x[im-1][j][k] = 0.0;
+            } else {
+                aux_u.x[0][j][k]    = c43 * aux_u.x[1][j][k]    - c13 * aux_u.x[2][j][k];
+                aux_u.x[im-1][j][k] = c43 * aux_u.x[im-2][j][k] - c13 * aux_u.x[im-3][j][k];
+            }
+            aux_v.x[0][j][k]    = c43 * aux_v.x[1][j][k]    - c13 * aux_v.x[2][j][k];
+            aux_v.x[im-1][j][k] = c43 * aux_v.x[im-2][j][k] - c13 * aux_v.x[im-3][j][k];
+            aux_w.x[0][j][k]    = c43 * aux_w.x[1][j][k]    - c13 * aux_w.x[2][j][k];
+            aux_w.x[im-1][j][k] = c43 * aux_w.x[im-2][j][k] - c13 * aux_w.x[im-3][j][k];
+        }
+    }
+}

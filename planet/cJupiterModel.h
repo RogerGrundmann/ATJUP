@@ -34,7 +34,6 @@
 // after class cJupiterModel is complete, so inline bodies can access its members.
 
 class ChemistryJup;
-class PressureSolverJup;
 class SaturationAdjustmentJup;
 class BC_Jup;
 class VelocityInitializerJup;
@@ -51,10 +50,17 @@ namespace{
     std::function<double(double)> default_lambda=[](double i)->double{return i;};
 }
 
+// PressureSolverJup is a typedef of the SHARED PressureSolver template, not a class of its own,
+// so it cannot be forward-declared as one. The template is declared here and the alias formed
+// below; a pointer to a specialization needs neither complete.
+template<class M> class PressureSolver;
+class cJupiterModel;
+typedef PressureSolver<cJupiterModel> PressureSolverJup;
+
 class cJupiterModel{
 
     friend class ChemistryJup;
-    friend class PressureSolverJup;
+    template<class M> friend class PressureSolver;
     friend class SaturationAdjustmentJup;
     friend class BC_Jup;
     friend class VelocityInitializerJup;
@@ -670,6 +676,29 @@ private:
     // between TurbulenceJup.h and TurbulenceSat.h were this one concept, spelled out inline.
     int  surface_index(int j, int k) const { return i_topography[j][k]; }
     bool is_solid(int i, int j, int k) const { return SeaMount.x[i][j][k] == 1.0; }
+
+    // ---- What the SHARED PressureSolver.h asks of this model ----
+    //
+    // has_obstacle() is the same fact is_solid() states cell by cell, asked once: ATJUP carries
+    // the GRS SeaMount, so the solver's wall condition on p_dyn defaults ON here. Without it the
+    // body is invisible to the pressure equation and cannot build the high pressure in front of
+    // itself that turns the stream aside.
+    static bool has_obstacle(){ return true; }
+
+    // Rigid radial walls on aux_u, default ON here where ATSAT has them OFF. Keep in step with
+    // ATJUP_BC_RIGID_LID in BC_Jup.h — same knob name, same condition.
+    static bool press_rigid_lid(){ return true; }
+
+    // The metric radius for a cell. THE IDENTITY HERE, and deliberately: ATJUP applies
+    // ATJUP_METRIC_RADIUS by shifting rad.z itself at initialisation (cJupiterModel.cpp), so
+    // rad.z[i] already carries it. ATSAT cannot do that — its rad.z is also the stretched
+    // coordinate the layer heights sit on — so it shifts the metric factors instead and its
+    // accessor does the work. The shared solver asks the model and each answers for itself.
+    double metricRadius(double rm){ return rm; }
+
+    // The model's own boundary conditions on the aux_ fields before the projection takes their
+    // divergence. Defined in PressureSolverJup's former body, now in cJupiterModel.cpp.
+    void prepareProjectionBoundaries(bool rigid_lid);
 
     /*
      * ---- Jupiter's radiative constants, for the SHARED Radiation.h ----
