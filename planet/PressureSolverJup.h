@@ -139,8 +139,25 @@ public:
 
         for (int sweep = 0; sweep < n_sweeps; sweep++) {
 
+        // RED-BLACK GAUSS-SEIDEL. Each sweep is two passes over a checkerboard colouring of
+        // (i+j+k): every cell of one colour has all six of its stencil neighbours in the other,
+        // so within a pass no cell reads anything another cell is writing.
+        //
+        // This replaces `collapse(2) schedule(dynamic, 4)` over (i,j) writing p_dyn in place while
+        // reading p_dyn[i±1][j±1] — a data race, whose result depended on the thread count and the
+        // scheduling. Note what that loop was trying to be: k ran serially inside a thread, so k-1
+        // was current and k+1 one sweep old, i.e. lexicographic Gauss-Seidel. Correct in serial;
+        // only the (i,j) parallelism broke it. Red-black keeps that scheme and is exactly
+        // parallelisable, where Jacobi would have cost the convergence rate.
+        //
+        // The colour is selected with a `continue` inside a stride-1 k loop rather than by
+        // striding k by two, because the k loop carries a SLIDING WINDOW over the land mask
+        // (lnd_k0/lnd_k1) that assumes consecutive k. The window bookkeeping therefore runs for
+        // every k and only the update is skipped.
+        for (int colour = 0; colour < 2; colour++) {
+
         // Main compute loop — land mask lookups + hoisted j-invariants + k sliding window
-        #pragma omp parallel for collapse(2) schedule(dynamic, 4)
+        #pragma omp parallel for collapse(2) schedule(static)
         for (int i = 1; i < m.im-1; i++) {
             for (int j = 1; j < m.jm-1; j++) {
 
@@ -229,6 +246,10 @@ public:
 
                     lnd_k0 = lnd_k1;
                     lnd_k1 = lnd_kp1;
+
+                    // Skip the cells belonging to the other colour of this pass. Placed AFTER the
+                    // sliding-window bookkeeping above, which must advance on every k.
+                    if (((i + j + k) & 1) != colour) continue;
 
                     double du_dr, dv_dthe, dw_dphi;
                     bool r_flag   = false;
@@ -344,6 +365,7 @@ public:
                 } // k
             } // j
         } // i
+        } // colour
 
         // Radial boundary extrapolation — 2-point Neumann, consistent with bcRadius.
         // The 3-point cubic (3p[1]-3p[2]+p[3]) amplifies alternating errors 7x per call
