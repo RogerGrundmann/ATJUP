@@ -58,7 +58,7 @@ class cJupiterModel{
     friend class SaturationAdjustmentJup;
     friend class BC_Jup;
     friend class VelocityInitializerJup;
-    friend class RadiationJup;
+    template<class M> friend class Radiation;
     template<class M> friend class Precipitation;
     template<class M> friend class Turbulence;
     template<class M> friend class ConvectiveAdjustment;
@@ -709,6 +709,36 @@ private:
     // between TurbulenceJup.h and TurbulenceSat.h were this one concept, spelled out inline.
     int  surface_index(int j, int k) const { return i_topography[j][k]; }
     bool is_solid(int i, int j, int k) const { return SeaMount.x[i][j][k] == 1.0; }
+
+    /*
+     * ---- Jupiter's radiative constants, for the SHARED Radiation.h ----
+     *
+     * These five are MEASURED PROPERTIES OF JUPITER, which is why they live here and not in the
+     * shared physics file — they are the numbers that differ between planets because the planets
+     * differ:
+     *
+     *                            ATJUP        ATSAT      source
+     *     solar constant         50.5         14.83      1361 / a^2, a = 5.20 vs 9.58 AU
+     *     Bond albedo            0.343        0.342      measured
+     *     intrinsic flux F_int   5.4          2.01       measured
+     *     x_H2 / x_He            0.863/0.134  0.96/0.032 Saturn's upper atmosphere is He-poor
+     *
+     * Jupiter emits ~13.9 W/m2 = 5.4 internal + ~8.5 absorbed solar. Injecting only F_int left the
+     * column radiating ~2.6x what entered it, so it could never be in radiative balance — matching
+     * the observed OLR that way was right for the wrong reason. Hence the separate shortwave
+     * channel in the shared file, whose area-weighted mean is S*(1-A)/4 = 8.26 W/m2: equator 10.5,
+     * poles 0.
+     *
+     * The grey-opacity CALIBRATION (C_cia, the kappa values, opac_cal) is NOT here — it is one
+     * shared set, and it is the one that was tuned HERE, on Jupiter: C_cia so the thermal
+     * photosphere lands near 0.5 bar, opac_cal so the OLR comes out near 14 W/m2. Radiation.h says
+     * why it stays shared and what would move it.
+     */
+    static double rad_F_int()       { return 5.4;   }  // Jupiter intrinsic heat flux [W/m2]
+    static double rad_S_solar()     { return 50.5;  }  // solar constant at 5.2 AU [W/m2]
+    static double rad_albedo_bond() { return 0.343; }  // Jupiter Bond albedo (so S*(1-A) is ABSORBED)
+    static double rad_x_H2()        { return 0.863; }  // H2 mole fraction
+    static double rad_x_He()        { return 0.134; }  // He mole fraction
 
     static double sinthe_min(){
         static const double v = [](){
