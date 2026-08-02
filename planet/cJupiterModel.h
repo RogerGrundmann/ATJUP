@@ -28,6 +28,7 @@
 #include "tinyxml2.h"
 #include "PythonStream.h"
 #include "Utils.h"
+#include "BoundaryConditions.h"   // BCForm, and the shared BC template
 #include "Config.h"
 
 // Forward declarations — full definitions included at the bottom of this file
@@ -65,6 +66,7 @@ class cJupiterModel{
     template<class M> friend class PressureSolver;
     template<class M> friend class SaturationAdjustment;
     friend class BC_Jup;
+    template<class M> friend class BoundaryConditions;
     friend class VelocityInitializerJup;
     template<class M> friend class Radiation;
     template<class M> friend class Precipitation;
@@ -678,6 +680,31 @@ private:
     // between TurbulenceJup.h and TurbulenceSat.h were this one concept, spelled out inline.
     int  surface_index(int j, int k) const { return i_topography[j][k]; }
     bool is_solid(int i, int j, int k) const { return SeaMount.x[i][j][k] == 1.0; }
+
+    // ---- What the SHARED BoundaryConditions.h asks of this model ----
+    //
+    // ATJUP covers the FULL j,k range (margin 0) and its default extrapolation is the 2-point
+    // Neumann, not ATSAT's cubic — which is exactly why BCForm::DEFAULT means "the model's own
+    // form" rather than naming one. rigid_lid and top_taper ship ON here on Jupiter evidence;
+    // see the knob notes that moved to BoundaryConditions.h.
+    static int bc_margin(){ return 0; }
+    static int bc_default_form(){ return BCForm::NEUMANN; }
+    static int bc_default_rigid_lid(){ return 1; }
+    static int bc_default_top_taper(){ return 1; }
+    static int bc_default_pole_copy(){ return 1; }
+    static int bc_default_radius_copy(){ return 0; }
+
+    std::vector<Array*> bc_fields_radius();
+    std::vector<Array*> bc_fields_theta_extrap();
+    std::vector<Array*> bc_fields_theta_zero();
+    std::vector<Array*> bc_fields_phi();
+
+    // ATJUP keeps its prognostic turbulence fields in the main lists above, so the separate
+    // clamped treatment ATSAT gives them is empty here and the gate is irrelevant. Adopting
+    // ATSAT's treatment would change ATJUP's results and so is not part of a sharing commit.
+    std::vector<Array*> bc_turb_fields(){ return {}; }
+    std::vector<double> bc_turb_floors(){ return {}; }
+    bool bc_turb_active() const { return false; }
 
     // ---- What the SHARED SaturationAdjustment.h asks of this model ----
     //
