@@ -668,7 +668,12 @@ private:
     // The model's own name, used by the SHARED physics headers for their log prefix and to
     // build their environment-variable names (ATJUP_CONV_ADJ_LAPSE and so on). It is the only
     // thing those files know about which planet they are running on.
+public:
+    // PUBLIC, matching cSaturnModel: the shared headers reach these two through the
+    // Planet template parameter, and ATPhys::polar_divisor_floor() is a free function
+    // rather than a friend class, so they cannot be private here and public there.
     static const char* planet_tag(){ return "ATJUP"; }
+private:
 
     // ---- The surface of a column, for the SHARED physics headers ----
     //
@@ -768,6 +773,7 @@ private:
     static double rad_x_H2()        { return 0.863; }  // H2 mole fraction
     static double rad_x_He()        { return 0.134; }  // He mole fraction
 
+public:
     static double sinthe_min(){
         static const double v = [](){
             const char* e = getenv("ATJUP_SINTHE_MIN");
@@ -776,6 +782,7 @@ private:
         }();
         return v;
     }
+private:
 
     static bool costhe_abs(){
         static const bool v = [](){ const char* e = getenv("ATJUP_COSTHE_ABS"); return e && atoi(e) != 0; }();
