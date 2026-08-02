@@ -9,7 +9,7 @@
 */
 #include "cJupiterModel.h"
 #include "Utils.h"
-#include "SaturationAdjustmentJup.h"   // clausius_clapeyron(): the saturation formula that
+#include "ATPhys.h"   // clausius_clapeyron(): the saturation formula that
                                        // matches ATJUP's coeff_*_A/B pairs
 
 using namespace std;
@@ -119,7 +119,7 @@ void cJupiterModel::Latent_Heat(){
                 // and expects ATOM's terrestrial coefficient pair (c1 ~ 17.27, c2 ~ 35.86 K).
                 // ATJUP's coeff_*_A/B are Clausius-Clapeyron coefficients instead (A = -L/R_v:
                 // -4961.04 K for H2O, i.e. L = 2.29e6 J/kg; -2836.56 K for NH3), which is the
-                // pair SaturationAdjustmentJup::clausius_clapeyron() consumes. Feeding them to
+                // pair ATPhys::clausius_clapeyron() consumes. Feeding them to
                 // the Magnus form gave, at the Jovian t_u ~ 110 K of the upper layers,
                 //     -4961.04 * (110 - 273.15) / (110 - 13.07) = +8350   ->   exp(8350) = inf,
                 // and the mixing ratio below then evaluated inf/(p - inf) = inf/-inf = NaN.
@@ -131,8 +131,8 @@ void cJupiterModel::Latent_Heat(){
                 // against the tabulated 0.0606 bar), and p_stat is in bar, so the 1e3 factor
                 // that used to convert to hPa has to go with it — the ratio E/p must be formed
                 // in one consistent unit.
-                double E_Rain = SaturationAdjustmentJup::clausius_clapeyron(t_u, coeff_h2o_A, coeff_h2o_B);
-                double E_Ice = SaturationAdjustmentJup::clausius_clapeyron(t_u, coeff_h2o_A_i, coeff_h2o_B_i);
+                double E_Rain = ATPhys::clausius_clapeyron(t_u, coeff_h2o_A, coeff_h2o_B);
+                double E_Ice = ATPhys::clausius_clapeyron(t_u, coeff_h2o_A_i, coeff_h2o_B_i);
                 // Saturation mixing ratio q = ep*E/(p - E). Guard the denominator: above the
                 // critical point, and in the solid SeaMount cells where p_stat is 0, p - E can
                 // vanish or go negative, which is not a physical state but must not produce
@@ -140,8 +140,8 @@ void cJupiterModel::Latent_Heat(){
                 double q_Rain = ep_h2o * E_Rain / std::max(p_u - E_Rain, 1.0e-12);  // h2o vapour amount at saturation with water formation in kg/kg
                 double q_Ice = ep_h2o * E_Ice / std::max(p_u - E_Ice, 1.0e-12);  // h2o vapour amount at saturation with ice formation in kg/kg
 
-                double E_Rain_nh3 = SaturationAdjustmentJup::clausius_clapeyron(t_u, coeff_nh3_A, coeff_nh3_B);
-                double E_Ice_nh3 = SaturationAdjustmentJup::clausius_clapeyron(t_u, coeff_nh3_A_i, coeff_nh3_B_i);
+                double E_Rain_nh3 = ATPhys::clausius_clapeyron(t_u, coeff_nh3_A, coeff_nh3_B);
+                double E_Ice_nh3 = ATPhys::clausius_clapeyron(t_u, coeff_nh3_A_i, coeff_nh3_B_i);
                 double q_Rain_nh3 = ep_nh3 * E_Rain_nh3 / std::max(p_u - E_Rain_nh3, 1.0e-12);  // nh3 vapour amount at saturation with water formation in kg/kg
                 double q_Ice_nh3 = ep_nh3 * E_Ice_nh3 / std::max(p_u - E_Ice_nh3, 1.0e-12);  // nh3 vapour amount at saturation with ice formation in kg/kg
 

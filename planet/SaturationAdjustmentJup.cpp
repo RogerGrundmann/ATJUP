@@ -51,7 +51,7 @@ void SaturationAdjustmentJup::run(
                 // where bcSolidGround sets t = p_stat = 0, and any cell that has lost a
                 // positive temperature or pressure.
                 //
-                // Both formulas below are singular there. saturation_vapour_pressure() forms
+                // Both formulas below are singular there. ATPhys::saturation_vapour_pressure() forms
                 // -L0/T_K (= -inf at T=0) and del_alf*log(T_K) (= 0*-inf = NaN), and q_Rain_0
                 // divides by p_u. The existing `q_Rain_0 <= 0.0` skip cannot catch that: every
                 // comparison against NaN is false, so both that test and `c <= q_Rain_0` fail
@@ -75,7 +75,7 @@ void SaturationAdjustmentJup::run(
                 // rho*ep*E/p is the right form and the density in it belongs to the cell.
                 const double rho_c = m.rho_at(i, j, k);
 
-                const double E_Rain_0 = saturation_vapour_pressure(t_u, C, L0, R, del_alf, del_bet);
+                const double E_Rain_0 = ATPhys::saturation_vapour_pressure(t_u, C, L0, R, del_alf, del_bet);
                 const double q_Rain_0 = rho_c * ep * E_Rain_0 / p_u;
 
                 // skip: subsaturated, already at saturation, or SVP underflowed to 0 at very cold cells
@@ -110,8 +110,8 @@ void SaturationAdjustmentJup::run(
                     if(q_c_b < 0.0) q_c_b = 0.0;
                     if(q_i_b < 0.0) q_i_b = 0.0;
 
-                    const double E_Rain = saturation_vapour_pressure(T, C,   L0,   R, del_alf,   del_bet);
-                    const double E_Ice  = saturation_vapour_pressure(T, C_i, L0_i, R, del_alf_i, del_bet_i);
+                    const double E_Rain = ATPhys::saturation_vapour_pressure(T, C,   L0,   R, del_alf,   del_bet);
+                    const double E_Ice  = ATPhys::saturation_vapour_pressure(T, C_i, L0_i, R, del_alf_i, del_bet_i);
                     const double q_Rain = rho_c * ep * E_Rain / p_u;
                     const double q_Ice  = rho_c * ep * E_Ice  / p_u;
 

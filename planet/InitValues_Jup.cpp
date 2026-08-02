@@ -6,6 +6,7 @@
  * Initial and boundary conditions for thermodynamic and chemical species fields
  */
 #include "cJupiterModel.h"
+#include "ATPhys.h"   // saturation_vapour_pressure
 #include "Utils.h"
 #include "SaturationAdjustmentJup.h"
 #include <cstdlib>   // getenv/atoi/atof for the tropopause-clamp knobs
@@ -528,7 +529,7 @@ void cJupiterModel::init_vapour_cloud_ice(std::string gas,
             for (int i = 0; i <= im-1; i++) {
                 double t_u          = t.x[i][j][k] * t_ref;
                 const double p_u    = p_stat.x[i][j][k];
-                const double E_Rain = SaturationAdjustmentJup::saturation_vapour_pressure(
+                const double E_Rain = ATPhys::saturation_vapour_pressure(
                                           t_u, C, L0, R, del_alf, del_bet);
                 const double q_Rain = ep * E_Rain / p_u;
 
@@ -622,7 +623,7 @@ void cJupiterModel::init_h2s(std::string gas,
             for (int i = 0; i <= im-1; i++) {
                 double t_u          = t.x[i][j][k] * t_ref;
                 const double p_u    = p_stat.x[i][j][k];
-                const double E_Rain = SaturationAdjustmentJup::saturation_vapour_pressure(
+                const double E_Rain = ATPhys::saturation_vapour_pressure(
                                           t_u, C, L0, R, del_alf, del_bet);
                 const double q_Rain = ep * E_Rain / p_u;
 
@@ -689,7 +690,7 @@ void cJupiterModel::init_nh4sh(std::string gas, double &c_tropopause,
             for (int i = 0; i < im; i++) {
                 double t_u          = t.x[i][j][k] * t_ref;
                 const double p_u    = p_stat.x[i][j][k];
-                const double E_Rain = SaturationAdjustmentJup::saturation_vapour_pressure(
+                const double E_Rain = ATPhys::saturation_vapour_pressure(
                                           t_u, C, L0, R, del_alf, del_bet);
                 const double q_Rain = ep * E_Rain / p_u;
 
