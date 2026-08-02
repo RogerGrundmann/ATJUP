@@ -34,7 +34,9 @@
 // after class cJupiterModel is complete, so inline bodies can access its members.
 
 class ChemistryJup;
-class SaturationAdjustmentJup;
+// SaturationAdjustmentJup is a typedef of the SHARED SaturationAdjustment template, not a
+// class of its own, so it cannot be forward-declared as one.
+template<class M> class SaturationAdjustment;
 class BC_Jup;
 class VelocityInitializerJup;
 
@@ -61,7 +63,7 @@ class cJupiterModel{
 
     friend class ChemistryJup;
     template<class M> friend class PressureSolver;
-    friend class SaturationAdjustmentJup;
+    template<class M> friend class SaturationAdjustment;
     friend class BC_Jup;
     friend class VelocityInitializerJup;
     template<class M> friend class Radiation;
@@ -676,6 +678,14 @@ private:
     // between TurbulenceJup.h and TurbulenceSat.h were this one concept, spelled out inline.
     int  surface_index(int j, int k) const { return i_topography[j][k]; }
     bool is_solid(int i, int j, int k) const { return SeaMount.x[i][j][k] == 1.0; }
+
+    // ---- What the SHARED SaturationAdjustment.h asks of this model ----
+    //
+    // Whether the saturation adjustment rebuilds p_stat from the adjusted temperature at the
+    // end of each cell. ATJUP does not touch p_stat there; ATSAT does. That is a real
+    // disagreement about where the hydrostatic pressure may respond to latent heating, and
+    // sharing the routine was not the moment to settle it. False keeps ATJUP as it was.
+    static bool satadj_updates_pstat(){ return false; }
 
     // ---- What the SHARED PressureSolver.h asks of this model ----
     //

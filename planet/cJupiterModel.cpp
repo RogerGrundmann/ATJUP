@@ -467,10 +467,9 @@ void cJupiterModel::Run(){
 //    goto Printout;
 
     SaturationAdjustmentJup(*this).run("H2O",
-        coeff_h2o_A, coeff_h2o_B, coeff_h2o_A_i, coeff_h2o_B_i,
         t_0_h2o, t_00_h2o,
-        ep_h2o, lv_h2o, ls_h2o, cp_h2o, r_h2o,
-        C_h2o, L0_h2o, R_h2o, del_alf_h2o, del_bet_h2o, m_h2o,
+        ep_h2o, lv_h2o, ls_h2o,
+        C_h2o, L0_h2o, R_h2o, del_alf_h2o, del_bet_h2o,
         C_h2o_ice, L0_h2o_ice, del_alf_h2o_ice, del_bet_h2o_ice,
         h2o, h2o_cloud, h2o_ice);
 
@@ -480,10 +479,9 @@ void cJupiterModel::Run(){
 
 
     SaturationAdjustmentJup(*this).run("NH3",
-        coeff_nh3_A, coeff_nh3_B, coeff_nh3_A_i, coeff_nh3_B_i,
         t_0_nh3, t_00_nh3,
-        ep_nh3, lv_nh3, ls_nh3, cp_nh3, r_nh3,
-        C_nh3, L0_nh3, R_nh3, del_alf_nh3, del_bet_nh3, m_nh3,
+        ep_nh3, lv_nh3, ls_nh3,
+        C_nh3, L0_nh3, R_nh3, del_alf_nh3, del_bet_nh3,
         C_nh3_ice, L0_nh3_ice, del_alf_nh3_ice, del_bet_nh3_ice,
         nh3, nh3_cloud, nh3_ice);
 
@@ -493,10 +491,9 @@ void cJupiterModel::Run(){
 
 
     SaturationAdjustmentJup(*this).run("CH4",
-        coeff_ch4_A, coeff_ch4_B, coeff_ch4_A_i, coeff_ch4_B_i,
         t_0_ch4, t_00_ch4,
-        ep_ch4, lv_ch4, ls_ch4, cp_ch4, r_ch4,
-        C_ch4, L0_ch4, R_ch4, del_alf_ch4, del_bet_ch4, m_ch4,
+        ep_ch4, lv_ch4, ls_ch4,
+        C_ch4, L0_ch4, R_ch4, del_alf_ch4, del_bet_ch4,
         C_ch4_ice, L0_ch4_ice, del_alf_ch4_ice, del_bet_ch4_ice,
         ch4, ch4_cloud, ch4_ice);
 
@@ -603,26 +600,23 @@ void cJupiterModel::Run(){
         if(radiation_enabled()) RadiationJup(*this).run();
 
         SaturationAdjustmentJup(*this).run("H2O",
-            coeff_h2o_A, coeff_h2o_B, coeff_h2o_A_i, coeff_h2o_B_i,
             t_0_h2o, t_00_h2o,
-            ep_h2o, lv_h2o, ls_h2o, cp_h2o, r_h2o,
-            C_h2o, L0_h2o, R_h2o, del_alf_h2o, del_bet_h2o, m_h2o,
+            ep_h2o, lv_h2o, ls_h2o,
+            C_h2o, L0_h2o, R_h2o, del_alf_h2o, del_bet_h2o,
             C_h2o_ice, L0_h2o_ice, del_alf_h2o_ice, del_bet_h2o_ice,
             h2o, h2o_cloud, h2o_ice);
 
         SaturationAdjustmentJup(*this).run("NH3",
-            coeff_nh3_A, coeff_nh3_B, coeff_nh3_A_i, coeff_nh3_B_i,
             t_0_nh3, t_00_nh3,
-            ep_nh3, lv_nh3, ls_nh3, cp_nh3, r_nh3,
-            C_nh3, L0_nh3, R_nh3, del_alf_nh3, del_bet_nh3, m_nh3,
+            ep_nh3, lv_nh3, ls_nh3,
+            C_nh3, L0_nh3, R_nh3, del_alf_nh3, del_bet_nh3,
             C_nh3_ice, L0_nh3_ice, del_alf_nh3_ice, del_bet_nh3_ice,
             nh3, nh3_cloud, nh3_ice);
 
         SaturationAdjustmentJup(*this).run("CH4",
-            coeff_ch4_A, coeff_ch4_B, coeff_ch4_A_i, coeff_ch4_B_i,
             t_0_ch4, t_00_ch4,
-            ep_ch4, lv_ch4, ls_ch4, cp_ch4, r_ch4,
-            C_ch4, L0_ch4, R_ch4, del_alf_ch4, del_bet_ch4, m_ch4,
+            ep_ch4, lv_ch4, ls_ch4,
+            C_ch4, L0_ch4, R_ch4, del_alf_ch4, del_bet_ch4,
             C_ch4_ice, L0_ch4_ice, del_alf_ch4_ice, del_bet_ch4_ice,
             ch4, ch4_cloud, ch4_ice);
 

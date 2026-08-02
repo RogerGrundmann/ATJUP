@@ -35,7 +35,6 @@ using namespace JupiterInitConstants;
 using namespace JupiterUtils;
 
 
-    cJupiterModel SaturationAdjustmentJup;
 
 
 
