@@ -67,6 +67,7 @@ class cJupiterModel{
     template<class M> friend class SaturationAdjustment;
     friend class BC_Jup;
     template<class M> friend class BoundaryConditions;
+    template<class M> friend class FluxLimiter;
     friend class VelocityInitializerJup;
     template<class M> friend class Radiation;
     template<class M> friend class Precipitation;
