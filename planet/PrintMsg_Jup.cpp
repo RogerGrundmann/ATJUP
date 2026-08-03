@@ -31,23 +31,22 @@ void cJupiterModel::printMinMax(){
     // and RadiationJup compare against), so degC needs -273.15. This used to subtract 165.0,
     // i.e. it printed the offset from t_ref while labelling it degC — every temperature in the
     // log read ~108 K too high. Solid/masked cells (t = 0) now show as -273.15 degC.
-    searchMinMax_3D(" max 3D temperature ", " min 3D temperature ","  degC",
+    searchMinMax_3D(" max 3D temperature ", " min 3D temperature ", " degC",
         t, t_ref, [](double i)->double{return i - 273.15;}, true);
-    searchMinMax_3D(" max 3D thermalflux ", " min 3D thermalflux ", " kJ/(m5K)", thermalmassflux, 1e-3);
+    searchMinMax_3D(" max 3D thermalflux ", " min 3D thermalflux ", " W/m3", thermalmassflux, 1.0);
     cout << endl;
 
     cout << endl << " Velocities " << endl;
-    searchMinMax_3D(" max 3D u-component ", " min 3D u-component ", "m/s", u, u_0);
-    searchMinMax_3D(" max 3D v-component ", " min 3D v-component ", "m/s", v, u_0);
-    searchMinMax_3D(" max 3D w-component ", " min 3D w-component ", "m/s", w, u_0);
+    searchMinMax_3D(" max 3D u-component ", " min 3D u-component ", " m/s", u, u_0);
+    searchMinMax_3D(" max 3D v-component ", " min 3D v-component ", " m/s", v, u_0);
+    searchMinMax_3D(" max 3D w-component ", " min 3D w-component ", " m/s", w, u_0);
     cout << endl;
 
     cout << endl << " Pressures " << endl;
     // p_dyn is stored as the nondimensional kinematic pressure; p_dyn_to_bar() makes the
     // printed number match its unit label. See the note in cJupiterModel.h.
-    searchMinMax_3D(" max 3D pressure dynamic ", " min 3D pressure dynamic ", "bar", p_dyn,
-                    p_dyn_to_bar());
-    searchMinMax_3D(" max 3D pressure static ", " min 3D pressure static ", "bar", p_stat, 1.0);
+    searchMinMax_3D(" max 3D pressure dynamic ", " min 3D pressure dynamic ", " bar", p_dyn, p_dyn_to_bar());
+    searchMinMax_3D(" max 3D pressure static ", " min 3D pressure static ", " bar", p_stat, 1.0);
     cout << endl;
 
     cout << endl << " Water " << endl;
@@ -70,31 +69,31 @@ void cJupiterModel::printMinMax(){
 
     cout << endl << " Hydrogen Sulfide " << endl;
     searchMinMax_3D(" max 3D h2s ",  " min 3D h2s ", " kg/m3", h2s, 1.0);
-    searchMinMax_3D(" max 3D w_h2s ", " min 3D w_h2s ", " kg/m3s", w_h2s, 1.0);
+    searchMinMax_3D(" max 3D w_h2s ", " min 3D w_h2s ", " kg/(m3s)", w_h2s, 1.0);
     searchMinMax_3D(" max 3D j_h2s ", " min 3D j_h2s ", " kg/m4", j_h2s, 1.0);
     searchMinMax_3D(" max 3D jT_h2s ", " min 3D jT_h2s ", " kg/m4", jT_h2s, 1.0);
-    searchMinMax_3D(" max 3D massflux_h2s ", " min 3D massflux_h2s ", " kg/m3s", massflux_h2s, 1.0);
-    searchMinMax_3D(" max 3D diff_h2s ", " min 3D diff_h2s ", " kg/m3s", difflux_h2s, 1.0);
+    searchMinMax_3D(" max 3D massflux_h2s ", " min 3D massflux_h2s ", " kg/(m3s)", massflux_h2s, 1.0);
+    searchMinMax_3D(" max 3D diff_h2s ", " min 3D diff_h2s ", " kg/(m3s)", difflux_h2s, 1.0);
     cout << endl;
 
     cout << endl << " Ammonia " << endl;
     searchMinMax_3D(" max 3D nh3 ",  " min 3D nh3 ", " kg/m3", nh3, 1.0);
     searchMinMax_3D(" max 3D nh3_cloud ", " min 3D nh3_cloud ", " kg/m3", nh3_cloud, 1.0);
     searchMinMax_3D(" max 3D nh3_ice ", " min 3D nh3_ice ", " kg/m3", nh3_ice, 1.0);
-    searchMinMax_3D(" max 3D w_nh3 ", " min 3D w_nh3 ", " kg/m3s", w_nh3, 1.0);
+    searchMinMax_3D(" max 3D w_nh3 ", " min 3D w_nh3 ", " kg/(m3s)", w_nh3, 1.0);
     searchMinMax_3D(" max 3D j_nh3 ", " min 3D j_nh3 ", " kg/m4", j_nh3, 1.0);
     searchMinMax_3D(" max 3D jT_nh3 ", " min 3D jT_nh3 ", " kg/m4", jT_nh3, 1.0);
-    searchMinMax_3D(" max 3D massflux_nh3 ", " min 3D massflux_nh3 ", " kg/m3s", massflux_nh3, 1.0);
+    searchMinMax_3D(" max 3D massflux_nh3 ", " min 3D massflux_nh3 ", " kg/(m3s)", massflux_nh3, 1.0);
     searchMinMax_3D(" max 3D diff_nh3 ", " min 3D diff_nh3 ", " kg/(m3s)", difflux_nh3, 1.0);
     cout << endl;
 
     cout << endl << " Ammonia Hydrosulfide " << endl;
     searchMinMax_3D(" max 3D nh4sh ",  " min 3D nh4sh ", " mg/m3", nh4sh, 1e6);
-    searchMinMax_3D(" max 3D w_nh4sh ", " min 3D w_nh4sh ", " mg/m3", w_nh4sh, 1e6);
-    searchMinMax_3D(" max 3D massflux_nh4sh ", " min 3D massflux_nh4sh ", " mg/m3", massflux_nh4sh, 1e6);
-    searchMinMax_3D(" max 3D j_nh4sh ", " min 3D j_nh4sh ", " mg/m3", j_nh4sh, 1e6);
-    searchMinMax_3D(" max 3D jT_nh4sh ", " min 3D jT_nh4sh ", " mg/m3", jT_nh4sh, 1e6);
-    searchMinMax_3D(" max 3D diff_nh4sh ", " min 3D diff_nh4sh ", " mg/m3", difflux_nh4sh, 1e6);
+    searchMinMax_3D(" max 3D w_nh4sh ", " min 3D w_nh4sh ", " mg/(m3s)", w_nh4sh, 1e6);
+    searchMinMax_3D(" max 3D massflux_nh4sh ", " min 3D massflux_nh4sh ", " mg/(m3s)", massflux_nh4sh, 1e6);
+    searchMinMax_3D(" max 3D j_nh4sh ", " min 3D j_nh4sh ", " mg/m4", j_nh4sh, 1e6);
+    searchMinMax_3D(" max 3D jT_nh4sh ", " min 3D jT_nh4sh ", " mg/m4", jT_nh4sh, 1e6);
+    searchMinMax_3D(" max 3D diff_nh4sh ", " min 3D diff_nh4sh ", " mg/(m3s)", difflux_nh4sh, 1e6);
     cout << endl;
 
     cout << endl << " Forces " << endl;
