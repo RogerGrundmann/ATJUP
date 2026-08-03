@@ -172,11 +172,11 @@ void cJupiterModel::Latent_Heat(){
 
 
                 if(h2o.x[i][j][k] >= q_Rain)  
-                    Q_Latent.x[i][j][k] = lv_h2o * velocity_av * dh2o * u_0/(L_atm * (im-1));
+                    Q_Latent.x[i][j][k] = lv_h2o * velocity_av * dh2o * u_0/(L_atm * (im-1)) * qheat_fix_lat();
                 else  Q_Latent.x[i][j][k] = 0.0;
 
                 if(h2o.x[i][j][k] >= q_Ice)  
-                    Latency_Ice = ls_h2o * velocity_av * dh2o * u_0/(L_atm * (im-1));
+                    Latency_Ice = ls_h2o * velocity_av * dh2o * u_0/(L_atm * (im-1)) * qheat_fix_lat();
                 else  Latency_Ice = 0.0;
 
 
@@ -190,10 +190,10 @@ void cJupiterModel::Latent_Heat(){
                 // condense contributes nothing; it does not erase the species that does.
                 if(nh3.x[i][j][k] >= q_Rain_nh3)
                     Q_Latent.x[i][j][k] = Q_Latent.x[i][j][k] + lv_nh3
-                        * velocity_av * dnh3 * u_0/(L_atm * (im-1));
+                        * velocity_av * dnh3 * u_0/(L_atm * (im-1)) * qheat_fix_lat();
 
                 if(nh3.x[i][j][k] >= q_Ice_nh3)
-                    Latency_Ice = Latency_Ice + ls_nh3 * velocity_av * dnh3 * u_0/(L_atm * (im-1));
+                    Latency_Ice = Latency_Ice + ls_nh3 * velocity_av * dnh3 * u_0/(L_atm * (im-1)) * qheat_fix_lat();
 
 
 
@@ -202,7 +202,7 @@ void cJupiterModel::Latent_Heat(){
 
 
                 Q_Sensible.x[i][j][k] = r_mix * cp_mix 
-                    * velocity_av * u_0 * dtemp * t_ref/pow(L_atm * (im-1),2);  // sensible heat in [W/m³] from energy transport equation
+                    * velocity_av * u_0 * dtemp * t_ref/pow(L_atm * (im-1),2) * qheat_fix_sen();  // sensible heat in [W/m³] from energy transport equation
 
 
                 if(SeaMount.x[i][j][k] == 1.0){

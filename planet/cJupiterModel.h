@@ -672,6 +672,34 @@ public:
     // Planet template parameter, and ATPhys::polar_divisor_floor() is a free function
     // rather than a friend class, so they cannot be private here and public there.
     static const char* planet_tag(){ return "ATJUP"; }
+
+    // ---- ATJUP_QHEAT_SCALE / the latent+sensible heating scale ----
+    //
+    // Both return exactly 1.0 when off, so the default path is bit-identical.
+    //
+    // ATJUP already carries HALF of this fix: its heating multiplies by u_0, which the other two
+    // models do not. What it does not have is the right length scale. The nondimensional radial
+    // coordinate spans 1.0 over the shell — (im-1)*dr = 1.0 exactly — so unit nondimensional
+    // length IS the shell depth, L_atm kilometres, and a gradient per nondimensional length
+    // becomes a gradient per metre by dividing by L_atm * 1e3 ONCE. ATJUP divides by
+    // L_atm * (im-1) = 140*40 = 5600 instead of 1.4e5, so its Q_Latent is 1000/(im-1) = 25x too
+    // large; and its Q_Sensible divides by that same wrong scale SQUARED.
+    //
+    // The two therefore need different corrections, which is why there are two accessors — the
+    // asymmetry is ATJUP's, not this knob's. With the knob set, all three models compute the same
+    // physical quantity, W/m3.
+    //
+    // Q_Latent and Q_Sensible are OUTPUT-ONLY, so this changes no physics; it does change the
+    // .vtk/.vts values, which is why it is a knob.
+    static bool qheat_on(){
+        static const bool v = [](){ const char* e = getenv("ATJUP_QHEAT_SCALE"); return e && atoi(e) != 0; }();
+        return v;
+    }
+    // current denom L_atm*(im-1) -> target L_atm*1e3 :  factor (im-1)/1e3
+    double qheat_fix_lat() const { return qheat_on() ? (im-1) / 1.0e3 : 1.0; }
+    // current denom (L_atm*(im-1))^2 -> target L_atm*1e3 : factor L_atm*(im-1)^2/1e3
+    double qheat_fix_sen() const { return qheat_on() ? L_atm * (im-1) * (im-1) / 1.0e3 : 1.0; }
+
     // Hooks for the shared ParaViewWriter<Planet> (ParaViewWriter.h). planet_name() is the
     // word in an output FILE name ("Jupiter_radial_20_1.vtk", "PlotData_Jupiter.xyz");
     // planet_short() is the abbreviation inside a .vtk title line
