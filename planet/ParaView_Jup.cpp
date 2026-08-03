@@ -21,49 +21,20 @@ using namespace std;
 */
 void cJupiterModel::paraview_panorama_vts(int n){
     using namespace ParaViewIO;
-    double x, y, z, dx, dy, dz;
+    // Header, coordinates, the Velocity array and the Temperature array are the
+    // SHARED ParaViewWriter.h. What stays here is the field list below and the
+    // scalars string that has to agree with it.
     double r_mix_plus = r_mix * 1e6;
-    string Jupiter_panorama_vts_File_Name = output_path + "/Jupiter_panorama_" 
-        + std::to_string(n) + ".vts";
-    ofstream Jupiter_panorama_vts_File;
-    Jupiter_panorama_vts_File.precision(4);
-    Jupiter_panorama_vts_File.setf(ios::fixed);
-    Jupiter_panorama_vts_File.open(Jupiter_panorama_vts_File_Name);
-    if(!Jupiter_panorama_vts_File.is_open()){
-        cerr << "ERROR: could not open shpere_vts file " << __FILE__ 
-            << " at line " << __LINE__ << "\n";
-        abort();
-    }
-    Jupiter_panorama_vts_File <<  "<?xml version=\"1.0\"?>\n"  << endl;
-    Jupiter_panorama_vts_File <<  "<VTKFile type=\"StructuredGrid\" version=\"0.1\" byte_order=\"LittleEndian\">\n"  << endl;
-    Jupiter_panorama_vts_File <<  " <StructuredGrid WholeExtent=\"" << 1 << " "<< im << " "<< 1 << " " << jm << " "<< 1 << " " << km << "\">\n"  << endl;
-    Jupiter_panorama_vts_File <<  "  <Piece Extent=\"" << 1 << " "<< im << " "<< 1 << " " << jm << " "<< 1 << " " << km << "\">\n"  << endl;
-    Jupiter_panorama_vts_File <<  "   <PointData Vectors=\"Velocity\" Scalars=\"Temperature PressureDynamic PressureStatic CH4 CH4Cloud CH4Ice NH3 NH3Cloud NH3Ice H2O H2OCloud H2OIce Q_Latent Q_Sensible Q_rad_mW_m3 Radiation P_rain_mmd P_snow_mmd P_graupel_mmd P_nh3_rain_mmd P_nh3_snow_mmd P_nh3_graupel_mmd P_ch4_rain_mmd P_ch4_snow_mmd P_ch4_graupel_mmd P_nh4sh_mmd Q_precip_mW_m3 tke_m2s2 dis_nd nue_t_m2s prod_nd tke_source_nd dis_source_nd BuoyancyForce \">\n"  << endl;
-
-    Jupiter_panorama_vts_File <<  "    <DataArray type=\"Float32\" NumberOfComponents=\"3\" Name=\"Velocity\" format=\"ascii\">\n"  << endl;
-    for(int k = 0; k < km; k++){
-        for(int j = 0; j < jm; j++){
-            for(int i = 0; i < im; i++){
-                Jupiter_panorama_vts_File << u.x[i][j][k] << " " << v.x[i][j][k] << " " << w.x[i][j][k] << endl;
-            }
-            Jupiter_panorama_vts_File <<  "\n"  << endl;
-        }
-        Jupiter_panorama_vts_File <<  "\n"  << endl;
-    }
-    Jupiter_panorama_vts_File <<  "\n"  << endl;
-    Jupiter_panorama_vts_File <<  "    </DataArray>\n" << endl;
-    Jupiter_panorama_vts_File <<  "    <DataArray type=\"Float32\" Name=\"Temperature\" format=\"ascii\">\n"  << endl;
-    for(int k = 0; k < km; k++){
-        for(int j = 0; j < jm; j++){
-            for(int i = 0; i < im; i++){
-                Jupiter_panorama_vts_File << t.x[i][j][k] * t_ref - 273.15 << endl;
-            }
-            Jupiter_panorama_vts_File <<  "\n"  << endl;
-        }
-        Jupiter_panorama_vts_File <<  "\n"  << endl;
-    }
-    Jupiter_panorama_vts_File <<  "\n"  << endl;
-    Jupiter_panorama_vts_File <<  "    </DataArray>\n" << endl;
+    ParaViewWriter<cJupiterModel> pv(*this);
+    ofstream Jupiter_panorama_vts_File = pv.open_panorama(n,
+        "Temperature PressureDynamic PressureStatic CH4 CH4Cloud CH4Ice NH3 NH3Cloud "
+        "NH3Ice H2O H2OCloud H2OIce Q_Latent Q_Sensible Q_rad_mW_m3 Radiation "
+        "P_rain_mmd P_snow_mmd P_graupel_mmd P_nh3_rain_mmd P_nh3_snow_mmd "
+        "P_nh3_graupel_mmd P_ch4_rain_mmd P_ch4_snow_mmd P_ch4_graupel_mmd "
+        "P_nh4sh_mmd Q_precip_mW_m3 tke_m2s2 dis_nd nue_t_m2s prod_nd "
+        "tke_source_nd dis_source_nd BuoyancyForce ");
+    pv.panorama_velocity(Jupiter_panorama_vts_File);
+    pv.panorama_temperature(Jupiter_panorama_vts_File);
     dump_array("Seamount", SeaMount, 1.0, Jupiter_panorama_vts_File);
     dump_array("u-component", u, u_0, Jupiter_panorama_vts_File);
     dump_array("v-component", v, u_0, Jupiter_panorama_vts_File);
@@ -142,39 +113,7 @@ void cJupiterModel::paraview_panorama_vts(int n){
     dump_array("tke_source_nd", tke_source, 1.0, Jupiter_panorama_vts_File);
     dump_array("dis_source_nd", dis_source, 1.0, Jupiter_panorama_vts_File);
 
-    Jupiter_panorama_vts_File <<  "   </PointData>\n" << endl;
-    Jupiter_panorama_vts_File <<  "   <Points>\n"  << endl;
-    Jupiter_panorama_vts_File <<  "    <DataArray type=\"Float32\" NumberOfComponents=\"3\" format=\"ascii\">\n"  << endl;
-    x = 0.0;
-    y = 0.0;
-    z = 0.0;
-    dx = 0.1;
-    dy = 0.1;
-    dz = 0.1;
-    for(int k = 0; k < km; k++){
-        for(int j = 0; j < jm; j++){
-            for(int i = 0; i < im; i++){
-                if(k == 0 || j == 0) x = 0.0;
-                else x = x + dx;
-                Jupiter_panorama_vts_File << x << " " << y << " " << z  << endl;
-            }
-            x = 0;
-            y = y + dy;
-            Jupiter_panorama_vts_File <<  "\n"  << endl;
-        }
-        y = 0.0;
-        z = z + dz;
-        Jupiter_panorama_vts_File <<  "\n"  << endl;
-    }
-    Jupiter_panorama_vts_File <<  "    </DataArray>\n"  << endl;
-    Jupiter_panorama_vts_File <<  "   </Points>\n"  << endl;
-    Jupiter_panorama_vts_File <<  "  </Piece>\n"  << endl;
-    Jupiter_panorama_vts_File <<  " </StructuredGrid>\n"  << endl;
-    Jupiter_panorama_vts_File <<  "</VTKFile>\n"  << endl;
-    Jupiter_panorama_vts_File.close();
-    cout << "   File:  " << "Jupiter_panorama_" 
-        << n << ".vts" << "  has been written to Directory:  " 
-        << output_path << endl;
+    pv.close_panorama(Jupiter_panorama_vts_File, n);
     return;
 }
 /*

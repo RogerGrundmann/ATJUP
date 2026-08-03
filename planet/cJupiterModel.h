@@ -678,6 +678,10 @@ public:
     // ("Radial_Data_Jup_Circulation"). Both models carried both spellings by hand.
     static const char* planet_name(){ return "Jupiter"; }
     static const char* planet_short(){ return "Jup"; }
+    // What the panorama .vts prints in its "Temperature" array. ATJUP writes degrees Celsius;
+    // ATSAT writes kelvin/10. Two different quantities under one array name — see the note on
+    // the same hook in cSaturnModel.h.
+    double paraview_temperature(double t_nd) const { return t_nd * t_ref - 273.15; }
 private:
 
     // ---- The surface of a column, for the SHARED physics headers ----
