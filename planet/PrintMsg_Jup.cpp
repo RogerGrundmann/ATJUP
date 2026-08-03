@@ -89,12 +89,12 @@ void cJupiterModel::printMinMax(){
     cout << endl;
 
     cout << endl << " Ammonia Hydrosulfide " << endl;
-    searchMinMax_3D(" max 3D nh4sh ",  " min 3D nh4sh ", " g/m3", nh4sh, 1e3);
-    searchMinMax_3D(" max 3D w_nh4sh ", " min 3D w_nh4sh ", " g/m3s", w_nh4sh, 1e3);
-    searchMinMax_3D(" max 3D massflux_nh4sh ", " min 3D massflux_nh4sh ", " g/m3s", massflux_nh4sh, 1e3);
-    searchMinMax_3D(" max 3D j_nh4sh ", " min 3D j_nh4sh ", " g/m4", j_nh4sh, 1e3);
-    searchMinMax_3D(" max 3D jT_nh4sh ", " min 3D jT_nh4sh ", " g/m4", jT_nh4sh, 1e3);
-    searchMinMax_3D(" max 3D diff_nh4sh ", " min 3D diff_nh4sh ", " g/(m3s)", difflux_nh4sh, 1e3);
+    searchMinMax_3D(" max 3D nh4sh ",  " min 3D nh4sh ", " mg/m3", nh4sh, 1e6);
+    searchMinMax_3D(" max 3D w_nh4sh ", " min 3D w_nh4sh ", " mg/m3", w_nh4sh, 1e6);
+    searchMinMax_3D(" max 3D massflux_nh4sh ", " min 3D massflux_nh4sh ", " mg/m3", massflux_nh4sh, 1e6);
+    searchMinMax_3D(" max 3D j_nh4sh ", " min 3D j_nh4sh ", " mg/m3", j_nh4sh, 1e6);
+    searchMinMax_3D(" max 3D jT_nh4sh ", " min 3D jT_nh4sh ", " mg/m3", jT_nh4sh, 1e6);
+    searchMinMax_3D(" max 3D diff_nh4sh ", " min 3D diff_nh4sh ", " mg/m3", difflux_nh4sh, 1e6);
     cout << endl;
 
     cout << endl << " Forces " << endl;
@@ -115,7 +115,7 @@ void cJupiterModel::printMinMax(){
     searchMinMax_3D(" max 3D P_graupel ", " min 3D P_graupel ", " kg/m2/s", P_graupel, 1.0);
     searchMinMax_3D(" max 3D P_nh3_rain ", " min 3D P_nh3_rain ", " kg/m2/s", P_nh3_rain, 1.0);
     searchMinMax_3D(" max 3D P_nh3_snow ", " min 3D P_nh3_snow ", " kg/m2/s", P_nh3_snow, 1.0);
-    searchMinMax_3D(" max 3D P_nh4sh ", " min 3D P_nh4sh ", " kg/m2/s", P_nh4sh, 1.0);
+    searchMinMax_3D(" max 3D P_nh4sh ", " min 3D P_nh4sh ", " mg/m3", P_nh4sh, 1e6);
     searchMinMax_3D(" max 3D Q_precip ", " min 3D Q_precip ", " W/m3", Q_precip, 1.0);
     // All-species surface map, in mm/day so it can be compared against the ~1 mm/d that
     // Jupiter's energy budget allows (see the calibration note in PrecipitationJup.h).
