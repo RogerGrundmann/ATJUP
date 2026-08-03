@@ -63,17 +63,19 @@ typedef PressureSolver<cJupiterModel> PressureSolverJup;
 class cJupiterModel{
 
     friend class ChemistryJup;
+    friend class BC_Jup;
+    friend class VelocityInitializerJup;
+    friend class ThermalWindJup;
     template<class M> friend class PressureSolver;
     template<class M> friend class SaturationAdjustment;
-    friend class BC_Jup;
     template<class M> friend class BoundaryConditions;
     template<class M> friend class FluxLimiter;
-    friend class VelocityInitializerJup;
     template<class M> friend class Radiation;
     template<class M> friend class Precipitation;
     template<class M> friend class Turbulence;
     template<class M> friend class ConvectiveAdjustment;
-    friend class ThermalWindJup;
+    template<class M> friend class Reporting;
+    template<class M> friend class ParaViewWriter;
 
 public:
 
@@ -111,7 +113,6 @@ public:
     std::vector<double> v_trans;
     std::vector<double> w_trans;
 
-    double maxValue, minValue;
     /*
      * This function must be called after init_layer_heights()
      * Given a layer index i, return the height of this layer
@@ -531,8 +532,6 @@ private:
 
     std::vector<std::vector<int> > j_ellipse;
     bool has_welcome_msg_printed;
-    double out_maxValue() const;
-    double out_minValue() const;
 
     void init_layer_heights(){
         float h = L_atm/(im-1);
@@ -673,6 +672,12 @@ public:
     // Planet template parameter, and ATPhys::polar_divisor_floor() is a free function
     // rather than a friend class, so they cannot be private here and public there.
     static const char* planet_tag(){ return "ATJUP"; }
+    // Hooks for the shared ParaViewWriter<Planet> (ParaViewWriter.h). planet_name() is the
+    // word in an output FILE name ("Jupiter_radial_20_1.vtk", "PlotData_Jupiter.xyz");
+    // planet_short() is the abbreviation inside a .vtk title line
+    // ("Radial_Data_Jup_Circulation"). Both models carried both spellings by hand.
+    static const char* planet_name(){ return "Jupiter"; }
+    static const char* planet_short(){ return "Jup"; }
 private:
 
     // ---- The surface of a column, for the SHARED physics headers ----
@@ -787,6 +792,24 @@ private:
     static bool costhe_abs(){
         static const bool v = [](){ const char* e = getenv("ATJUP_COSTHE_ABS"); return e && atoi(e) != 0; }();
         return v;
+    }
+
+    // ---- Hooks for the shared Reporting<Planet> (Reporting.h) ----
+    // Each default is ATJUP's existing behaviour, so adopting the shared header changes no
+    // output. See Reporting.h for what each one absorbs; costhe_abs() above is a third.
+
+    // Column layout of the min/max report. ATJUP widened the unit column to 12 because its unit
+    // strings are longer (" kg/(m3s)") and uses three spaces between the max and min halves;
+    // ATSAT uses 6 and ten spaces. Cosmetic, preserved rather than unified.
+    static int minmax_unit_width()      { return 12; }
+    static const char *minmax_separator(){ return "   "; }
+
+    static const char *steady_heading(){ return " 3D iterational process "; }
+
+    // The iteration line of the steady-state header, including its trailing newlines. ATJUP
+    // counts this loop with n and prints two; ATSAT counts with iter_n and prints one.
+    std::string steady_iter_line() const {
+        return "      n = " + std::to_string(n) + "\n\n";
     }
 
     static bool local_rho(){

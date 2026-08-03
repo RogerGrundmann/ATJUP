@@ -9,79 +9,18 @@
 */
 
 #include "cJupiterModel.h"
+#include "ParaViewWriter.h"
 
 using namespace std;
 //using namespace JupiterUtils;
 
-namespace ParaViewJupiter{
-    void dump_array(const string &name, Array &a, double multiplier, ofstream &f) {
-        f <<  "    <DataArray type=\"Float32\" Name=\"" << name << "\" format=\"ascii\">\n";
-        for (int k = 0; k < a.km; k++){
-            for (int j = 0; j < a.jm; j++){
-                for (int i = 0; i < a.im; i++){
-                    f << (a.x[i][j][k] * multiplier) << endl;
-                }
-                f << "\n";
-            }
-            f << "\n";
-        }
-        f << "\n";
-        f << "    </DataArray>\n";
-    }
-/*
- * 
-*/
-    void dump_radial(const string &desc, Array &a, double multiplier, int i, ofstream &f){
-        f << "SCALARS " << desc << " float " << 1 << endl;
-        f << "LOOKUP_TABLE default" << endl;
-        for (int j = 0; j < a.jm; j++){
-            for (int k = 0; k < a.km; k++){
-                f << (a.x[i][j][k] * multiplier) << endl;
-            }
-        }
-    }
-/*
- * 
-*/
-    void dump_radial_2d(const string &desc, Array_2D &a, double multiplier, ofstream &f){
-        f << "SCALARS " << desc << " float " << 1 << endl;
-        f << "LOOKUP_TABLE default" << endl;
-        for (int j = 0; j < a.jm; j++){
-            for (int k = 0; k < a.km; k++){
-                f << (a.y[j][k] * multiplier) << endl;
-            }
-        }
-    }
-/*
- * 
-*/
-    void dump_zonal(const string &desc, Array &a, double multiplier, int k, ofstream &f){
-        f <<  "SCALARS " << desc << " float " << 1 << endl;
-        f <<  "LOOKUP_TABLE default" << endl;
-        for(int i = 0; i < a.im; i++){
-            for(int j = 0; j < a.jm; j++){
-                f << (a.x[i][j][k] * multiplier) << endl;
-            }
-        }
-    }
-/*
- * 
-*/
-    void dump_longal(const string &desc, Array &a, double multiplier, int j, ofstream &f){
-        f << "SCALARS " << desc << " float " << 1 << endl;
-        f << "LOOKUP_TABLE default" << endl;
-        for (int i = 0; i < a.im; i++){
-            for (int k = 0; k < a.km; k++){
-                f << (a.x[i][j][k] * multiplier) << endl;
-            }
-        }
-    }
-}
+// The five dumpers moved to the SHARED ParaViewWriter.h, as namespace ParaViewIO.
+// They were already byte-identical in both models; see that header.
 /*
  * 
 */
 void cJupiterModel::paraview_panorama_vts(int n){
-    using namespace ParaViewJupiter;
+    using namespace ParaViewIO;
     double x, y, z, dx, dy, dz;
     double r_mix_plus = r_mix * 1e6;
     string Jupiter_panorama_vts_File_Name = output_path + "/Jupiter_panorama_" 
@@ -242,41 +181,11 @@ void cJupiterModel::paraview_panorama_vts(int n){
  * 
 */
 void cJupiterModel::paraview_vtk_radial(int n, int i_radial){
-    using namespace ParaViewJupiter;
-    double x, y, z, dx, dy;
+    using namespace ParaViewIO;
     double r_mix_plus = r_mix * 1e6;
-    string Jupiter_radial_File_Name = output_path + "/Jupiter_radial_" 
-        + std::to_string(i_radial) + "_" + std::to_string(n) + ".vtk";
-    ofstream Jupiter_vtk_radial_File;
-    Jupiter_vtk_radial_File.precision (4);
-    Jupiter_vtk_radial_File.setf(ios::fixed);
-    Jupiter_vtk_radial_File.open(Jupiter_radial_File_Name);
-    if(!Jupiter_vtk_radial_File.is_open()){
-        cerr << "ERROR: could not open paraview_vtk file " << __FILE__ 
-            << " at line " << __LINE__ << "\n";
-        abort();
-    }
-    Jupiter_vtk_radial_File <<  "# vtk DataFile Version 3.0" << endl;
-    Jupiter_vtk_radial_File <<  "Radial_Data_Jup_Circulation\n";
-    Jupiter_vtk_radial_File <<  "ASCII" << endl;
-    Jupiter_vtk_radial_File <<  "DATASET STRUCTURED_GRID" << endl;
-    Jupiter_vtk_radial_File <<  "DIMENSIONS " << km << " "<< jm << " " << 1 << endl;
-    Jupiter_vtk_radial_File <<  "POINTS " << jm * km << " float" << endl;
-    x = 0.0;
-    y = 0.0;
-    z = 0.0;
-    dx = 0.1;
-    dy = 0.1;
-    for(int j = 0; j < jm; j++){
-        for(int k = 0; k < km; k++){
-            if(k == 0) y = 0.0;
-            else y = y + dy;
-            Jupiter_vtk_radial_File << x << " " << y << " "<< z << endl;
-        }
-        y = 0.0;
-        x = x + dx;
-    }
-    Jupiter_vtk_radial_File <<  "POINT_DATA " << jm * km << endl;
+    ofstream Jupiter_vtk_radial_File = ParaViewWriter<cJupiterModel>(*this)
+        .open_slice("radial", "Radial", i_radial, n, km, jm, 0.1, false);
+    const double z = 0.0;   // out-of-plane component of the in-plane vector below
     dump_radial("Seamount", SeaMount, 1.0, i_radial, Jupiter_vtk_radial_File);
     dump_radial("u-Component", u, u_0, i_radial, Jupiter_vtk_radial_File);
     dump_radial("v-Component", v, u_0, i_radial, Jupiter_vtk_radial_File);
@@ -391,51 +300,18 @@ void cJupiterModel::paraview_vtk_radial(int n, int i_radial){
             Jupiter_vtk_radial_File << v.x[i_radial][j][k] << " " << w.x[i_radial][j][k] << " " << z << endl;
         }
     }
-    Jupiter_vtk_radial_File.close();
-    cout << "   File:  " << "Jupiter_radial_" 
-        << i_radial << "_" << n << ".vtk" 
-        << "  has been written to Directory:  " << output_path << endl;
+    ParaViewWriter<cJupiterModel>(*this).close_slice(Jupiter_vtk_radial_File, "radial", i_radial, n);
     return;
 }
 /*
  * 
 */
 void cJupiterModel::paraview_vtk_zonal(int n, int k_zonal){
-    using namespace ParaViewJupiter;
-    double x, y, z, dx, dy;
+    using namespace ParaViewIO;
     double r_mix_plus = r_mix * 1e6;
-    string Jupiter_zonal_File_Name = output_path + "/Jupiter_zonal_" 
-        + std::to_string(k_zonal) + "_" + std::to_string(n) + ".vtk";
-    ofstream Jupiter_vtk_zonal_File;
-    Jupiter_vtk_zonal_File.precision(4);
-    Jupiter_vtk_zonal_File.setf(ios::fixed);
-    Jupiter_vtk_zonal_File.open(Jupiter_zonal_File_Name);
-    if(!Jupiter_vtk_zonal_File.is_open()){
-        cerr << "ERROR: could not open vtk_zonal file " << __FILE__ 
-            << " at line " << __LINE__ << "\n";
-        abort();
-    }
-    Jupiter_vtk_zonal_File <<  "# vtk DataFile Version 3.0" << endl;
-    Jupiter_vtk_zonal_File <<  "Zonal_Data_Jup_Circulation\n";
-    Jupiter_vtk_zonal_File <<  "ASCII" << endl;
-    Jupiter_vtk_zonal_File <<  "DATASET STRUCTURED_GRID" << endl;
-    Jupiter_vtk_zonal_File <<  "DIMENSIONS " << jm << " "<< im << " " << 1 << endl;
-    Jupiter_vtk_zonal_File <<  "POINTS " << im * jm << " float" << endl;
-    x = 0.0;
-    y = 0.0;
-    z = 0.0;
-    dx = 0.1;
-    dy = 0.05;
-    for(int i = 0; i < im; i++){
-        for(int j = 0; j < jm; j++){
-            if(j == 0) y = 0.0;
-            else y = y + dy;
-            Jupiter_vtk_zonal_File << x << " " << y << " "<< z << endl;
-        }
-        y = 0.0;
-        x = x + dx;
-    }
-    Jupiter_vtk_zonal_File <<  "POINT_DATA " << im * jm << endl;
+    ofstream Jupiter_vtk_zonal_File = ParaViewWriter<cJupiterModel>(*this)
+        .open_slice("zonal", "Zonal", k_zonal, n, jm, im, 0.05, false);
+    const double z = 0.0;   // out-of-plane component of the in-plane vector below
     dump_zonal("Seamount", SeaMount, 1.0, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("u-Component", u, u_0, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("v-Component", v, u_0, k_zonal, Jupiter_vtk_zonal_File);
@@ -543,54 +419,18 @@ void cJupiterModel::paraview_vtk_zonal(int n, int k_zonal){
             Jupiter_vtk_zonal_File << u.x[i][j][k_zonal] << " " << v.x[i][j][k_zonal] << " " << z << endl;
         }
     }
-    Jupiter_vtk_zonal_File.close();
-    cout << "   File:  " << "Jupiter_zonal_" 
-        << k_zonal << "_" << n << ".vtk" 
-        << "  has been written to Directory:  " << output_path << endl;
+    ParaViewWriter<cJupiterModel>(*this).close_slice(Jupiter_vtk_zonal_File, "zonal", k_zonal, n);
     return;
 }
 /*
  * 
 */
 void cJupiterModel::paraview_vtk_longal(int n, int j_longal){
-    using namespace ParaViewJupiter;
-    double x, y, z, dx, dz;
+    using namespace ParaViewIO;
     double r_mix_plus = r_mix * 1e6;
-    string Jupiter_longal_File_Name = output_path + "/Jupiter_longal_" 
-        + std::to_string(j_longal) + "_" + std::to_string(n) + ".vtk";
-    ofstream Jupiter_vtk_longal_File;
-    Jupiter_vtk_longal_File.precision(4);
-    Jupiter_vtk_longal_File.setf(ios::fixed);
-    Jupiter_vtk_longal_File.open(Jupiter_longal_File_Name);
-    if(!Jupiter_vtk_longal_File.is_open()){
-        cerr << "ERROR: could not open vtk_longal file " 
-            << __FILE__ << " at line " << __LINE__ << "\n";
-        abort();
-    }
-    Jupiter_vtk_longal_File <<  "# vtk DataFile Version 3.0" << endl;
-    Jupiter_vtk_longal_File <<  "Longitudinal_Data_Jup_Circulation\n";
-    Jupiter_vtk_longal_File <<  "ASCII" << endl;
-    Jupiter_vtk_longal_File <<  "DATASET STRUCTURED_GRID" << endl;
-    Jupiter_vtk_longal_File <<  "DIMENSIONS " << km << " "<< im << " " << 1 << endl;
-    Jupiter_vtk_longal_File <<  "POINTS " << im * km << " float" << endl;
-    x = 0.0;
-    y = 0.0;
-    z = 0.0;
-    dx = 0.1;
-    dz = 0.025;
-    for(int i = 0; i < im; i++){
-        for(int k = 0; k < km; k++){
-            if(k == 0){
-                z = 0.0;
-            }else{
-                z = z + dz;
-            }
-            Jupiter_vtk_longal_File << x << " " << y << " "<< z << endl;
-        }
-        z = 0.0;
-        x = x + dx;
-    }
-    Jupiter_vtk_longal_File <<  "POINT_DATA " << im * km << endl;
+    ofstream Jupiter_vtk_longal_File = ParaViewWriter<cJupiterModel>(*this)
+        .open_slice("longal", "Longitudinal", j_longal, n, km, im, 0.025, true);
+    const double y = 0.0;   // out-of-plane component; longal advances z, so y stayed 0
     dump_longal("Seamount", SeaMount, 1.0, j_longal, Jupiter_vtk_longal_File);
     dump_longal("u-Component", u, u_0, j_longal, Jupiter_vtk_longal_File);
     dump_longal("v-Component", v, u_0, j_longal, Jupiter_vtk_longal_File);
@@ -698,17 +538,14 @@ void cJupiterModel::paraview_vtk_longal(int n, int j_longal){
                 << y << " " << w.x[i][j_longal][k] << endl;
         }
     }
-    Jupiter_vtk_longal_File.close();
-    cout << "   File:  " << "Jupiter_longal_" 
-        << j_longal << "_" << n << ".vtk" 
-        << "  has been written to Directory:  " << output_path << endl;
+    ParaViewWriter<cJupiterModel>(*this).close_slice(Jupiter_vtk_longal_File, "longal", j_longal, n);
     return;
 }
 /*
  * 
 */
 void cJupiterModel::paraview_sphere_vts(int n){
-    using namespace ParaViewJupiter;
+    using namespace ParaViewIO;
     double x, y, z, sinthe, sinphi, costhe, cosphi;
     double r_mix_plus = r_mix * 1e6;
     string Jupiter_sphere_vts_File_Name = output_path + "/Jupiter_sphere_" 
@@ -739,10 +576,27 @@ void cJupiterModel::paraview_sphere_vts(int n){
             // as a silent southern-hemisphere error the day the sphere writer is used.
             if(costhe_abs() && j > 90) costhe = - costhe;
             for(int i = 0; i < im; i++){
-                aux_u.x[i][j][k] = sinthe * cosphi * u.x[i][j][k] + costhe * cosphi * v.x[i][j][k] - sinphi * w.x[i][j][k];
-                aux_v.x[i][j][k] = sinthe * sinphi * u.x[i][j][k] + sinphi * costhe * v.x[i][j][k] + cosphi * w.x[i][j][k];
-                aux_w.x[i][j][k] = costhe * u.x[i][j][k] - sinthe * v.x[i][j][k];
-                Jupiter_sphere_vts_File << aux_u.x[i][j][k] << " " << aux_v.x[i][j][k] << " " << aux_w.x[i][j][k]  << endl;
+                // LOCALS, not aux_u/aux_v/aux_w. These are the spherical-to-Cartesian velocity
+                // components and they are wanted only for the line printed immediately below —
+                // but aux_* are not scratch. RHS_Jup_Turb fills aux_u with the intermediate
+                // velocity rhs_u + dpdr and PressureSolver differentiates it, so writing them
+                // here left the projection reading rendering coordinates.
+                //
+                // MEASURED ON ATSAT, where the identical loop was the whole difference: with the
+                // call enabled, three iterations gave sat_restart_3.bin = a585481f... against
+                // b64cb36f... without it, and a control with the panorama writing every
+                // iteration and only the sphere disabled reproduced b64cb36f... exactly. This is
+                // why the call site was commented out in both models rather than the writer
+                // fixed — an output routine that changes the answer is worse than none.
+                //
+                // ATJUP's call site stays commented out for a SECOND, unrelated reason that this
+                // does not address: ATJUP_METRIC_RADIUS is on by default, so rad.z runs 1..500
+                // and the Cartesian construction below renders a shell of relative thickness
+                // 1/500. See the note at cJupiterModel.cpp:335. Fixing that is a separate job.
+                const double cart_u = sinthe * cosphi * u.x[i][j][k] + costhe * cosphi * v.x[i][j][k] - sinphi * w.x[i][j][k];
+                const double cart_v = sinthe * sinphi * u.x[i][j][k] + sinphi * costhe * v.x[i][j][k] + cosphi * w.x[i][j][k];
+                const double cart_w = costhe * u.x[i][j][k] - sinthe * v.x[i][j][k];
+                Jupiter_sphere_vts_File << cart_u << " " << cart_v << " " << cart_w  << endl;
             }
             Jupiter_sphere_vts_File <<  "\n"  << endl;
         }
@@ -1006,33 +860,9 @@ void cJupiterModel::paraview_sphere_vts(int n){
  * 
 */
 void cJupiterModel::JupiterPlotData(){
-    string Name_PlotData_File = output_path + "/PlotData_Jupiter.xyz";
-    ofstream PlotData_File;
-    PlotData_File.precision(4);
-    PlotData_File.setf(ios::fixed);
-    PlotData_File.open(Name_PlotData_File);
-    if(!PlotData_File.is_open()){
-        cerr << "ERROR: could not open PlotData file " << __FILE__ << " at line " << __LINE__ << "\n";
-        abort();
-    }
-    PlotData_File << "lons(deg)" << ", " << "lats(deg)" << ", " 
-        << "topography" << ", " << "v-velocity(m/s)" << ", " 
-        << "w-velocity(m/s)" << ", " << "velocity-mag(m/s)" << ", " 
-        << "temperature(Celsius)" << ", " << "water_vapour(g/kg)" 
-        << ", " << "precipitation(mm)" << ", " 
-        <<  "precipitable water(mm)" << endl;
-    double vel_mag;
-    for(int k = 0; k < km; k++){
-        for(int j = 0; j < jm; j++){
-            vel_mag = sqrt(pow(v.x[0][j][k] * u_0, 2) + pow(w.x[0][j][k] * u_0, 2));
-            PlotData_File << k << " " << j << " " << SeaMount.x[0][j][k] << " " 
-                << v.x[0][j][k] * u_0 << " " << w.x[0][j][k] * u_0 << " " 
-                << vel_mag << " " << t.x[0][j][k] * t_ref - t_ref << " " 
-                << h2o.x[0][j][k] << " "<< nh3.x[0][j][k] <<  endl;
-        }
-    }
-    PlotData_File.close();
-    return;
+    // The whole body moved to the SHARED ParaViewWriter.h — it was 100 % identical between
+    // the two models apart from the planet name in the file name.
+    ParaViewWriter<cJupiterModel>(*this).plot_data();
 }
 
 
