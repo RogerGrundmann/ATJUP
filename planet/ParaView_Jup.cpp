@@ -24,7 +24,14 @@ void cJupiterModel::paraview_panorama_vts(int n){
     // Header, coordinates, the Velocity array and the Temperature array are the
     // SHARED ParaViewWriter.h. What stays here is the field list below and the
     // scalars string that has to agree with it.
-    double r_mix_plus = r_mix * 1e6;
+    // kg/m3 -> mg/m3, and NOT r_mix * 1e6 as it was. The species arrays ARE densities, so the old
+    // form multiplied by the mixture density a second time (ATSAT 12397e3, ATNEPT 816931f); every
+    // other field in these lists already passes 1.0. What remains is a pure unit conversion, and
+    // mg/m3 is the unit the shared min/max report already prints NH4SH in, so the .vtk file and
+    // the log now name the same quantity. NH4SH needs its own factor because it peaks at
+    // 6.73e-6 kg/m3 here — at the 1.0 every other field uses it would render as 0.0000 under the
+    // writer's precision(4) fixed format.
+    const double to_mg = 1e6;
     ParaViewWriter<cJupiterModel> pv(*this);
     ofstream Jupiter_panorama_vts_File = pv.open_panorama(n,
         "Temperature PressureDynamic PressureStatic CH4 CH4Cloud CH4Ice NH3 NH3Cloud "
@@ -70,7 +77,7 @@ void cJupiterModel::paraview_panorama_vts(int n){
 //    dump_array("j_nh3", j_nh3, 1.0, Jupiter_panorama_vts_File);
 //    dump_array("jT_nh3", jT_nh3, 1.0, Jupiter_panorama_vts_File);
 
-    dump_array("NH4SH", nh4sh, r_mix_plus, Jupiter_panorama_vts_File);
+    dump_array("NH4SH", nh4sh, to_mg, Jupiter_panorama_vts_File);
 //    dump_array("w_nh4sh", w_nh4sh, 1.0, Jupiter_panorama_vts_File);
 
     dump_array("Q_Latent", Q_Latent, 1.0, Jupiter_panorama_vts_File);
@@ -121,7 +128,14 @@ void cJupiterModel::paraview_panorama_vts(int n){
 */
 void cJupiterModel::paraview_vtk_radial(int n, int i_radial){
     using namespace ParaViewIO;
-    double r_mix_plus = r_mix * 1e6;
+    // kg/m3 -> mg/m3, and NOT r_mix * 1e6 as it was. The species arrays ARE densities, so the old
+    // form multiplied by the mixture density a second time (ATSAT 12397e3, ATNEPT 816931f); every
+    // other field in these lists already passes 1.0. What remains is a pure unit conversion, and
+    // mg/m3 is the unit the shared min/max report already prints NH4SH in, so the .vtk file and
+    // the log now name the same quantity. NH4SH needs its own factor because it peaks at
+    // 6.73e-6 kg/m3 here — at the 1.0 every other field uses it would render as 0.0000 under the
+    // writer's precision(4) fixed format.
+    const double to_mg = 1e6;
     ofstream Jupiter_vtk_radial_File = ParaViewWriter<cJupiterModel>(*this)
         .open_slice("radial", "Radial", i_radial, n, km, jm, 0.1, false);
     const double z = 0.0;   // out-of-plane component of the in-plane vector below
@@ -164,13 +178,13 @@ void cJupiterModel::paraview_vtk_radial(int n, int i_radial){
     dump_radial("massflux_nh3", massflux_nh3, 1.0, i_radial, Jupiter_vtk_radial_File);
     dump_radial("difflux_nh3", difflux_nh3, 1.0, i_radial, Jupiter_vtk_radial_File);
 */
-    dump_radial("NH4SH", nh4sh, r_mix_plus, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("NH4SH", nh4sh, to_mg, i_radial, Jupiter_vtk_radial_File);
 /*
-    dump_radial("w_nh4sh", w_nh4sh, r_mix_plus, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("massflux_nh4sh", massflux_nh4sh, r_mix_plus, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("j_nh4sh", j_nh4sh, r_mix_plus, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("jT_nh4sh", jT_nh4sh, r_mix_plus, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("difflux_nh4sh", difflux_nh4sh, r_mix_plus, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("w_nh4sh", w_nh4sh, to_mg, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("massflux_nh4sh", massflux_nh4sh, to_mg, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("j_nh4sh", j_nh4sh, to_mg, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("jT_nh4sh", jT_nh4sh, to_mg, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("difflux_nh4sh", difflux_nh4sh, to_mg, i_radial, Jupiter_vtk_radial_File);
 */
 
     dump_radial("PressureDyn", p_dyn, p_dyn_to_bar() * 1.0e3, i_radial, Jupiter_vtk_radial_File);
@@ -247,7 +261,14 @@ void cJupiterModel::paraview_vtk_radial(int n, int i_radial){
 */
 void cJupiterModel::paraview_vtk_zonal(int n, int k_zonal){
     using namespace ParaViewIO;
-    double r_mix_plus = r_mix * 1e6;
+    // kg/m3 -> mg/m3, and NOT r_mix * 1e6 as it was. The species arrays ARE densities, so the old
+    // form multiplied by the mixture density a second time (ATSAT 12397e3, ATNEPT 816931f); every
+    // other field in these lists already passes 1.0. What remains is a pure unit conversion, and
+    // mg/m3 is the unit the shared min/max report already prints NH4SH in, so the .vtk file and
+    // the log now name the same quantity. NH4SH needs its own factor because it peaks at
+    // 6.73e-6 kg/m3 here — at the 1.0 every other field uses it would render as 0.0000 under the
+    // writer's precision(4) fixed format.
+    const double to_mg = 1e6;
     ofstream Jupiter_vtk_zonal_File = ParaViewWriter<cJupiterModel>(*this)
         .open_slice("zonal", "Zonal", k_zonal, n, jm, im, 0.05, false);
     const double z = 0.0;   // out-of-plane component of the in-plane vector below
@@ -294,13 +315,13 @@ void cJupiterModel::paraview_vtk_zonal(int n, int k_zonal){
     dump_zonal("massflux_nh3", massflux_nh3, 1.0, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("difflux_nh3", difflux_nh3, 1.0, k_zonal, Jupiter_vtk_zonal_File);
 */
-    dump_zonal("NH4SH", nh4sh, r_mix_plus, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("NH4SH", nh4sh, to_mg, k_zonal, Jupiter_vtk_zonal_File);
 /*
-    dump_zonal("w_nh4sh", w_nh4sh, r_mix_plus, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("massflux_nh4sh", massflux_nh4sh, r_mix_plus, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("j_nh4sh", j_nh4sh, r_mix_plus, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("jT_nh4sh", jT_nh4sh, r_mix_plus, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("difflux_nh4sh", difflux_nh4sh, r_mix_plus, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("w_nh4sh", w_nh4sh, to_mg, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("massflux_nh4sh", massflux_nh4sh, to_mg, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("j_nh4sh", j_nh4sh, to_mg, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("jT_nh4sh", jT_nh4sh, to_mg, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("difflux_nh4sh", difflux_nh4sh, to_mg, k_zonal, Jupiter_vtk_zonal_File);
 */
     dump_zonal("PressureDyn", p_dyn, p_dyn_to_bar() * 1.0e3, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("PressureStat", p_stat, 1.0, k_zonal, Jupiter_vtk_zonal_File);
@@ -366,7 +387,14 @@ void cJupiterModel::paraview_vtk_zonal(int n, int k_zonal){
 */
 void cJupiterModel::paraview_vtk_longal(int n, int j_longal){
     using namespace ParaViewIO;
-    double r_mix_plus = r_mix * 1e6;
+    // kg/m3 -> mg/m3, and NOT r_mix * 1e6 as it was. The species arrays ARE densities, so the old
+    // form multiplied by the mixture density a second time (ATSAT 12397e3, ATNEPT 816931f); every
+    // other field in these lists already passes 1.0. What remains is a pure unit conversion, and
+    // mg/m3 is the unit the shared min/max report already prints NH4SH in, so the .vtk file and
+    // the log now name the same quantity. NH4SH needs its own factor because it peaks at
+    // 6.73e-6 kg/m3 here — at the 1.0 every other field uses it would render as 0.0000 under the
+    // writer's precision(4) fixed format.
+    const double to_mg = 1e6;
     ofstream Jupiter_vtk_longal_File = ParaViewWriter<cJupiterModel>(*this)
         .open_slice("longal", "Longitudinal", j_longal, n, km, im, 0.025, true);
     const double y = 0.0;   // out-of-plane component; longal advances z, so y stayed 0
@@ -414,13 +442,13 @@ void cJupiterModel::paraview_vtk_longal(int n, int j_longal){
     dump_longal("massflux_nh3", massflux_nh3, 1.0, j_longal, Jupiter_vtk_longal_File);
     dump_longal("difflux_nh3", difflux_nh3, 1.0, j_longal, Jupiter_vtk_longal_File);
 */
-    dump_longal("NH4SH", nh4sh, r_mix_plus, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("NH4SH", nh4sh, to_mg, j_longal, Jupiter_vtk_longal_File);
 /*
-    dump_longal("w_nh4sh", w_nh4sh, r_mix_plus, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("massflux_nh4sh", massflux_nh4sh, r_mix_plus, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("j_nh4sh", j_nh4sh, r_mix_plus, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("jT_nh4sh", jT_nh4sh, r_mix_plus, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("difflux_nh4sh", difflux_nh4sh, r_mix_plus, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("w_nh4sh", w_nh4sh, to_mg, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("massflux_nh4sh", massflux_nh4sh, to_mg, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("j_nh4sh", j_nh4sh, to_mg, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("jT_nh4sh", jT_nh4sh, to_mg, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("difflux_nh4sh", difflux_nh4sh, to_mg, j_longal, Jupiter_vtk_longal_File);
 */
 
     dump_longal("PressureDyn", p_dyn, p_dyn_to_bar() * 1.0e3, j_longal, Jupiter_vtk_longal_File);
@@ -486,7 +514,14 @@ void cJupiterModel::paraview_vtk_longal(int n, int j_longal){
 void cJupiterModel::paraview_sphere_vts(int n){
     using namespace ParaViewIO;
     double x, y, z, sinthe, sinphi, costhe, cosphi;
-    double r_mix_plus = r_mix * 1e6;
+    // kg/m3 -> mg/m3, and NOT r_mix * 1e6 as it was. The species arrays ARE densities, so the old
+    // form multiplied by the mixture density a second time (ATSAT 12397e3, ATNEPT 816931f); every
+    // other field in these lists already passes 1.0. What remains is a pure unit conversion, and
+    // mg/m3 is the unit the shared min/max report already prints NH4SH in, so the .vtk file and
+    // the log now name the same quantity. NH4SH needs its own factor because it peaks at
+    // 6.73e-6 kg/m3 here — at the 1.0 every other field uses it would render as 0.0000 under the
+    // writer's precision(4) fixed format.
+    const double to_mg = 1e6;
     string Jupiter_sphere_vts_File_Name = output_path + "/Jupiter_sphere_" 
         + std::to_string(n) + ".vts";
     ofstream Jupiter_sphere_vts_File;
@@ -621,7 +656,7 @@ void cJupiterModel::paraview_sphere_vts(int n){
     for(int k = 0; k < km; k++){
         for(int j = 0; j < jm; j++){
             for(int i = 0; i < im; i++){
-                Jupiter_sphere_vts_File << r_mix_plus * nh4sh.x[i][j][k] << endl;
+                Jupiter_sphere_vts_File << to_mg * nh4sh.x[i][j][k] << endl;
             }
             Jupiter_sphere_vts_File <<  "\n"  << endl;
         }
