@@ -21,17 +21,10 @@ using namespace std;
 */
 void cJupiterModel::paraview_panorama_vts(int n){
     using namespace ParaViewIO;
-    // Header, coordinates, the Velocity array and the Temperature array are the
-    // SHARED ParaViewWriter.h. What stays here is the field list below and the
-    // scalars string that has to agree with it.
-    // kg/m3 -> mg/m3, and NOT r_mix * 1e6 as it was. The species arrays ARE densities, so the old
-    // form multiplied by the mixture density a second time (ATSAT 12397e3, ATNEPT 816931f); every
-    // other field in these lists already passes 1.0. What remains is a pure unit conversion, and
-    // mg/m3 is the unit the shared min/max report already prints NH4SH in, so the .vtk file and
-    // the log now name the same quantity. NH4SH needs its own factor because it peaks at
-    // 6.73e-6 kg/m3 here — at the 1.0 every other field uses it would render as 0.0000 under the
-    // writer's precision(4) fixed format.
-    const double to_mg = 1e6;
+    // Display units, settled across all four models: species and their fluxes in g/m3 (1e3), the
+    // NH4SH family in ug/m3 (1e9), thermalmassflux in W/m3 (1.0). These are the same units the
+    // shared Reporting.h prints, so an array name means one thing in the .vtk and in the log.
+    // See the note above the species block in Reporting.h for why NH4SH needs its own.
     ParaViewWriter<cJupiterModel> pv(*this);
     ofstream Jupiter_panorama_vts_File = pv.open_panorama(n,
         "Temperature PressureDynamic PressureStatic CH4 CH4Cloud CH4Ice NH3 NH3Cloud "
@@ -59,26 +52,26 @@ void cJupiterModel::paraview_panorama_vts(int n){
 //    dump_array("BuoyancyForce", BuoyancyForce, 1.0, Jupiter_panorama_vts_File);
 //    dump_array("PresGradForce", PresGradForce, 1.0, Jupiter_panorama_vts_File);
 
-    dump_array("CH4", ch4, 1.0, Jupiter_panorama_vts_File);
-    dump_array("CH4Cloud", ch4_cloud, 1.0, Jupiter_panorama_vts_File);
-    dump_array("CH4Ice", ch4_ice, 1.0, Jupiter_panorama_vts_File);
+    dump_array("CH4", ch4, 1e3, Jupiter_panorama_vts_File);
+    dump_array("CH4Cloud", ch4_cloud, 1e3, Jupiter_panorama_vts_File);
+    dump_array("CH4Ice", ch4_ice, 1e3, Jupiter_panorama_vts_File);
 
-    dump_array("H2O", h2o, 1.0, Jupiter_panorama_vts_File);
-    dump_array("H2OCloud", h2o_cloud, 1.0, Jupiter_panorama_vts_File);
-    dump_array("H2OIce", h2o_ice, 1.0, Jupiter_panorama_vts_File);
+    dump_array("H2O", h2o, 1e3, Jupiter_panorama_vts_File);
+    dump_array("H2OCloud", h2o_cloud, 1e3, Jupiter_panorama_vts_File);
+    dump_array("H2OIce", h2o_ice, 1e3, Jupiter_panorama_vts_File);
 
-    dump_array("H2S", h2s, 1.0, Jupiter_panorama_vts_File);
-//    dump_array("w_h2s", w_h2s, 1.0, Jupiter_panorama_vts_File);
+    dump_array("H2S", h2s, 1e3, Jupiter_panorama_vts_File);
+//    dump_array("w_h2s", w_h2s, 1e3, Jupiter_panorama_vts_File);
 
-    dump_array("NH3", nh3, 1.0, Jupiter_panorama_vts_File);
-    dump_array("NH3Cloud", nh3_cloud, 1.0, Jupiter_panorama_vts_File);
-    dump_array("NH3Ice", nh3_ice, 1.0, Jupiter_panorama_vts_File);
-//    dump_array("w_nh3", w_nh3, 1.0, Jupiter_panorama_vts_File);
-//    dump_array("j_nh3", j_nh3, 1.0, Jupiter_panorama_vts_File);
-//    dump_array("jT_nh3", jT_nh3, 1.0, Jupiter_panorama_vts_File);
+    dump_array("NH3", nh3, 1e3, Jupiter_panorama_vts_File);
+    dump_array("NH3Cloud", nh3_cloud, 1e3, Jupiter_panorama_vts_File);
+    dump_array("NH3Ice", nh3_ice, 1e3, Jupiter_panorama_vts_File);
+//    dump_array("w_nh3", w_nh3, 1e3, Jupiter_panorama_vts_File);
+//    dump_array("j_nh3", j_nh3, 1e3, Jupiter_panorama_vts_File);
+//    dump_array("jT_nh3", jT_nh3, 1e3, Jupiter_panorama_vts_File);
 
-    dump_array("NH4SH", nh4sh, to_mg, Jupiter_panorama_vts_File);
-//    dump_array("w_nh4sh", w_nh4sh, 1.0, Jupiter_panorama_vts_File);
+    dump_array("NH4SH", nh4sh, 1e9, Jupiter_panorama_vts_File);
+//    dump_array("w_nh4sh", w_nh4sh, 1e9, Jupiter_panorama_vts_File);
 
     dump_array("Q_Latent", Q_Latent, 1.0, Jupiter_panorama_vts_File);
 //    dump_array("Q_Sensible", Q_Sensible, 1.0, Jupiter_panorama_vts_File);
@@ -128,14 +121,10 @@ void cJupiterModel::paraview_panorama_vts(int n){
 */
 void cJupiterModel::paraview_vtk_radial(int n, int i_radial){
     using namespace ParaViewIO;
-    // kg/m3 -> mg/m3, and NOT r_mix * 1e6 as it was. The species arrays ARE densities, so the old
-    // form multiplied by the mixture density a second time (ATSAT 12397e3, ATNEPT 816931f); every
-    // other field in these lists already passes 1.0. What remains is a pure unit conversion, and
-    // mg/m3 is the unit the shared min/max report already prints NH4SH in, so the .vtk file and
-    // the log now name the same quantity. NH4SH needs its own factor because it peaks at
-    // 6.73e-6 kg/m3 here — at the 1.0 every other field uses it would render as 0.0000 under the
-    // writer's precision(4) fixed format.
-    const double to_mg = 1e6;
+    // Display units, settled across all four models: species and their fluxes in g/m3 (1e3), the
+    // NH4SH family in ug/m3 (1e9), thermalmassflux in W/m3 (1.0). These are the same units the
+    // shared Reporting.h prints, so an array name means one thing in the .vtk and in the log.
+    // See the note above the species block in Reporting.h for why NH4SH needs its own.
     ofstream Jupiter_vtk_radial_File = ParaViewWriter<cJupiterModel>(*this)
         .open_slice("radial", "Radial", i_radial, n, km, jm, 0.1, false);
     const double z = 0.0;   // out-of-plane component of the in-plane vector below
@@ -152,39 +141,39 @@ void cJupiterModel::paraview_vtk_radial(int n, int i_radial){
     }
 
     dump_radial("thermalmassflux", thermalmassflux, 1e-3, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("CH4", ch4, 1.0, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("CH4Cloud", ch4_cloud, 1.0, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("CH4Ice", ch4_ice, 1.0, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("CH4", ch4, 1e3, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("CH4Cloud", ch4_cloud, 1e3, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("CH4Ice", ch4_ice, 1e3, i_radial, Jupiter_vtk_radial_File);
 
-    dump_radial("H2O", h2o, 1.0, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("H2OCloud", h2o_cloud, 1.0, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("H2OIce", h2o_ice, 1.0, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("H2O", h2o, 1e3, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("H2OCloud", h2o_cloud, 1e3, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("H2OIce", h2o_ice, 1e3, i_radial, Jupiter_vtk_radial_File);
 
-    dump_radial("H2S", h2s, 1.0, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("H2S", h2s, 1e3, i_radial, Jupiter_vtk_radial_File);
 /*
-    dump_radial("w_h2s", w_h2s, 1.0, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("j_h2s", j_h2s, 1.0, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("jT_h2s", jT_h2s, 1.0, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("massflux_h2s", massflux_h2s, 1.0, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("difflux_h2s", difflux_h2s, 1.0, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("w_h2s", w_h2s, 1e3, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("j_h2s", j_h2s, 1e3, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("jT_h2s", jT_h2s, 1e3, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("massflux_h2s", massflux_h2s, 1e3, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("difflux_h2s", difflux_h2s, 1e3, i_radial, Jupiter_vtk_radial_File);
 */
-    dump_radial("NH3", nh3, 1.0, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("NH3", nh3, 1e3, i_radial, Jupiter_vtk_radial_File);
 /*
-    dump_radial("NH3Cloud", nh3_cloud, 1.0, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("NH3Ice", nh3_ice, 1.0, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("w_nh3", w_nh3, 1.0, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("j_nh3", j_nh3, 1.0, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("jT_nh3", jT_nh3, 1.0, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("massflux_nh3", massflux_nh3, 1.0, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("difflux_nh3", difflux_nh3, 1.0, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("NH3Cloud", nh3_cloud, 1e3, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("NH3Ice", nh3_ice, 1e3, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("w_nh3", w_nh3, 1e3, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("j_nh3", j_nh3, 1e3, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("jT_nh3", jT_nh3, 1e3, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("massflux_nh3", massflux_nh3, 1e3, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("difflux_nh3", difflux_nh3, 1e3, i_radial, Jupiter_vtk_radial_File);
 */
-    dump_radial("NH4SH", nh4sh, to_mg, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("NH4SH", nh4sh, 1e9, i_radial, Jupiter_vtk_radial_File);
 /*
-    dump_radial("w_nh4sh", w_nh4sh, to_mg, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("massflux_nh4sh", massflux_nh4sh, to_mg, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("j_nh4sh", j_nh4sh, to_mg, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("jT_nh4sh", jT_nh4sh, to_mg, i_radial, Jupiter_vtk_radial_File);
-    dump_radial("difflux_nh4sh", difflux_nh4sh, to_mg, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("w_nh4sh", w_nh4sh, 1e9, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("massflux_nh4sh", massflux_nh4sh, 1e9, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("j_nh4sh", j_nh4sh, 1e9, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("jT_nh4sh", jT_nh4sh, 1e9, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("difflux_nh4sh", difflux_nh4sh, 1e9, i_radial, Jupiter_vtk_radial_File);
 */
 
     dump_radial("PressureDyn", p_dyn, p_dyn_to_bar() * 1.0e3, i_radial, Jupiter_vtk_radial_File);
@@ -261,14 +250,10 @@ void cJupiterModel::paraview_vtk_radial(int n, int i_radial){
 */
 void cJupiterModel::paraview_vtk_zonal(int n, int k_zonal){
     using namespace ParaViewIO;
-    // kg/m3 -> mg/m3, and NOT r_mix * 1e6 as it was. The species arrays ARE densities, so the old
-    // form multiplied by the mixture density a second time (ATSAT 12397e3, ATNEPT 816931f); every
-    // other field in these lists already passes 1.0. What remains is a pure unit conversion, and
-    // mg/m3 is the unit the shared min/max report already prints NH4SH in, so the .vtk file and
-    // the log now name the same quantity. NH4SH needs its own factor because it peaks at
-    // 6.73e-6 kg/m3 here — at the 1.0 every other field uses it would render as 0.0000 under the
-    // writer's precision(4) fixed format.
-    const double to_mg = 1e6;
+    // Display units, settled across all four models: species and their fluxes in g/m3 (1e3), the
+    // NH4SH family in ug/m3 (1e9), thermalmassflux in W/m3 (1.0). These are the same units the
+    // shared Reporting.h prints, so an array name means one thing in the .vtk and in the log.
+    // See the note above the species block in Reporting.h for why NH4SH needs its own.
     ofstream Jupiter_vtk_zonal_File = ParaViewWriter<cJupiterModel>(*this)
         .open_slice("zonal", "Zonal", k_zonal, n, jm, im, 0.05, false);
     const double z = 0.0;   // out-of-plane component of the in-plane vector below
@@ -289,39 +274,39 @@ void cJupiterModel::paraview_vtk_zonal(int n, int k_zonal){
 
     dump_zonal("height", aux, 1.0, k_zonal, Jupiter_vtk_zonal_File);
 
-    dump_zonal("CH4", ch4, 1.0, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("CH4Cloud", ch4_cloud, 1.0, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("CH4Ice", ch4_ice, 1.0, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("CH4", ch4, 1e3, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("CH4Cloud", ch4_cloud, 1e3, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("CH4Ice", ch4_ice, 1e3, k_zonal, Jupiter_vtk_zonal_File);
 
-    dump_zonal("H2O", h2o, 1.0, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("H2OCloud", h2o_cloud, 1.0, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("H2OIce", h2o_ice, 1.0, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("H2O", h2o, 1e3, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("H2OCloud", h2o_cloud, 1e3, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("H2OIce", h2o_ice, 1e3, k_zonal, Jupiter_vtk_zonal_File);
 
-    dump_zonal("H2S", h2s, 1.0, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("H2S", h2s, 1e3, k_zonal, Jupiter_vtk_zonal_File);
 /*
-    dump_zonal("w_h2s", w_h2s, 1.0, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("j_h2s", j_h2s, 1.0, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("jT_h2s", jT_h2s, 1.0, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("massflux_h2s", massflux_h2s, 1.0, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("difflux_h2s", difflux_h2s, 1.0, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("w_h2s", w_h2s, 1e3, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("j_h2s", j_h2s, 1e3, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("jT_h2s", jT_h2s, 1e3, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("massflux_h2s", massflux_h2s, 1e3, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("difflux_h2s", difflux_h2s, 1e3, k_zonal, Jupiter_vtk_zonal_File);
 */
-    dump_zonal("NH3", nh3, 1.0, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("NH3", nh3, 1e3, k_zonal, Jupiter_vtk_zonal_File);
 /*
-    dump_zonal("NH3Cloud", nh3_cloud, 1.0, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("NH3Ice", nh3_ice, 1.0, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("w_nh3", w_nh3, 1.0, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("j_nh3", j_nh3, 1.0, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("jT_nh3", jT_nh3, 1.0, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("massflux_nh3", massflux_nh3, 1.0, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("difflux_nh3", difflux_nh3, 1.0, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("NH3Cloud", nh3_cloud, 1e3, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("NH3Ice", nh3_ice, 1e3, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("w_nh3", w_nh3, 1e3, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("j_nh3", j_nh3, 1e3, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("jT_nh3", jT_nh3, 1e3, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("massflux_nh3", massflux_nh3, 1e3, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("difflux_nh3", difflux_nh3, 1e3, k_zonal, Jupiter_vtk_zonal_File);
 */
-    dump_zonal("NH4SH", nh4sh, to_mg, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("NH4SH", nh4sh, 1e9, k_zonal, Jupiter_vtk_zonal_File);
 /*
-    dump_zonal("w_nh4sh", w_nh4sh, to_mg, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("massflux_nh4sh", massflux_nh4sh, to_mg, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("j_nh4sh", j_nh4sh, to_mg, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("jT_nh4sh", jT_nh4sh, to_mg, k_zonal, Jupiter_vtk_zonal_File);
-    dump_zonal("difflux_nh4sh", difflux_nh4sh, to_mg, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("w_nh4sh", w_nh4sh, 1e9, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("massflux_nh4sh", massflux_nh4sh, 1e9, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("j_nh4sh", j_nh4sh, 1e9, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("jT_nh4sh", jT_nh4sh, 1e9, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("difflux_nh4sh", difflux_nh4sh, 1e9, k_zonal, Jupiter_vtk_zonal_File);
 */
     dump_zonal("PressureDyn", p_dyn, p_dyn_to_bar() * 1.0e3, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("PressureStat", p_stat, 1.0, k_zonal, Jupiter_vtk_zonal_File);
@@ -387,14 +372,10 @@ void cJupiterModel::paraview_vtk_zonal(int n, int k_zonal){
 */
 void cJupiterModel::paraview_vtk_longal(int n, int j_longal){
     using namespace ParaViewIO;
-    // kg/m3 -> mg/m3, and NOT r_mix * 1e6 as it was. The species arrays ARE densities, so the old
-    // form multiplied by the mixture density a second time (ATSAT 12397e3, ATNEPT 816931f); every
-    // other field in these lists already passes 1.0. What remains is a pure unit conversion, and
-    // mg/m3 is the unit the shared min/max report already prints NH4SH in, so the .vtk file and
-    // the log now name the same quantity. NH4SH needs its own factor because it peaks at
-    // 6.73e-6 kg/m3 here — at the 1.0 every other field uses it would render as 0.0000 under the
-    // writer's precision(4) fixed format.
-    const double to_mg = 1e6;
+    // Display units, settled across all four models: species and their fluxes in g/m3 (1e3), the
+    // NH4SH family in ug/m3 (1e9), thermalmassflux in W/m3 (1.0). These are the same units the
+    // shared Reporting.h prints, so an array name means one thing in the .vtk and in the log.
+    // See the note above the species block in Reporting.h for why NH4SH needs its own.
     ofstream Jupiter_vtk_longal_File = ParaViewWriter<cJupiterModel>(*this)
         .open_slice("longal", "Longitudinal", j_longal, n, km, im, 0.025, true);
     const double y = 0.0;   // out-of-plane component; longal advances z, so y stayed 0
@@ -416,39 +397,39 @@ void cJupiterModel::paraview_vtk_longal(int n, int j_longal){
 
     dump_longal("height", aux, 1.0, j_longal, Jupiter_vtk_longal_File);
 
-    dump_longal("CH4", ch4, 1.0, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("CH4Cloud", ch4_cloud, 1.0, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("CH4Ice", ch4_ice, 1.0, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("CH4", ch4, 1e3, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("CH4Cloud", ch4_cloud, 1e3, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("CH4Ice", ch4_ice, 1e3, j_longal, Jupiter_vtk_longal_File);
 
-    dump_longal("H2O", h2o, 1.0, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("H2OCloud", h2o_cloud, 1.0, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("H2OIce", h2o_ice, 1.0, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("H2O", h2o, 1e3, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("H2OCloud", h2o_cloud, 1e3, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("H2OIce", h2o_ice, 1e3, j_longal, Jupiter_vtk_longal_File);
 
-    dump_longal("H2S", h2s, 1.0, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("H2S", h2s, 1e3, j_longal, Jupiter_vtk_longal_File);
 /*
-    dump_longal("w_h2s", w_h2s, 1.0, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("j_h2s", j_h2s, 1.0, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("jT_h2s", jT_h2s, 1.0, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("massflux_h2s", massflux_h2s, 1.0, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("difflux_h2s", difflux_h2s, 1.0, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("w_h2s", w_h2s, 1e3, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("j_h2s", j_h2s, 1e3, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("jT_h2s", jT_h2s, 1e3, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("massflux_h2s", massflux_h2s, 1e3, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("difflux_h2s", difflux_h2s, 1e3, j_longal, Jupiter_vtk_longal_File);
 */
-    dump_longal("NH3", nh3, 1.0, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("NH3Cloud", nh3_cloud, 1.0, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("NH3Ice", nh3_ice, 1.0, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("NH3", nh3, 1e3, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("NH3Cloud", nh3_cloud, 1e3, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("NH3Ice", nh3_ice, 1e3, j_longal, Jupiter_vtk_longal_File);
 /*
-    dump_longal("w_nh3", w_nh3, 1.0, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("j_nh3", j_nh3, 1.0, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("jT_nh3", jT_nh3, 1.0, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("massflux_nh3", massflux_nh3, 1.0, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("difflux_nh3", difflux_nh3, 1.0, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("w_nh3", w_nh3, 1e3, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("j_nh3", j_nh3, 1e3, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("jT_nh3", jT_nh3, 1e3, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("massflux_nh3", massflux_nh3, 1e3, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("difflux_nh3", difflux_nh3, 1e3, j_longal, Jupiter_vtk_longal_File);
 */
-    dump_longal("NH4SH", nh4sh, to_mg, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("NH4SH", nh4sh, 1e9, j_longal, Jupiter_vtk_longal_File);
 /*
-    dump_longal("w_nh4sh", w_nh4sh, to_mg, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("massflux_nh4sh", massflux_nh4sh, to_mg, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("j_nh4sh", j_nh4sh, to_mg, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("jT_nh4sh", jT_nh4sh, to_mg, j_longal, Jupiter_vtk_longal_File);
-    dump_longal("difflux_nh4sh", difflux_nh4sh, to_mg, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("w_nh4sh", w_nh4sh, 1e9, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("massflux_nh4sh", massflux_nh4sh, 1e9, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("j_nh4sh", j_nh4sh, 1e9, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("jT_nh4sh", jT_nh4sh, 1e9, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("difflux_nh4sh", difflux_nh4sh, 1e9, j_longal, Jupiter_vtk_longal_File);
 */
 
     dump_longal("PressureDyn", p_dyn, p_dyn_to_bar() * 1.0e3, j_longal, Jupiter_vtk_longal_File);
@@ -514,14 +495,10 @@ void cJupiterModel::paraview_vtk_longal(int n, int j_longal){
 void cJupiterModel::paraview_sphere_vts(int n){
     using namespace ParaViewIO;
     double x, y, z, sinthe, sinphi, costhe, cosphi;
-    // kg/m3 -> mg/m3, and NOT r_mix * 1e6 as it was. The species arrays ARE densities, so the old
-    // form multiplied by the mixture density a second time (ATSAT 12397e3, ATNEPT 816931f); every
-    // other field in these lists already passes 1.0. What remains is a pure unit conversion, and
-    // mg/m3 is the unit the shared min/max report already prints NH4SH in, so the .vtk file and
-    // the log now name the same quantity. NH4SH needs its own factor because it peaks at
-    // 6.73e-6 kg/m3 here — at the 1.0 every other field uses it would render as 0.0000 under the
-    // writer's precision(4) fixed format.
-    const double to_mg = 1e6;
+    // Display units, settled across all four models: species and their fluxes in g/m3 (1e3), the
+    // NH4SH family in ug/m3 (1e9), thermalmassflux in W/m3 (1.0). These are the same units the
+    // shared Reporting.h prints, so an array name means one thing in the .vtk and in the log.
+    // See the note above the species block in Reporting.h for why NH4SH needs its own.
     string Jupiter_sphere_vts_File_Name = output_path + "/Jupiter_sphere_" 
         + std::to_string(n) + ".vts";
     ofstream Jupiter_sphere_vts_File;
@@ -656,7 +633,7 @@ void cJupiterModel::paraview_sphere_vts(int n){
     for(int k = 0; k < km; k++){
         for(int j = 0; j < jm; j++){
             for(int i = 0; i < im; i++){
-                Jupiter_sphere_vts_File << to_mg * nh4sh.x[i][j][k] << endl;
+                Jupiter_sphere_vts_File << 1e9 * nh4sh.x[i][j][k] << endl;
             }
             Jupiter_sphere_vts_File <<  "\n"  << endl;
         }
