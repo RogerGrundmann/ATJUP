@@ -140,7 +140,7 @@ void cJupiterModel::paraview_vtk_radial(int n, int i_radial){
         }
     }
 
-    dump_radial("thermalmassflux", thermalmassflux, 1e-3, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("thermalmassflux", thermalmassflux, 1.0, i_radial, Jupiter_vtk_radial_File);
     dump_radial("CH4", ch4, 1e3, i_radial, Jupiter_vtk_radial_File);
     dump_radial("CH4Cloud", ch4_cloud, 1e3, i_radial, Jupiter_vtk_radial_File);
     dump_radial("CH4Ice", ch4_ice, 1e3, i_radial, Jupiter_vtk_radial_File);
@@ -270,7 +270,7 @@ void cJupiterModel::paraview_vtk_zonal(int n, int k_zonal){
             aux.x[i][j][k_zonal] = get_layer_height(i);
         }
     }
-    dump_zonal("thermalmassflux", thermalmassflux, 1e-3, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("thermalmassflux", thermalmassflux, 1.0, k_zonal, Jupiter_vtk_zonal_File);
 
     dump_zonal("height", aux, 1.0, k_zonal, Jupiter_vtk_zonal_File);
 
@@ -393,7 +393,7 @@ void cJupiterModel::paraview_vtk_longal(int n, int j_longal){
         }
     }
 
-    dump_longal("thermalmassflux", thermalmassflux, 1e-3, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("thermalmassflux", thermalmassflux, 1.0, j_longal, Jupiter_vtk_longal_File);
 
     dump_longal("height", aux, 1.0, j_longal, Jupiter_vtk_longal_File);
 
