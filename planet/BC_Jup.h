@@ -7,7 +7,9 @@
  * This is a header-only file: it contains the BC_Jup class, all inline method
  * bodies, and the inline cJupiterModel delegation wrappers that forward each
  * cJupiterModel::BC_xxx() call to the corresponding BC_Jup method.
- * BC_Jup.cpp is a minimal stub that provides a translation unit.
+ * There is NO BC_Jup.cpp. Everything lives here, including the inline definitions of the
+ * bc_fields_* lists — the per-planet part BoundaryConditions<Planet> calls back into. The
+ * sentence this replaces named a translation unit that does not exist.
 */
 
 #pragma once
