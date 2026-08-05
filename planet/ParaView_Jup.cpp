@@ -28,7 +28,7 @@ void cJupiterModel::paraview_panorama_vts(int n){
     ParaViewWriter<cJupiterModel> pv(*this);
     ofstream Jupiter_panorama_vts_File = pv.open_panorama(n,
         "Temperature PressureDynamic PressureStatic CH4 CH4Cloud CH4Ice NH3 NH3Cloud "
-        "NH3Ice H2O H2OCloud H2OIce Q_Latent Q_Sensible Q_rad_mW_m3 Radiation "
+        "NH3Ice H2O H2OCloud H2OIce Q_Latent Q_Sensible Q_rad_mW_m3 Radiation Emissivity "
         "P_rain_mmd P_snow_mmd P_graupel_mmd P_nh3_rain_mmd P_nh3_snow_mmd "
         "P_nh3_graupel_mmd P_ch4_rain_mmd P_ch4_snow_mmd P_ch4_graupel_mmd "
         "P_nh4sh_mmd Q_precip_mW_m3 tke_m2s2 dis_nd nue_t_m2s prod_nd "
@@ -78,6 +78,7 @@ void cJupiterModel::paraview_panorama_vts(int n){
 
     dump_array("Q_rad_mW_m3", Q_rad, 1.0e3, Jupiter_panorama_vts_File);
     dump_array("Radiation", radiation, 1.0, Jupiter_panorama_vts_File);
+    dump_array("Emissivity", epsilon, 1.0, Jupiter_panorama_vts_File);
 
     // Precipitation fluxes from PrecipitationJup, written as mm/day (x86400 from kg/m2/s;
     // 1 kg/m2 == 1 mm depth). H2O and NH3 each carry a full rain/snow/graupel triple; NH4SH
@@ -189,6 +190,7 @@ void cJupiterModel::paraview_vtk_radial(int n, int i_radial){
     dump_radial("Q_Sensible", Q_Sensible, 1.0, i_radial, Jupiter_vtk_radial_File);
     dump_radial("Q_rad", Q_rad, 1.0e3, i_radial, Jupiter_vtk_radial_File);
     dump_radial("Radiation", radiation, 1.0, i_radial, Jupiter_vtk_radial_File);
+    dump_radial("Emissivity", epsilon, 1.0, i_radial, Jupiter_vtk_radial_File);
 
     // Precipitation fluxes, written as mm/day (x86400 from kg/m2/s; 1 kg/m2 == 1 mm depth).
     // These streams use precision(4)+ios::fixed, so raw SI values ~1e-6 would all round to
@@ -321,6 +323,7 @@ void cJupiterModel::paraview_vtk_zonal(int n, int k_zonal){
     dump_zonal("Q_Sensible", Q_Sensible, 1.0, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("Q_rad", Q_rad, 1.0e3, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("Radiation", radiation, 1.0, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("Emissivity", epsilon, 1.0, k_zonal, Jupiter_vtk_zonal_File);
 
     // Precipitation fluxes, written as mm/day (x86400 from kg/m2/s; 1 kg/m2 == 1 mm depth).
     // These streams use precision(4)+ios::fixed, so raw SI values ~1e-6 would all round to
@@ -445,6 +448,7 @@ void cJupiterModel::paraview_vtk_longal(int n, int j_longal){
     dump_longal("Q_Sensible", Q_Sensible, 1.0, j_longal, Jupiter_vtk_longal_File);
     dump_longal("Q_rad_mW_m3", Q_rad, 1.0e3, j_longal, Jupiter_vtk_longal_File);
     dump_longal("Radiation", radiation, 1.0, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("Emissivity", epsilon, 1.0, j_longal, Jupiter_vtk_longal_File);
 
     // Precipitation fluxes, written as mm/day (x86400 from kg/m2/s; 1 kg/m2 == 1 mm depth).
     // These streams use precision(4)+ios::fixed, so raw SI values ~1e-6 would all round to
