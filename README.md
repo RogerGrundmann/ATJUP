@@ -142,6 +142,35 @@ Two build behaviours are worth knowing, both of which cause silently stale binar
   the `.pyx`, which suppresses re-cythonizing, so new parameters never reach Python. Look for
   `Cythonizing pyatjup.pyx` in the build output to confirm.
 
+### Shared physics headers
+
+Eleven headers in `planet/` are **byte-identical across ATJUP, ATSAT, ATNEPT and ATURAN**:
+
+```
+ATPhys.h  BoundaryConditions.h  ConvectiveAdjustment.h  FluxLimiter.h  ParaViewWriter.h
+Precipitation.h  PressureSolver.h  Radiation.h  Reporting.h  SaturationAdjustment.h  Turbulence.h
+```
+
+There is no submodule and no symlink holding them together — Synology Drive has silently reverted
+a working tree once, and a submodule costs friction on every clone. They are plain copies, and
+`planet/SHARED.md5` is what makes a divergence loud:
+
+```bash
+make check-shared
+```
+
+Editing one means: edit it in one repo, copy it to the other three, regenerate its line in **all
+four** manifests, and rebuild each.
+
+**`make check-shared` cannot catch everything, and this is the part to read before trusting it.**
+It verifies a repo against *its own* manifest, so two repos holding different copies of the same
+header both report OK — a state that has already occurred once. The check that does catch it is a
+diff between repos, which is why the checksum lines are kept sorted by filename:
+
+```bash
+diff ../ATSAT/planet/SHARED.md5 planet/SHARED.md5
+```
+
 ---
 
 ## Optional modules
@@ -158,6 +187,17 @@ variable to enable.
 | `ATJUP_SOLAR` | 1 | absorbed shortwave channel (only acts with `ATJUP_RADIATION`) |
 | `ATJUP_CIA_STRENGTH` | 1 | scale the H₂/He collision-induced opacity |
 | `ATJUP_OPACITY_STRENGTH` | 1 | scale the gas-band and cloud opacity |
+
+The shared `Radiation.h` also prints, every run with `ATJUP_RADIATION=1`, the τ=1 photosphere
+pressure **and the temperature there** beside the blackbody flux it implies. That second number is
+what separates "the scheme emits wrongly" from "the scheme was handed a column that is too warm" —
+`T(τ=1) − T_eff(OLR)` is the scheme's own excess, `T(τ=1) − T_eff(in)` is the column's. ATJUP is the
+only one of the four whose photosphere temperature is close to right, and the only one that has
+never needed a viscosity or pressure constant corrected. `epsilon` reaches ParaView as `Emissivity`
+alongside `Radiation` and `Q_rad_mW_m3`, in all four views.
+
+ATJUP carries **no `thermalmassflux` term in `rhs_t`** — it has `radiation_t + precip_t` in that slot
+instead — so it has no `ATJUP_THERMAL_MASSFLUX` knob. The other three models do.
 
 **Microphysics**
 
