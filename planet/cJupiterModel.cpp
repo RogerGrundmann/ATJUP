@@ -15,6 +15,7 @@
 #include "ChemistryJup.h"
 #include "PressureSolverJup.h"
 #include "SaturationAdjustmentJup.h"
+#include "CwbJup.h"          // ATJUP_CWB_DIAG, print-only
 #include "BC_Jup.h"
 #include "VelocityInitializerJup.h"
 #include "RadiationJup.h"
@@ -566,6 +567,43 @@ void cJupiterModel::Run(){
         restoreVar(1.0);          // refresh the n-level copies from the restored fields
     }
 
+    // ATJUP_CWB_DIAG=1 (print-only, default off; see CwbJup.h): the H2O column marked after every
+    // stage of the loop that can write it. cwb_col() is the sin(colatitude)- and thickness-weighted
+    // mean of the three fields in g/m2; cwb_mark() charges the change since the last mark.
+    static const bool cwb_on = [](){ const char* e = getenv("ATJUP_CWB_DIAG"); return e && atoi(e) != 0; }();
+    JupCwb::st().on = cwb_on;
+    enum { CW_PRE = 0, CW_SATADJ, CW_SATADJ_OTHER, CW_PRECIP, CW_PHYS_REST, CW_RK_RESET, CW_RK_REST, CW_BC_RADIUS, CW_BC_THETA,
+           CW_BC_PHI, CW_BC_SOLID, CW_CONVADJ_SHAPIRO, CW_FLOOR, CW_N };
+    static const char* cw_name[CW_N] = { "before the adjustment (pressure, radiation)", "SaturationAdjustment H2O",
+        "SaturationAdjustment NH3 + CH4", "Precipitation (in place)", "turbulence, chemistry, forces", "RungeKutta: reset to the n-level copies",
+        "RungeKutta: floor and remainder", "bcRadius", "bcTheta", "bcPhi", "bcSolidGround", "convective adjustment, Shapiro",
+        "clampNegativeSpecies" };
+    static const char* cw_term[JupCwb::NTERM] = { "RungeKutta: radial transport   -u dq/dr", "RungeKutta: meridional transport", "RungeKutta: zonal transport",
+        "RungeKutta: diffusion", "RungeKutta: precipitation source", "(not applied) q*div(u)" };
+    double cw_sum[CW_N] = {0.0}, cw_tsum[JupCwb::NTERM] = {0.0};
+    double cw_norm = 0.0, cw_last = 0.0, cw_first = 0.0;
+    auto cwb_col = [&](Array& a, Array& b, Array& c) -> double {
+        double s_ = 0.0;
+        #pragma omp parallel for collapse(2) schedule(static) reduction(+:s_)
+        for(int k = 0; k < km; k++){
+            for(int j = 0; j < jm; j++){
+                const double sj = std::sin(the.z[j]);
+                for(int i = 0; i < im; i++){
+                    const double dz = layer_thickness_m(i);
+                    if(dz > 0.0) s_ += sj * dz * (a.x[i][j][k] + b.x[i][j][k] + c.x[i][j][k]);
+                }
+            }
+        }
+        return s_ * 1.0e3 / cw_norm; };
+    auto cwb_mark = [&](int stage){
+        if(!cwb_on) return;
+        const double w_ = cwb_col(h2o, h2o_cloud, h2o_ice);
+        cw_sum[stage] += w_ - cw_last; cw_last = w_; };
+    if(cwb_on){
+        for(int j = 0; j < jm; j++) cw_norm += std::sin(the.z[j]) * km;
+        cw_last = cw_first = cwb_col(h2o, h2o_cloud, h2o_ice);
+    }
+
     for(iter_n = iter_start; iter_n <= nm; iter_n++){
 
         auto begin = std::chrono::high_resolution_clock::now();
@@ -598,6 +636,7 @@ void cJupiterModel::Run(){
         computeMixtureDensity();
 
         if(radiation_enabled()) RadiationJup(*this).run();
+        cwb_mark(CW_PRE);
 
         SaturationAdjustmentJup(*this).run("H2O",
             t_0_h2o, t_00_h2o,
@@ -605,6 +644,7 @@ void cJupiterModel::Run(){
             C_h2o, L0_h2o, R_h2o, del_alf_h2o, del_bet_h2o,
             C_h2o_ice, L0_h2o_ice, del_alf_h2o_ice, del_bet_h2o_ice,
             h2o, h2o_cloud, h2o_ice);
+        cwb_mark(CW_SATADJ);
 
         SaturationAdjustmentJup(*this).run("NH3",
             t_0_nh3, t_00_nh3,
@@ -622,7 +662,9 @@ void cJupiterModel::Run(){
 
         // Must stay AFTER the SaturationAdjustmentJup calls: its condensate depletion is applied
         // in place, and running it before them would let the adjustment simply undo the removal.
+        cwb_mark(CW_SATADJ_OTHER);
         if(precip_enabled()) PrecipitationJup(*this).run();   // H2O+NH3 3-cat + NH4SH settling
+        cwb_mark(CW_PRECIP);
 
         // Turbulence closure. Reads the velocity field left by RK4 and the BCs, so it runs
         // after them, exactly as ATOM calls TurbulenceAtm::run() from its own iteration loop.
@@ -650,14 +692,40 @@ void cJupiterModel::Run(){
 
         }  // if loop
 
+        cwb_mark(CW_PHYS_REST);
+        double cw_n = 0.0;
+        if(cwb_on){
+            cw_n = cwb_col(h2on, h2o_cloudn, h2o_icen);                 // what the step starts from
+            for(int t_ = 0; t_ < JupCwb::MAXTHR; t_++) for(int q_ = 0; q_ < 8; q_++) JupCwb::st().acc[t_][q_] = 0.0;
+        }
+
         RungeKuttaJup();
 
+        if(cwb_on){
+            const double w_ = cwb_col(h2o, h2o_cloud, h2o_ice);
+            double step_terms = 0.0;
+            for(int q_ = 0; q_ < JupCwb::NTERM; q_++){
+                double a_ = 0.0;
+                for(int t_ = 0; t_ < JupCwb::MAXTHR; t_++) a_ += JupCwb::st().acc[t_][q_];
+                a_ *= dt / 6.0 * 1.0e3 / cw_norm;
+                cw_tsum[q_] += a_;
+                if(q_ != JupCwb::T_QDIV) step_terms += a_;
+            }
+            cw_sum[CW_RK_RESET] += cw_n - cw_last;
+            cw_sum[CW_RK_REST]  += w_ - cw_n - step_terms;
+            cw_last = w_;
+        }
+
         BC_Jup(*this).bcRadius();                                       // extrapolation in i-direction alomg grid boundaries
+        cwb_mark(CW_BC_RADIUS);
         BC_Jup(*this).bcTheta();                                        // extrapolation in j-direction alomg grid boundaries
+        cwb_mark(CW_BC_THETA);
         BC_Jup(*this).bcPhi();                                          // extrapolation in k-direction alomg grid boundaries
+        cwb_mark(CW_BC_PHI);
 
 //        BC_Jup(*this).bcScalarSurfSur();                                // scalar variable at surfaces extrapolated by von Neumann
         BC_Jup(*this).bcSolidGround();                                  // values inside mountains
+        cwb_mark(CW_BC_SOLID);
 
         // Dry convective adjustment. It runs on the state the Runge-Kutta step just produced,
         // after the boundary conditions so that bcSolidGround has already written the solid
@@ -680,7 +748,9 @@ void cJupiterModel::Run(){
         // values are what the next Runge-Kutta step starts from. Runs after the Shapiro pass,
         // which can itself undershoot at a sharp cloud edge. See FileIO_Jup.cpp for the
         // measurement that says a plain floor is enough here.
+        cwb_mark(CW_CONVADJ_SHAPIRO);
         clampNegativeSpecies();
+        cwb_mark(CW_FLOOR);
 
         // Steady-state query: max|f - f_n| per field with its location, plus the continuity
         // residual. BEFORE restoreVar, which is what makes the differences non-zero — see the
@@ -692,6 +762,21 @@ void cJupiterModel::Run(){
         restoreVar(1.0);
 
         panorama_cnt++;
+
+        if(cwb_on && iter_n % checkpoint == 0){
+            double sum_ = 0.0;
+            printf("\n      ATJUP: [CWB] H2O column (vapour+cloud+ice), cumulative over iterations %d..%d, g/m2:  start %.9e  now %.9e  change %+.6e (%+.4f %%)\n",
+                   iter_start, iter_n, cw_first, cw_last, cw_last - cw_first, 100.0 * (cw_last / cw_first - 1.0));
+            for(int q_ = 0; q_ < CW_N; q_++){
+                printf("      ATJUP: [CWB]   %-46s %+.6e\n", cw_name[q_], cw_sum[q_]); sum_ += cw_sum[q_];
+                if(q_ == CW_RK_RESET)
+                    for(int r_ = 0; r_ < JupCwb::NTERM; r_++){
+                        printf("      ATJUP: [CWB]   %-46s %+.6e\n", cw_term[r_], cw_tsum[r_]);
+                        if(r_ != JupCwb::T_QDIV) sum_ += cw_tsum[r_];
+                    }
+            }
+            printf("      ATJUP: [CWB]   %-46s %+.6e\n", "unattributed", cw_last - cw_first - sum_);
+        }
 
         if(iter_n % checkpoint == 0){
             printMinMax();

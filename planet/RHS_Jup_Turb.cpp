@@ -16,6 +16,7 @@
 
 #include "cJupiterModel.h"
 #include "TurbulenceJup.h"   // shares nue_max_phys() with the closure
+#include "CwbJup.h"          // ATJUP_CWB_DIAG, print-only
 
 #include <cstdlib>   // getenv/atof for the radiative-coupling knob
 #include <string>
@@ -1111,6 +1112,24 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     // both on; S_precip_*_cloud and _ice are negative (condensate leaving as rain, snow and
     // graupel) and S_precip_<species> positive (rain evaporating back to vapour on the way
     // down). They arrive already nondimensional — see the writeback in PrecipitationJup.h.
+    // ATJUP_CWB_DIAG (print-only, see CwbJup.h): RK4-weighted column sums of each term of the three
+    // H2O equations, per thread. Nothing here is read by the model.
+    if(JupCwb::st().on){
+        const double dz_cwb = layer_thickness_m(i);
+        if(dz_cwb > 0.0){
+            const double cw = JupCwb::st().stage_wgt * std::sin(the.z[j]) * dz_cwb;
+            double* a = JupCwb::st().acc[omp_get_thread_num()];
+            const double kd = 1.0 / (sc_h2o * re) + nue_t_s;
+            a[JupCwb::T_RAD]    -= cw * u_ijk   * (dh2odr   + dh2ocdr   + dh2oidr);
+            a[JupCwb::T_THE]    -= cw * v_invrm * (dh2odthe + dh2ocdthe + dh2oidthe);
+            a[JupCwb::T_PHI]    -= cw * w_invrs * (dh2odphi + dh2ocdphi + dh2oidphi);
+            a[JupCwb::T_DIFF]   += cw * kd * (diffusion_h2o + diffusion_h2o_cloud + diffusion_h2o_ice);
+            a[JupCwb::T_PRECIP] += cw * precip_coupling * (S_precip_h2o.x[i][j][k] + S_precip_h2o_cloud.x[i][j][k] + S_precip_h2o_ice.x[i][j][k]);
+            const double div_u = dudr + 2.0 * u_ijk * inv_rm + dvdthe * inv_rm + v_ijk * geo.cotanthe * inv_rm + dwdphi * inv_rmsinthe;
+            a[JupCwb::T_QDIV]   += cw * (h2o.x[i][j][k] + h2o_cloud.x[i][j][k] + h2o_ice.x[i][j][k]) * div_u;
+        }
+    }
+
     rhs_h2o.x[i][j][k] =
         - transport_h2o
         + diffusion_h2o * (1.0 / (sc_h2o * re) + nue_t_s)
