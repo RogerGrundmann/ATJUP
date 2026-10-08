@@ -151,15 +151,13 @@ void cJupiterModel::paraview_vtk_radial(int n, int i_radial){
     dump_radial("H2OIce", h2o_ice, 1e3, i_radial, Jupiter_vtk_radial_File);
 
     dump_radial("H2S", h2s, 1e3, i_radial, Jupiter_vtk_radial_File);
-/*
     dump_radial("w_h2s", w_h2s, 1e3, i_radial, Jupiter_vtk_radial_File);
     dump_radial("j_h2s", j_h2s, 1e3, i_radial, Jupiter_vtk_radial_File);
     dump_radial("jT_h2s", jT_h2s, 1e3, i_radial, Jupiter_vtk_radial_File);
     dump_radial("massflux_h2s", massflux_h2s, 1e3, i_radial, Jupiter_vtk_radial_File);
     dump_radial("difflux_h2s", difflux_h2s, 1e3, i_radial, Jupiter_vtk_radial_File);
-*/
+
     dump_radial("NH3", nh3, 1e3, i_radial, Jupiter_vtk_radial_File);
-/*
     dump_radial("NH3Cloud", nh3_cloud, 1e3, i_radial, Jupiter_vtk_radial_File);
     dump_radial("NH3Ice", nh3_ice, 1e3, i_radial, Jupiter_vtk_radial_File);
     dump_radial("w_nh3", w_nh3, 1e3, i_radial, Jupiter_vtk_radial_File);
@@ -167,15 +165,14 @@ void cJupiterModel::paraview_vtk_radial(int n, int i_radial){
     dump_radial("jT_nh3", jT_nh3, 1e3, i_radial, Jupiter_vtk_radial_File);
     dump_radial("massflux_nh3", massflux_nh3, 1e3, i_radial, Jupiter_vtk_radial_File);
     dump_radial("difflux_nh3", difflux_nh3, 1e3, i_radial, Jupiter_vtk_radial_File);
-*/
+
     dump_radial("NH4SH", nh4sh, 1e9, i_radial, Jupiter_vtk_radial_File);
-/*
     dump_radial("w_nh4sh", w_nh4sh, 1e9, i_radial, Jupiter_vtk_radial_File);
     dump_radial("massflux_nh4sh", massflux_nh4sh, 1e9, i_radial, Jupiter_vtk_radial_File);
     dump_radial("j_nh4sh", j_nh4sh, 1e9, i_radial, Jupiter_vtk_radial_File);
     dump_radial("jT_nh4sh", jT_nh4sh, 1e9, i_radial, Jupiter_vtk_radial_File);
     dump_radial("difflux_nh4sh", difflux_nh4sh, 1e9, i_radial, Jupiter_vtk_radial_File);
-*/
+
 
     dump_radial("PressureDyn", p_dyn, p_dyn_to_bar() * 1.0e3, i_radial, Jupiter_vtk_radial_File);
     dump_radial("PressureStat", p_stat, 1.0, i_radial, Jupiter_vtk_radial_File);
@@ -285,15 +282,13 @@ void cJupiterModel::paraview_vtk_zonal(int n, int k_zonal){
     dump_zonal("H2OIce", h2o_ice, 1e3, k_zonal, Jupiter_vtk_zonal_File);
 
     dump_zonal("H2S", h2s, 1e3, k_zonal, Jupiter_vtk_zonal_File);
-/*
     dump_zonal("w_h2s", w_h2s, 1e3, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("j_h2s", j_h2s, 1e3, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("jT_h2s", jT_h2s, 1e3, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("massflux_h2s", massflux_h2s, 1e3, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("difflux_h2s", difflux_h2s, 1e3, k_zonal, Jupiter_vtk_zonal_File);
-*/
+
     dump_zonal("NH3", nh3, 1e3, k_zonal, Jupiter_vtk_zonal_File);
-/*
     dump_zonal("NH3Cloud", nh3_cloud, 1e3, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("NH3Ice", nh3_ice, 1e3, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("w_nh3", w_nh3, 1e3, k_zonal, Jupiter_vtk_zonal_File);
@@ -301,15 +296,14 @@ void cJupiterModel::paraview_vtk_zonal(int n, int k_zonal){
     dump_zonal("jT_nh3", jT_nh3, 1e3, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("massflux_nh3", massflux_nh3, 1e3, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("difflux_nh3", difflux_nh3, 1e3, k_zonal, Jupiter_vtk_zonal_File);
-*/
+
     dump_zonal("NH4SH", nh4sh, 1e9, k_zonal, Jupiter_vtk_zonal_File);
-/*
     dump_zonal("w_nh4sh", w_nh4sh, 1e9, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("massflux_nh4sh", massflux_nh4sh, 1e9, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("j_nh4sh", j_nh4sh, 1e9, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("jT_nh4sh", jT_nh4sh, 1e9, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("difflux_nh4sh", difflux_nh4sh, 1e9, k_zonal, Jupiter_vtk_zonal_File);
-*/
+
     dump_zonal("PressureDyn", p_dyn, p_dyn_to_bar() * 1.0e3, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("PressureStat", p_stat, 1.0, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("rho_mix", rho_mix, 1.0, k_zonal, Jupiter_vtk_zonal_File);
@@ -409,31 +403,28 @@ void cJupiterModel::paraview_vtk_longal(int n, int j_longal){
     dump_longal("H2OIce", h2o_ice, 1e3, j_longal, Jupiter_vtk_longal_File);
 
     dump_longal("H2S", h2s, 1e3, j_longal, Jupiter_vtk_longal_File);
-/*
     dump_longal("w_h2s", w_h2s, 1e3, j_longal, Jupiter_vtk_longal_File);
     dump_longal("j_h2s", j_h2s, 1e3, j_longal, Jupiter_vtk_longal_File);
     dump_longal("jT_h2s", jT_h2s, 1e3, j_longal, Jupiter_vtk_longal_File);
     dump_longal("massflux_h2s", massflux_h2s, 1e3, j_longal, Jupiter_vtk_longal_File);
     dump_longal("difflux_h2s", difflux_h2s, 1e3, j_longal, Jupiter_vtk_longal_File);
-*/
+
     dump_longal("NH3", nh3, 1e3, j_longal, Jupiter_vtk_longal_File);
     dump_longal("NH3Cloud", nh3_cloud, 1e3, j_longal, Jupiter_vtk_longal_File);
     dump_longal("NH3Ice", nh3_ice, 1e3, j_longal, Jupiter_vtk_longal_File);
-/*
     dump_longal("w_nh3", w_nh3, 1e3, j_longal, Jupiter_vtk_longal_File);
     dump_longal("j_nh3", j_nh3, 1e3, j_longal, Jupiter_vtk_longal_File);
     dump_longal("jT_nh3", jT_nh3, 1e3, j_longal, Jupiter_vtk_longal_File);
     dump_longal("massflux_nh3", massflux_nh3, 1e3, j_longal, Jupiter_vtk_longal_File);
     dump_longal("difflux_nh3", difflux_nh3, 1e3, j_longal, Jupiter_vtk_longal_File);
-*/
+
     dump_longal("NH4SH", nh4sh, 1e9, j_longal, Jupiter_vtk_longal_File);
-/*
     dump_longal("w_nh4sh", w_nh4sh, 1e9, j_longal, Jupiter_vtk_longal_File);
     dump_longal("massflux_nh4sh", massflux_nh4sh, 1e9, j_longal, Jupiter_vtk_longal_File);
     dump_longal("j_nh4sh", j_nh4sh, 1e9, j_longal, Jupiter_vtk_longal_File);
     dump_longal("jT_nh4sh", jT_nh4sh, 1e9, j_longal, Jupiter_vtk_longal_File);
     dump_longal("difflux_nh4sh", difflux_nh4sh, 1e9, j_longal, Jupiter_vtk_longal_File);
-*/
+
 
     dump_longal("PressureDyn", p_dyn, p_dyn_to_bar() * 1.0e3, j_longal, Jupiter_vtk_longal_File);
     dump_longal("PressureStat", p_stat, 1.0, j_longal, Jupiter_vtk_longal_File);

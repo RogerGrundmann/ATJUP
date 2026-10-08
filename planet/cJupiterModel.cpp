@@ -43,7 +43,8 @@ static int    shapiro_vel_inloop() { static const int    v = [](){ const char* e
 // Radiation scaffold knob (default off = bit-identical). When set, RadiationJup runs
 // each even iteration and fills the diagnostic radiation/epsilon/Q_rad arrays; it does
 // not yet feed the temperature equation.
-static int    radiation_enabled()  { static const int    v = [](){ const char* e = getenv("ATJUP_RADIATION");           return e ? atoi(e) : 0;   }(); return v; }
+//static int    radiation_enabled()  { static const int    v = [](){ const char* e = getenv("ATJUP_RADIATION");           return e ? atoi(e) : 0;   }(); return v; }
+static int    radiation_enabled()  { static const int    v = [](){ const char* e = getenv("ATJUP_RADIATION");           return e ? atoi(e) : 1;   }(); return v; }
 
 // Precipitation microphysics knob (default off = bit-identical). When set, PrecipitationJup
 // runs once per iteration and fills the rain/snow/graupel fluxes for H2O and NH3 plus the
@@ -58,7 +59,9 @@ static int    radiation_enabled()  { static const int    v = [](){ const char* e
 // With it on, k* and dis* are prognostic: RHS_Jup_Turb.cpp assembles rhs_tke/rhs_dis and
 // RungeKutta_Jup_Turb.cpp integrates them, as in ATOM. nue* only reaches the momentum and
 // scalar equations if ATJUP_TURB_COUPLING is also set.
-static int    turb_enabled()       { static const int    v = [](){ const char* e = getenv("ATJUP_TURB");                 return e ? atoi(e) : 0;   }(); return v; }
+//static int    turb_enabled()       { static const int    v = [](){ const char* e = getenv("ATJUP_TURB");                 return e ? atoi(e) : 0;   }(); return v; }
+static int    turb_enabled()       { static const int    v = [](){ const char* e = getenv("ATJUP_TURB");                 return e ? atoi(e) : 1;   }(); return v; }
+
 // DEFAULT ON since 2026-07-31. Rain, snow and graupel are what the condensate is for; leaving
 // the scheme installed and switched off meant every run reported P_rain = 0 and looked like a
 // planet where nothing falls. ATJUP_PRECIP=0 restores the old behaviour exactly.
