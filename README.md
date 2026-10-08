@@ -265,7 +265,7 @@ species equations. A run described as "with k-ω SST" that set only the XML had 
 | `ATJUP_TURB_CURV` | 1 | spherical curvature terms in the turbulence production |
 | `ATJUP_COSTHE_ABS` | 0 | restore the old, non-reversing cos θ (diagnostic only) |
 | `ATJUP_NO_SEAMOUNT` | 0 | build no obstacle at all (diagnostic) |
-| `ATJUP_U_INIT_SCALE` | 1.0 | scale the prescribed **radial** branch of the initial overturning cells; 1.0 peaks at 40 m/s, 0.025 at 1 m/s |
+| `ATJUP_U_INIT_SCALE` | 0 | scale the prescribed **radial** branch of the initial overturning cells; 1.0 (the default until 2026-10-08) peaks at 40 m/s, 0.025 at 1 m/s. The branch is the whole of the model's velocity divergence: at 1.0 the H2O column loses 3.8 % in 224 iterations, at 0 it closes |
 | `ATJUP_DT` | 0.001 | nondimensional timestep. 0.001 = 1.4 s of Jupiter time; radial CFL is only 0.015, so 0.02 (CFL 0.3) is 28 s/iteration |
 | `ATJUP_BC_RADIUS_COPY` | 0 | plain copy instead of extrapolation at the radial walls (diagnostic) |
 | `ATJUP_BC_MOUNT_COPY` | 0 | plain copy instead of extrapolation for the scalars in the obstacle surface cells (diagnostic; separates the extrapolation overshoot from the advection scheme in the flank-cooling runaway) |

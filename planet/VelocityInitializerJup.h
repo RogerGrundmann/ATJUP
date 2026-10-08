@@ -440,12 +440,22 @@ private:
     // ratio 0.5 x 80 = 40 m/s, above both.
     //
     // ATJUP_U_INIT_SCALE multiplies the amplitude so the two can be separated by measurement
-    // without committing to either reading. Default 1.0 = unchanged.
+    // without committing to either reading.
+    //
+    // DEFAULT 0 SINCE 2026-10-08 (was 1.0), at the user's instruction and on the measurement:
+    // the prescribed radial branch IS the model's velocity divergence. ATJUP_CWB_DIAG, 16
+    // iterations at scale 1 / 0.1 / 0: the H2O column's radial transport is -5451 / -545 / +0.12
+    // g/m2 and the continuity residual 5.36 / 0.547 / 0.038 -- exactly linear in the scale, and
+    // the horizontal initial wind alone is divergence-free. 224 iterations at 1 against 0
+    // (satchk/G0, G1): the H2O column loses 3.84 % against +0.07 %, the residual climbs 5.36 ->
+    // 6.12 against a flat 0.038, max |u| is 38 m/s against 0.07 m/s that the model generates
+    // itself, and the meridional and zonal wind extrema agree within 0.4 % at the end.
+    // ATJUP_U_INIT_SCALE=1 restores the previous initial condition exactly.
     // ========================================================================
     static double u_init_scale()
     {
         static const double v = [](){
-            const char* e = getenv("ATJUP_U_INIT_SCALE"); return e ? atof(e) : 1.0; }();
+            const char* e = getenv("ATJUP_U_INIT_SCALE"); return e ? atof(e) : 0.0; }();
         return v;
     }
 
