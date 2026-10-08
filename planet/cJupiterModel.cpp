@@ -669,7 +669,9 @@ void cJupiterModel::Run(){
         if(precip_enabled()) PrecipitationJup(*this).run();   // H2O+NH3 3-cat + NH4SH settling
         cwb_mark(CW_PRECIP);
 
-        // ATJUP_RK_SCALAR_SYNC=<0|1|2> (2026-10-08), DEFAULT 0 = OFF (block skipped, byte-identical).
+        // ATJUP_RK_SCALAR_SYNC=<0|1|2> (2026-10-08). DEFAULT 2 SINCE 2026-10-08 (was 0), at the user's
+        // instruction and on the 224-iteration measurement at the end of this note; 0 restores the
+        // previous behaviour exactly (block skipped).
         // RungeKuttaJup integrates every scalar from its n-level copy (h2on, ..., tn), and restoreVar
         // refreshed those at the END of the previous iteration -- before the saturation adjustment
         // above ran. So everything the adjustment writes directly (the condensate it forms, the
@@ -683,10 +685,16 @@ void cJupiterModel::Run(){
         // the step starts from the adjusted state; 2 copies the temperature too, so the latent heat
         // goes with the condensate (1 alone keeps the cloud and discards its heating).
         // The same construction is ATM_RK_SCALAR_SYNC in ATOM_Precipitation, where making the writes
-        // persist RAN AWAY (a humidity re-pin fed it): this is a knob to measure with, not a repair
-        // to assume. Once the writes persist, the adjustment's ice deletion is a real sink --
-        // see ATJUP_SATADJ_CONSERVE.
-        static const int rk_scalar_sync = [](){ const char* e = getenv("ATJUP_RK_SCALAR_SYNC"); return e ? atoi(e) : 0; }();
+        // persist RAN AWAY (a humidity re-pin fed it). It does NOT here. 224 iterations, 8 threads,
+        // 0 against 2 (satchk/S0, S2): temperature and all three velocity extrema identical, 10 of 60
+        // printed extrema differ (max h2o_cloud 20.01 -> 21.28 g/m3, surface H2O precipitation max
+        // 0.061 -> 0.083 mm/d, max latent heat -0.45 %); the reset 101 854 -> 0 g/m2; cells adjusted
+        // in the last call 1 152 010 -> 306 866 and not converged in 15 passes 446 254 -> 6 463,
+        // because the adjustment no longer starts from scratch every call.
+        // With the writes kept, the adjustment's ice deletion is a real sink (1 696 g/m2 in 224
+        // iterations, 0.09 % of the H2O column) -- ATJUP_SATADJ_CONSERVE=1 removes it (default off:
+        // that knob is in the shared header).
+        static const int rk_scalar_sync = [](){ const char* e = getenv("ATJUP_RK_SCALAR_SYNC"); return e ? atoi(e) : 2; }();
         if(rk_scalar_sync >= 1){
             #pragma omp parallel for collapse(2) schedule(static)
             for(int i = 0; i < im; i++){
