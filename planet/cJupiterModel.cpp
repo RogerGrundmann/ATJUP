@@ -669,6 +669,44 @@ void cJupiterModel::Run(){
         if(precip_enabled()) PrecipitationJup(*this).run();   // H2O+NH3 3-cat + NH4SH settling
         cwb_mark(CW_PRECIP);
 
+        // ATJUP_RK_SCALAR_SYNC=<0|1|2> (2026-10-08), DEFAULT 0 = OFF (block skipped, byte-identical).
+        // RungeKuttaJup integrates every scalar from its n-level copy (h2on, ..., tn), and restoreVar
+        // refreshed those at the END of the previous iteration -- before the saturation adjustment
+        // above ran. So everything the adjustment writes directly (the condensate it forms, the
+        // latent heat it releases, the ice it melts or deletes) is overwritten by the step that
+        // follows and survives only through what RHSJup reads during that one step.
+        // MEASURED (ATJUP_CWB_DIAG, satchk/W0): SaturationAdjustment H2O -2711 g/m2 and "RungeKutta:
+        // reset to the n-level copies" +2711 over 16 iterations, cancelling to the digit; over 224
+        // iterations the water reappearing between two calls equals the ice deleted in the previous
+        // one (r 1.00000) -- the adjustment re-adjusts the same cells every call.
+        // 1 copies the nine condensable fields the adjustment wrote into their n-level copies, so
+        // the step starts from the adjusted state; 2 copies the temperature too, so the latent heat
+        // goes with the condensate (1 alone keeps the cloud and discards its heating).
+        // The same construction is ATM_RK_SCALAR_SYNC in ATOM_Precipitation, where making the writes
+        // persist RAN AWAY (a humidity re-pin fed it): this is a knob to measure with, not a repair
+        // to assume. Once the writes persist, the adjustment's ice deletion is a real sink --
+        // see ATJUP_SATADJ_CONSERVE.
+        static const int rk_scalar_sync = [](){ const char* e = getenv("ATJUP_RK_SCALAR_SYNC"); return e ? atoi(e) : 0; }();
+        if(rk_scalar_sync >= 1){
+            #pragma omp parallel for collapse(2) schedule(static)
+            for(int i = 0; i < im; i++){
+                for(int j = 0; j < jm; j++){
+                    for(int k = 0; k < km; k++){
+                        h2on.x[i][j][k]       = h2o.x[i][j][k];
+                        h2o_cloudn.x[i][j][k] = h2o_cloud.x[i][j][k];
+                        h2o_icen.x[i][j][k]   = h2o_ice.x[i][j][k];
+                        nh3n.x[i][j][k]       = nh3.x[i][j][k];
+                        nh3_cloudn.x[i][j][k] = nh3_cloud.x[i][j][k];
+                        nh3_icen.x[i][j][k]   = nh3_ice.x[i][j][k];
+                        ch4n.x[i][j][k]       = ch4.x[i][j][k];
+                        ch4_cloudn.x[i][j][k] = ch4_cloud.x[i][j][k];
+                        ch4_icen.x[i][j][k]   = ch4_ice.x[i][j][k];
+                        if(rk_scalar_sync >= 2) tn.x[i][j][k] = t.x[i][j][k];
+                    }
+                }
+            }
+        }
+
         // Turbulence closure. Reads the velocity field left by RK4 and the BCs, so it runs
         // after them, exactly as ATOM calls TurbulenceAtm::run() from its own iteration loop.
         if(turb_enabled()) TurbulenceJup(*this).run();
