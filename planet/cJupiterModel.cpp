@@ -582,7 +582,7 @@ void cJupiterModel::Run(){
         "RungeKutta: floor and remainder", "bcRadius", "bcTheta", "bcPhi", "bcSolidGround", "convective adjustment, Shapiro",
         "clampNegativeSpecies" };
     static const char* cw_term[JupCwb::NTERM] = { "RungeKutta: radial transport   -u dq/dr", "RungeKutta: meridional transport", "RungeKutta: zonal transport",
-        "RungeKutta: diffusion", "RungeKutta: precipitation source", "(not applied) q*div(u)" };
+        "RungeKutta: diffusion", "RungeKutta: precipitation source", "RungeKutta: flux-form term  -s q div(u)", "(reference, not a term) q*div(u)" };
     double cw_sum[CW_N] = {0.0}, cw_tsum[JupCwb::NTERM] = {0.0};
     double cw_norm = 0.0, cw_last = 0.0, cw_first = 0.0;
     auto cwb_col = [&](Array& a, Array& b, Array& c) -> double {
