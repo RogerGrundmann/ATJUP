@@ -37,7 +37,9 @@ def main():
 # cAtmosphereModel::save_state / load_state. Files land in output_path as
 # jup_restart_<iter>.bin. Besides these two knobs the run also writes a checkpoint every
 # restart_save_stride (100) iterations, but only when the state is clean (no non-finite cell),
-# so a diverged state can never overwrite a good restart point.
+# so a diverged state can never overwrite a good restart point. That periodic dump is NOT
+# governed by checkpoint_save_iter: -1 below disables the explicit dump only. The stride is the
+# environment knob ATJUP_RESTART_STRIDE (default 100; 0 = no periodic dump; each file is 814 MB).
             ('checkpoint_save_iter', 'dump the full 3D prognostic state to output_path/jup_restart_<iter>.bin when iter_n reaches this; -1 disables', 'int', -1),
             ('restart_from_iter', 'load output_path/jup_restart_<iter>.bin and resume the iteration loop at iter+1, skipping the spin-up; -1 disables', 'int', -1),
 

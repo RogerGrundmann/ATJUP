@@ -267,6 +267,7 @@ species equations. A run described as "with k-ω SST" that set only the XML had 
 | `ATJUP_NO_SEAMOUNT` | 0 | build no obstacle at all (diagnostic) |
 | `ATJUP_U_INIT_SCALE` | 0 | scale the prescribed **radial** branch of the initial overturning cells; 1.0 (the default until 2026-10-08) peaks at 40 m/s, 0.025 at 1 m/s. The branch is the whole of the model's velocity divergence: at 1.0 the H2O column loses 3.8 % in 224 iterations, at 0 it closes |
 | `ATJUP_RK_SCALAR_SYNC` | 2 | after the saturation adjustment, copy the condensable fields (1) and the temperature (2) into the time-level copies the Runge-Kutta step integrates from, so the adjustment's condensate and latent heat survive the step; 0 (the default until 2026-10-08) discards them every step |
+| `ATJUP_RESTART_STRIDE` | 100 | iterations between the periodic restart dumps `jup_restart_<iter>.bin` (814 MB each, written only when the state is clean); 0 = none. `checkpoint_save_iter = -1` in the config switches off the one explicit dump only, not these |
 | `ATJUP_DT` | 0.001 | nondimensional timestep. 0.001 = 1.4 s of Jupiter time; radial CFL is only 0.015, so 0.02 (CFL 0.3) is 28 s/iteration |
 | `ATJUP_BC_RADIUS_COPY` | 0 | plain copy instead of extrapolation at the radial walls (diagnostic) |
 | `ATJUP_BC_MOUNT_COPY` | 0 | plain copy instead of extrapolation for the scalars in the obstacle surface cells (diagnostic; separates the extrapolation overshoot from the advection scheme in the flank-cooling runaway) |

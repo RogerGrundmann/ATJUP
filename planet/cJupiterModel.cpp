@@ -865,8 +865,17 @@ void cJupiterModel::Run(){
         if(checkpoint_save_iter >= 0 && iter_n == checkpoint_save_iter)
             save_state(iter_n);
 
+        //
+        // ATJUP_RESTART_STRIDE=<n> (2026-10-08), default 100 = the stride this always had; 0 = NO
+        // periodic dump. checkpoint_save_iter = -1 switches off only the explicit dump above, and
+        // its description ("-1 disables") reads as if it switched off restarts altogether: every
+        // 224-iteration run still wrote jup_restart_100.bin and _200.bin, 814 MB each, whatever
+        // the config said. Twenty such arms in one day filled the disk and cut three runs short.
+        // The stride was a constant; it is now a knob, so a batch of comparison runs that will
+        // never be resumed can say so.
         {
-            constexpr int restart_save_stride = 100;
+            static const int restart_save_stride = [](){
+                const char* e = getenv("ATJUP_RESTART_STRIDE"); return e ? atoi(e) : 100; }();
             if(restart_save_stride > 0 && iter_n > 0 && iter_n % restart_save_stride == 0
                && iter_n != checkpoint_save_iter){
                 if(restart_state_is_clean())
