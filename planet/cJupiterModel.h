@@ -775,6 +775,9 @@ private:
     // Ice above the melting point melts instead of being deleted, by default (2026-10-09): see
     // <TAG>_SATADJ_CONSERVE in the shared SaturationAdjustment.h. ATJUP_SATADJ_CONSERVE=0 restores.
     static bool satadj_default_conserve(){ return true; }
+    // Shared Precipitation.h: the factor on its five rate coefficients. They were set for this
+    // planet, so 1. ATJUP_PRECIP_SCALE overrides.
+    static double precip_rate_scale(){ return 1.0; }
 
     // ---- What the SHARED PressureSolver.h asks of this model ----
     //
