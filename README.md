@@ -213,23 +213,27 @@ instead — so it has no `ATJUP_THERMAL_MASSFLUX` knob. The other three models d
 
 | Variable | Default | Effect |
 |----------|---------|--------|
-| `ATJUP_TURB` | 1 | run the closure (see the note below on what an *unset* variable does) |
-| `ATJUP_TURB_MODEL` | *param* | override `turb_model` (`k_epsilon`, `k_omega`, `k_omega_SST`) |
+| `ATJUP_TURB` | *unset* | override the switch that `turb_model` sets: 0 = closure off, anything else = on |
+| `ATJUP_TURB_MODEL` | *param* | override `turb_model` (`none`, `k_epsilon`, `k_omega`, `k_omega_SST`) |
 | `ATJUP_TURB_COUPLING` | 0 | feed the eddy viscosity into momentum, heat and species diffusion |
 | `ATJUP_NUE_MAX` | 1e5 | eddy-viscosity ceiling [m²/s] — a runaway guard, not the operative limiter |
 | `ATJUP_ABL_TAPER` | 0 | restore ATOM's boundary-layer taper of the eddy viscosity |
 
 Worth stating plainly, because it is easy to believe otherwise: **`turb_model` in the XML does not
-switch the closure on or off.** It only selects which closure `ATJUP_TURB` runs. With
-`ATJUP_TURB=0` `tke` and `nue` are identically zero however the XML is written, and without
-`ATJUP_TURB_COUPLING=1` the eddy viscosity is computed but never reaches the momentum, heat or
-species equations. Until `8df7626` `ATJUP_TURB` defaulted to 0, so a run of that time described as
-"with k-ω SST" that set only the XML had no turbulence in it.
+Since 2026-10-09 **`turb_model` is the switch of the closure**, as in ATOM: `none` (or `laminar`,
+or empty) is off, any of the three models is on, and "on" means both halves — `TurbulenceJup`
+fills `tke`, `dis` and `nue`, and k and ω are advanced by the Runge-Kutta step. The parameter
+defaults to `k_omega_SST`, so a stock run has the closure on. `ATJUP_TURB=0` still switches it
+off from the environment, whatever the XML says. Without `ATJUP_TURB_COUPLING=1` the eddy
+viscosity is computed but never reaches the momentum, heat or species equations; that is the one
+place ATJUP still differs from ATOM, where it always does.
 
-An **unset** `ATJUP_TURB` is not the same as `ATJUP_TURB=1`. `cJupiterModel.cpp` defaults it to 1,
-so `TurbulenceJup` runs and fills `tke`, `dis` and `nue`; `RHS_Jup_Turb.cpp` reads the variable
-separately and still defaults it to 0, so `rhs_tke` and `rhs_dis` are zero and k and ω are not
-advanced by the Runge-Kutta step. Set `ATJUP_TURB=1` explicitly for the prognostic closure.
+Two earlier states, for reading old runs. Until `8df7626` `ATJUP_TURB` defaulted to 0 and
+`turb_model` only selected the model, so a run "with k-ω SST" that set only the XML had no
+turbulence in it. From `8df7626` until 2026-10-09 the variable was read in two places with
+different defaults (1 in `cJupiterModel.cpp`, 0 in `RHS_Jup_Turb.cpp`), so a run that left it
+unset computed the eddy viscosity but did not advance k and ω: `tke` stayed at its initial
+value. `ATJUP_TURB=1` set explicitly gave then what the default gives now, byte for byte.
 
 **Initial and boundary conditions**
 
@@ -496,8 +500,8 @@ coldest cell in the model holds at −163 °C until iteration 125 and then falls
 Eight iterations later the field is non-finite. A runaway updraft cools adiabatically at 2.33 K per
 kilometre climbed, and at several hundred m/s it climbs faster than anything can warm it back. The
 alternative candidate — a diffusive limit from a large turbulent viscosity — is ruled out: `tke` and
-`nue` are identically zero, because **`ATJUP_TURB` defaulted to 0 at the time (1 since `8df7626`) regardless of the
-`turb_model` set in the XML**. With the closure off the only dissipation is 1/re = 0.001 plus the wall viscosity near
+`nue` are identically zero, because **`ATJUP_TURB` defaulted to 0 at the time regardless of the `turb_model` set in the
+XML** (since 2026-10-09 `turb_model` is the switch). With the closure off the only dissipation is 1/re = 0.001 plus the wall viscosity near
 the obstacle, so the flow is very nearly inviscid, which is why it accelerates that far.
 
 The practical consequence at the time: **the body forces were correct but the model was not yet

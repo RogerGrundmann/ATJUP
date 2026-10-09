@@ -51,8 +51,8 @@ def main():
 #            ('coord_stretching', 'vertical coordinate stretching: exp_rm=1/(r+1), exp_2_rm=exp_rm^2; false gives exp_rm=exp_2_rm=1', 'bool', True),
             ('coord_stretching', 'vertical coordinate stretching application', 'bool', False),
 
-# turbulence closure selection, mirroring ATOM. TurbulenceJup reads this; the whole module is
-# still gated by the ATJUP_TURB knob, and ATJUP_TURB_MODEL overrides this value at runtime.
+# turbulence closure selection AND switch, mirroring ATOM: 'none' switches the closure off, any
+# model switches it on. ATJUP_TURB_MODEL overrides this value at runtime, ATJUP_TURB=0 forces off.
             ('turb_model', 'turbulence model: none, k_epsilon, k_omega, k_omega_SST', 'string', 'k_omega_SST'),
 #            ('turb_model', 'turbulence model: none, k_epsilon, k_omega, k_omega_SST', 'string', 'k_omega'),
 #            ('turb_model', 'turbulence model: none, k_epsilon, k_omega, k_omega_SST', 'string', 'k_epsilon'),

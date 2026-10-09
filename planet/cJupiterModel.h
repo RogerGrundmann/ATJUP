@@ -1206,6 +1206,10 @@ private:
     double re_turb = 1.0;                       // = vel_star_ref*z_0/nue_air, set by TurbulenceJup
     // turb_model ("none" | "k_epsilon" | "k_omega" | "k_omega_SST") is declared by
     // JupiterParams.h.inc from param.py, defaulting to k_omega_SST; ATJUP_TURB_MODEL overrides it.
+    // THE one switch of the closure, as in ATOM (cAtmosphereModel::use_turbulence_model): set
+    // once at the top of Run() from turb_model, read by Run() (TurbulenceJup init / run) and by
+    // RHSJup (rhs_tke / rhs_dis). "none", "laminar" and an empty string switch the closure off.
+    bool use_turbulence_model = false;
     // Boundary-layer depth used by the ABL seeding profile and the eddy-viscosity taper.
     // ATOM's value is ~1500 m of terrestrial ABL. There is no Jovian surface boundary layer,
     // so on ATJUP this only has meaning as the depth of the shear layer above the SeaMount;

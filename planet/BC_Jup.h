@@ -414,7 +414,7 @@ inline void BC_Jup::bcSolidGround()
     // assume the operands are finite, and ATOM measured k reaching 7e200 despite an RK4 cap
     // for exactly that reason. Reading the IEEE-754 exponent field has no such hazard.
     //
-    // This touches ONLY the turbulence arrays, which are identically zero with ATJUP_TURB=0,
+    // This touches ONLY the turbulence arrays, which are identically zero with the closure off,
     // so a run without the closure is bit-identical. The non-finite VELOCITY cell that
     // triggers this at high latitude is a separate, pre-existing ATJUP problem and is
     // deliberately not masked here.

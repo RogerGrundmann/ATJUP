@@ -53,16 +53,24 @@ static int    radiation_enabled()  { static const int    v = [](){ const char* e
 // SaturationAdjustmentJup calls, so the removal persists and the next iteration must draw on
 // the vapour reservoir to rebuild cloud — which is what makes the rate self-limiting.
 // Q_precip only reaches rhs_t if ATJUP_PRECIP_COUPLING is also set (see RHS_Jup_Turb.cpp).
-// Turbulence knob. DEFAULT ON since 8df7626 (ATJUP_TURB=0 switches it off). Mirrors ATOM's
-// TurbulenceAtm: all three models (k_epsilon | k_omega | k_omega_SST) are available, selected by
-// cJupiterModel::turb_model or the ATJUP_TURB_MODEL environment variable. Fills
-// tke/dis/nue/prod/tke_source/dis_source. k* and dis* are prognostic (RHS_Jup_Turb.cpp assembles
-// rhs_tke/rhs_dis, RungeKutta_Jup_Turb.cpp integrates them, as in ATOM) ONLY IF ATJUP_TURB IS SET
-// EXPLICITLY: RHS_Jup_Turb.cpp reads the variable on its own and still defaults to 0, so in a
-// stock run TurbulenceJup runs here but rhs_tke = rhs_dis = 0. nue* only reaches the momentum
-// and scalar equations if ATJUP_TURB_COUPLING is also set.
-//static int    turb_enabled()       { static const int    v = [](){ const char* e = getenv("ATJUP_TURB");                 return e ? atoi(e) : 0;   }(); return v; }
-static int    turb_enabled()       { static const int    v = [](){ const char* e = getenv("ATJUP_TURB");                 return e ? atoi(e) : 1;   }(); return v; }
+// Turbulence switch, ATOM's arrangement since 2026-10-09: turb_model IS the switch, there is no
+// separate default to keep in step. The closure is on unless turb_model (or ATJUP_TURB_MODEL,
+// which overrides it) is "none" / "laminar" / empty; param.py's default is k_omega_SST, so a
+// stock run has it on. Mirrors ATOM's TurbulenceAtm: all three models (k_epsilon | k_omega |
+// k_omega_SST) are available. With it on TurbulenceJup fills tke/dis/nue/prod/tke_source/
+// dis_source AND k* and dis* are prognostic (RHS_Jup_Turb.cpp assembles rhs_tke/rhs_dis,
+// RungeKutta_Jup_Turb.cpp integrates them) -- both read cJupiterModel::use_turbulence_model.
+// ATJUP_TURB, if set, overrides the switch in both places at once (0 = off, else on; on with
+// turb_model = none runs k_omega_SST, TurbulenceJup's fallback). Until this change the variable
+// was read twice with different defaults (1 here, 0 in the RHS), so an unset ATJUP_TURB ran the
+// closure but left rhs_tke = rhs_dis = 0. nue* only reaches the momentum and scalar equations
+// if ATJUP_TURB_COUPLING is also set -- that is where ATJUP still differs from ATOM.
+static bool   turb_switch(const std::string& model){
+    if(const char* e = getenv("ATJUP_TURB")) return atoi(e) != 0;
+    const char* m = getenv("ATJUP_TURB_MODEL");
+    const std::string s = m ? std::string(m) : model;
+    return !(s.empty() || s == "none" || s == "laminar");
+}
 
 // DEFAULT ON since 2026-07-31. Rain, snow and graupel are what the condensate is for; leaving
 // the scheme installed and switched off meant every run reported P_rain = 0 and looked like a
@@ -289,6 +297,8 @@ void cJupiterModel::Run(){
     // searchMinMax_3D compares with a bare > and so skips every non-finite cell.
     // Off by default — trapping would abort on the first harmless inf in a diagnostic field.
     if(getenv("ATJUP_FPE")) feenableexcept(FE_INVALID | FE_DIVBYZERO);
+
+    use_turbulence_model = turb_switch(turb_model);                     // the one closure switch (see turb_switch above)
 
     #ifdef _OPENMP
         printf("\n\n   number of processors: %d\n\n", omp_get_num_procs());
@@ -547,7 +557,7 @@ void cJupiterModel::Run(){
     // Seed the turbulence fields from the ABL profile and prime the source terms once,
     // mirroring ATOM's TurbulenceAtm::init(). Needs the velocity field, so it comes after
     // the initial BCs.
-    if(turb_enabled()) TurbulenceJup(*this).init();
+    if(use_turbulence_model) TurbulenceJup(*this).init();
 
     restoreVar(1.0);
 
@@ -719,7 +729,7 @@ void cJupiterModel::Run(){
 
         // Turbulence closure. Reads the velocity field left by RK4 and the BCs, so it runs
         // after them, exactly as ATOM calls TurbulenceAtm::run() from its own iteration loop.
-        if(turb_enabled()) TurbulenceJup(*this).run();
+        if(use_turbulence_model) TurbulenceJup(*this).run();
 
         ChemistryJup(*this).DiffMassFluxJup();                          // must precede ChemMassRateJup: massflux = w - difflux
 
