@@ -772,6 +772,9 @@ private:
     // Newton step of the saturation adjustment on by default (2026-10-09): see the note on
     // <TAG>_SATADJ_NEWTON in the shared SaturationAdjustment.h. ATJUP_SATADJ_NEWTON=0 restores.
     static bool satadj_default_newton(){ return true; }
+    // Ice above the melting point melts instead of being deleted, by default (2026-10-09): see
+    // <TAG>_SATADJ_CONSERVE in the shared SaturationAdjustment.h. ATJUP_SATADJ_CONSERVE=0 restores.
+    static bool satadj_default_conserve(){ return true; }
 
     // ---- What the SHARED PressureSolver.h asks of this model ----
     //
