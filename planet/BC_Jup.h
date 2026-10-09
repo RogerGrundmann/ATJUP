@@ -126,7 +126,54 @@ namespace BCJupKnobs {
 // What ATJUP supplies is WHICH FIELDS each one treats; everything else it needs is answered by
 // cJupiterModel::bc_margin(), bc_default_form() and bc_default_*().
 // ---------------------------------------------------------------------------
-inline void BC_Jup::bcRadius(){ BoundaryConditions<cJupiterModel>(m).bcRadius(); }
+// ATJUP_BC_RADIUS_POSITIVE (2026-10-09; DEFAULT 1 on the user's word, 0 restores): keep the radial boundary planes of
+// the eleven species non-negative AT THE SOURCE. ATJUP's radial form is the 2-point
+// f[s] = (4/3)f[a] - (1/3)f[b], which is negative wherever f[a] < f[b]/4, i.e. wherever a field
+// falls steeply towards the boundary. clampNegativeSpecies() zeroes those values at the end of
+// the iteration, so the column budget carried two large terms that cancel: MEASURED
+// (ATJUP_CWB_DIAG, satchk/W0, 16 iterations) bcRadius -35 316 and clampNegativeSpecies +35 162
+// g/m2 of H2O, all of it h2o_cloud on the two planes (83 000 cells per iteration).
+//   1  floor the overshoot at zero here -- the value the clamp gives it anyway
+//   2  fall back to the plain copy f[s] = f[a] where the 2-point form is negative: still a
+//      zero-gradient (no-flux) wall, first order in those cells, and it cannot overshoot
+// The shared BoundaryConditions.h is not touched; this pass runs after it.
+// 16 iterations, 8 threads, ATJUP_CWB_DIAG (satchk/P0, P1, P2), g/m2 of H2O:
+//                          bcRadius    clampNegativeSpecies   diffusion   column change
+//   0                      -35 249          +35 086              +102     +1 684 (+0.087 %)
+//   1                         -160               +1.1            +102       -687 (-0.036 %)
+//   2                         -176               +1.1            +152       -651 (-0.034 %)
+// With 1 the state is THE SAME from iteration 1 on: the column ends on the same value to ten
+// digits, all 110 printed extrema and the 8 output files after iteration 0 are identical. What
+// differs is iteration 0: the bcRadius call before the loop left its negative values in the
+// state that the first budget mark and the first VTK files see, so the "start" of the column
+// was 2 372 g/m2 too low and the run's change read +0.087 % where it is -0.036 %. With 2 the
+// planes carry cloud where they carried zero: +1 268 g/m2 in the column, diffusion +50.
+inline void BC_Jup::bcRadius(){
+    BoundaryConditions<cJupiterModel>(m).bcRadius();
+
+    static const int positive = BCJupKnobs::env_int("ATJUP_BC_RADIUS_POSITIVE", 1);
+    if(positive == 0) return;
+    Array* species[] = {
+        &m.h2o, &m.h2o_cloud, &m.h2o_ice,
+        &m.h2s,
+        &m.nh3, &m.nh3_cloud, &m.nh3_ice,
+        &m.ch4, &m.ch4_cloud, &m.ch4_ice,
+        &m.nh4sh };
+    const int ns = (int)(sizeof(species) / sizeof(species[0]));
+    const int im = m.im, jm = m.jm, km = m.km;
+    #pragma omp parallel for
+    for(int j = 0; j < jm; j++){
+        for(int k = 0; k < km; k++){
+            for(int f = 0; f < ns; f++){
+                Array& F = *species[f];
+                if(F.x[0][j][k] < 0.0)
+                    F.x[0][j][k]    = (positive == 2) ? std::max(0.0, F.x[1][j][k])    : 0.0;
+                if(F.x[im-1][j][k] < 0.0)
+                    F.x[im-1][j][k] = (positive == 2) ? std::max(0.0, F.x[im-2][j][k]) : 0.0;
+            }
+        }
+    }
+}
 inline void BC_Jup::bcTheta() { BoundaryConditions<cJupiterModel>(m).bcTheta();  }
 inline void BC_Jup::bcPhi()   { BoundaryConditions<cJupiterModel>(m).bcPhi();    }
 
