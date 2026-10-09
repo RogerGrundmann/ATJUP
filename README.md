@@ -218,6 +218,7 @@ instead — so it has no `ATJUP_THERMAL_MASSFLUX` knob. The other three models d
 | `ATJUP_TURB_COUPLING` | 0 | feed the eddy viscosity into momentum, heat and species diffusion |
 | `ATJUP_NUE_MAX` | 1e5 | eddy-viscosity ceiling [m²/s] — a runaway guard, not the operative limiter |
 | `ATJUP_ABL_TAPER` | 0 | restore ATOM's boundary-layer taper of the eddy viscosity |
+| `ATJUP_TURB_WALL_HOLD` | 1 | reassert the closure's wall condition above the obstacle after every Runge-Kutta step, as ATOM does; with 0 (the behaviour until 2026-10-09) the step overwrites it and k there runs to its ceiling (1000 m²/s² at iteration 368) |
 
 Worth stating plainly, because it is easy to believe otherwise: **`turb_model` in the XML does not
 Since 2026-10-09 **`turb_model` is the switch of the closure**, as in ATOM: `none` (or `laminar`,
@@ -281,6 +282,7 @@ value. `ATJUP_TURB=1` set explicitly gave then what the default gives now, byte 
 | `ATJUP_U_INIT_SCALE` | 0 | scale the prescribed **radial** branch of the initial overturning cells; 1.0 (the default until 2026-10-08) peaks at 40 m/s, 0.025 at 1 m/s. The branch is the whole of the model's velocity divergence: at 1.0 the H2O column loses 3.8 % in 224 iterations, at 0 it closes |
 | `ATJUP_RK_SCALAR_SYNC` | 2 | after the saturation adjustment, copy the condensable fields (1) and the temperature (2) into the time-level copies the Runge-Kutta step integrates from, so the adjustment's condensate and latent heat survive the step; 0 (the default until 2026-10-08) discards them every step |
 | `ATJUP_RESTART_STRIDE` | 100 | iterations between the periodic restart dumps `jup_restart_<iter>.bin` (814 MB each, written only when the state is clean); 0 = none. `checkpoint_save_iter = -1` in the config switches off the one explicit dump only, not these |
+| `ATJUP_VTK_STRIDE` | 0 | write the VTK slices every n iterations; 0 = at every `checkpoint`, which also sets the cadence of the printed extrema. `ATJUP_VTK_STRIDE=100` keeps the printout dense and the files few |
 | `ATJUP_DT` | 0.001 | nondimensional timestep. 0.001 = 1.4 s of Jupiter time; radial CFL is only 0.015, so 0.02 (CFL 0.3) is 28 s/iteration |
 | `ATJUP_BC_RADIUS_COPY` | 0 | plain copy instead of extrapolation at the radial walls (diagnostic) |
 | `ATJUP_BC_MOUNT_COPY` | 0 | plain copy instead of extrapolation for the scalars in the obstacle surface cells (diagnostic; separates the extrapolation overshoot from the advection scheme in the flank-cooling runaway) |

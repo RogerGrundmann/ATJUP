@@ -788,6 +788,27 @@ void cJupiterModel::Run(){
         BC_Jup(*this).bcSolidGround();                                  // values inside mountains
         cwb_mark(CW_BC_SOLID);
 
+        // ATJUP_TURB_WALL_HOLD (2026-10-09; DEFAULT 1 on the user's word, 0 restores): reassert the closure's wall
+        // condition after the Runge-Kutta step and the boundary conditions, every iteration, as
+        // ATOM does (cAtmosphereModel.cpp: apply_wall_bc() after bcRadius). TurbulenceJup::run()
+        // writes it at the first fluid cell above the SeaMount BEFORE RungeKuttaJup, and
+        // RungeKuttaJup integrates k* and dis* from tken / disn, the copies restoreVar made one
+        // step earlier -- so the wall values never reached the step. In ATOM the wall row is
+        // i = 0, which the step does not integrate; here it is an interior fluid cell, which it
+        // does. MEASURED (satchk/T1, cell i=27 j=97 k=180): dis* climbs from the wall value
+        // 3.7e-6 to 7.0 in 224 iterations and k* from 85 to 243 m2/s2, the production sitting on
+        // its 20 x destruction limiter throughout. Placed before restoreVar, so the held values
+        // are what the next step integrates from.
+        // 448 iterations, 6 threads (satchk/V0 against V2): without it max k* reaches its ceiling
+        // of 1000 m2/s2 at iteration 368 and stays on it; with it 287 m2/s2 at 448, no runaway,
+        // and every printed extremum outside the closure identical. What it does NOT remove: the
+        // cells above the wall cell sit in the shear layer over the obstacle and still grow,
+        // linearly now (+10 m2/s2 per 16 iterations, 86 -> 257 m2/s2 at i=28 between iterations
+        // 100 and 400). ATJUP_TURB_COUPLING=1 changes neither picture (V1, V3): -3 % at most.
+        static const int turb_wall_hold = [](){
+            const char* e = getenv("ATJUP_TURB_WALL_HOLD"); return e ? atoi(e) : 1; }();
+        if(use_turbulence_model && turb_wall_hold != 0) TurbulenceJup(*this).apply_wall_bc();
+
         // Dry convective adjustment. It runs on the state the Runge-Kutta step just produced,
         // after the boundary conditions so that bcSolidGround has already written the solid
         // cells it must not mix across, and before restoreVar so that the adjusted temperature
@@ -839,10 +860,13 @@ void cJupiterModel::Run(){
             printf("      ATJUP: [CWB]   %-46s %+.6e\n", "unattributed", cw_last - cw_first - sum_);
         }
 
-        if(iter_n % checkpoint == 0){
-            printMinMax();
-            writeData();
-        }
+        // ATJUP_VTK_STRIDE=<n> (2026-10-09): write the VTK slices every n iterations instead of at
+        // every checkpoint, so the printed extrema can stay dense while the files do not. Default
+        // 0 = follow `checkpoint`, as before. Iteration 0 is written before the loop either way.
+        static const int vtk_stride = [](){
+            const char* e = getenv("ATJUP_VTK_STRIDE"); return e ? atoi(e) : 0; }();
+        if(iter_n % checkpoint == 0) printMinMax();
+        if(vtk_stride > 0 ? (iter_n % vtk_stride == 0) : (iter_n % checkpoint == 0)) writeData();
 
         // Full 3D panorama .vts every 100 iterations (carries the radiation fields), independent
         // of the checkpoint/panorama_print cadence.
