@@ -77,7 +77,7 @@ void cJupiterModel::printMinMax(){
     searchMinMax_3D(" max 3D Q_rad ", " min 3D Q_rad ", " W/m3", Q_rad, 1.0);
     searchMinMax_3D(" max 3D emissivity ", " min 3D emissivity ", " /", epsilon, 1.0);
 
-    // k-omega SST turbulence (physical units; zero unless ATJUP_TURB is set)
+    // k-omega SST turbulence (physical units; zero with ATJUP_TURB=0)
     cout << endl << " Turbulence (dimensionless: k*, eps*/omega*, nue*) " << endl;
     searchMinMax_3D(" max 3D tke ", " min 3D tke ", " /", tke, 1.0);
     searchMinMax_3D(" max 3D dis ", " min 3D dis ", " /", dis, 1.0);

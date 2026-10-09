@@ -97,8 +97,8 @@ void cJupiterModel::paraview_panorama_vts(int n){
     dump_array("P_nh4sh_mmd", P_nh4sh, 86400.0, Jupiter_panorama_vts_File);
     dump_array("Q_precip_mW_m3", Q_precip, 1.0e3, Jupiter_panorama_vts_File);
 
-    // Turbulence (TurbulenceJup: k-epsilon / k-omega / k-omega SST). Zero unless ATJUP_TURB is
-    // set. These streams use precision(4)+ios::fixed, so anything below 5e-5 rounds to 0.0000:
+    // Turbulence (TurbulenceJup: k-epsilon / k-omega / k-omega SST). Zero with ATJUP_TURB=0.
+    // These streams use precision(4)+ios::fixed, so anything below 5e-5 rounds to 0.0000:
     // nue* is ~7e-5 and would vanish, and k* ~7e-3 would keep only two digits. The two worst-hit
     // fields are therefore written in PHYSICAL units, with the unit in the name:
     //   tke_m2s2  = k*   * u_0^2            [m2/s2]  (~67 for k* = 6.7e-3)
@@ -205,8 +205,8 @@ void cJupiterModel::paraview_vtk_radial(int n, int i_radial){
     dump_radial("P_nh4sh", P_nh4sh, 86400.0, i_radial, Jupiter_vtk_radial_File);
     dump_radial("Q_precip", Q_precip, 1.0e3, i_radial, Jupiter_vtk_radial_File);
 
-    // Turbulence (TurbulenceJup: k-epsilon / k-omega / k-omega SST). Zero unless ATJUP_TURB is
-    // set. These streams use precision(4)+ios::fixed, so anything below 5e-5 rounds to 0.0000:
+    // Turbulence (TurbulenceJup: k-epsilon / k-omega / k-omega SST). Zero with ATJUP_TURB=0.
+    // These streams use precision(4)+ios::fixed, so anything below 5e-5 rounds to 0.0000:
     // nue* is ~7e-5 and would vanish, and k* ~7e-3 would keep only two digits. The two worst-hit
     // fields are therefore written in PHYSICAL units, with the unit in the name:
     //   tke_m2s2  = k*   * u_0^2            [m2/s2]  (~67 for k* = 6.7e-3)
@@ -338,8 +338,8 @@ void cJupiterModel::paraview_vtk_zonal(int n, int k_zonal){
     dump_zonal("P_nh4sh", P_nh4sh, 86400.0, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("Q_precip", Q_precip, 1.0e3, k_zonal, Jupiter_vtk_zonal_File);
 
-    // Turbulence (TurbulenceJup: k-epsilon / k-omega / k-omega SST). Zero unless ATJUP_TURB is
-    // set. These streams use precision(4)+ios::fixed, so anything below 5e-5 rounds to 0.0000:
+    // Turbulence (TurbulenceJup: k-epsilon / k-omega / k-omega SST). Zero with ATJUP_TURB=0.
+    // These streams use precision(4)+ios::fixed, so anything below 5e-5 rounds to 0.0000:
     // nue* is ~7e-5 and would vanish, and k* ~7e-3 would keep only two digits. The two worst-hit
     // fields are therefore written in PHYSICAL units, with the unit in the name:
     //   tke_m2s2  = k*   * u_0^2            [m2/s2]  (~67 for k* = 6.7e-3)
@@ -457,8 +457,8 @@ void cJupiterModel::paraview_vtk_longal(int n, int j_longal){
     dump_longal("P_nh4sh", P_nh4sh, 86400.0, j_longal, Jupiter_vtk_longal_File);
     dump_longal("Q_precip", Q_precip, 1.0e3, j_longal, Jupiter_vtk_longal_File);
 
-    // Turbulence (TurbulenceJup: k-epsilon / k-omega / k-omega SST). Zero unless ATJUP_TURB is
-    // set. These streams use precision(4)+ios::fixed, so anything below 5e-5 rounds to 0.0000:
+    // Turbulence (TurbulenceJup: k-epsilon / k-omega / k-omega SST). Zero with ATJUP_TURB=0.
+    // These streams use precision(4)+ios::fixed, so anything below 5e-5 rounds to 0.0000:
     // nue* is ~7e-5 and would vanish, and k* ~7e-3 would keep only two digits. The two worst-hit
     // fields are therefore written in PHYSICAL units, with the unit in the name:
     //   tke_m2s2  = k*   * u_0^2            [m2/s2]  (~67 for k* = 6.7e-3)

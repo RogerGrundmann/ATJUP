@@ -573,7 +573,7 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     // rho is the LOCAL density from the ideal-gas law (essential so the thin, cold upper
     // atmosphere — where Q_rad>0 heats — responds strongly and relaxes toward radiative
     // equilibrium). Gated by ATJUP_RAD_COUPLING (default 0 = off, bit-identical); Q_rad is
-    // nonzero only when ATJUP_RADIATION is enabled.
+    // nonzero only when ATJUP_RADIATION is enabled (the default).
     //
     // SCALING: rad_coupling = 1.0 is the PHYSICALLY CORRECT value — the expression above is the
     // exact nondimensional form of dT/dt = Q/(rho*cp) under this model's scaling (lengths by
@@ -660,7 +660,7 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     // viscosity that nothing ever used. Scalars get nue*/Pr_t with a turbulent Prandtl (Schmidt)
     // number of 0.9, the standard value for shear-driven turbulence, in place of the laminar
     // 1/(sc*re). Gated by ATJUP_TURB_COUPLING (default 0 = off, bit-identical); nue is nonzero
-    // only when ATJUP_TURB is enabled.
+    // only when ATJUP_TURB is enabled (the default).
     static const double turb_coupling = [](){ const char* e = getenv("ATJUP_TURB_COUPLING"); return e ? atof(e) : 0.0; }();
     constexpr double Pr_t = 0.9;
     const double nue_t   = (turb_coupling != 0.0 && std::isfinite(nue.x[i][j][k]))
@@ -693,6 +693,8 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     // number re for the molecular background of every other equation, so k*/dis* use it too —
     // mixing the two would give the turbulence equations a molecular floor several orders of
     // magnitude away from that of the momentum equations they are coupled to.
+    // NOTE: this default is 0 while turb_enabled() in cJupiterModel.cpp defaults to 1 since
+    // 8df7626. An unset ATJUP_TURB therefore runs TurbulenceJup but leaves rhs_tke = rhs_dis = 0.
     static const int turb_on = [](){ const char* e = getenv("ATJUP_TURB"); return e ? atoi(e) : 0; }();
     // 0 = k-epsilon (Chien 1982), 1 = k-omega (Wilcox 1988), 2 = k-omega SST (Menter 1994).
     // Same selection rule as TurbulenceJup: param.py's turb_model, overridable by ATJUP_TURB_MODEL,
@@ -1233,8 +1235,8 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     // ===== Turbulence transport equations =====
     // dk*/dt   = -v.grad k*   + div((1/re + nue*/sigma_k) grad k*)   + (P_k - Y_k)
     // ddis*/dt = -v.grad dis* + div((1/re + nue*/sigma_w) grad dis*) + (P_w - Y_w + D_w)
-    // With the closure off both are identically zero, so RungeKuttaJup leaves k*/dis* at their
-    // initial values and the run stays bit-identical to the pre-turbulence model.
+    // With turb_on = 0 both are identically zero, so RungeKuttaJup leaves k*/dis* at the values
+    // TurbulenceJup wrote (see the note at turb_on above: that is the case of an unset ATJUP_TURB).
     if(turb_on != 0){
         rhs_tke.x[i][j][k] =
             - transport_tke

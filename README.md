@@ -44,8 +44,9 @@ by Imke de Pater and Jack J. Lissauer was inevitable.
   pressure problem; horizontal velocities tapered to a quiet grid ceiling; non-amplifying plain-copy
   treatment at the polar singularity
 
-The three modules below are **off by default**, so a stock run reproduces the baseline dynamics
-unchanged. See *Optional modules*.
+The three modules below are **on by default** (microphysics since 2026-07-31, radiation and
+turbulence since `8df7626`), but none of their coupling knobs is, so they fill their own fields
+without feeding the temperature or momentum equations. See *Optional modules*.
 
 - **Microphysics:** three-category (rain / snow / graupel) COSMO scheme, run independently for H₂O and
   NH₃, plus Stokes sedimentation of NH₄SH crystals within their stability band. Phase changes at the
@@ -175,14 +176,16 @@ diff ../ATSAT/planet/SHARED.md5 planet/SHARED.md5
 
 ## Optional modules
 
-Every module is off by default and a stock run is unaffected by their presence. Set the environment
-variable to enable.
+The three modules run by default; their **coupling** knobs are off by default, so a stock run
+computes `Q_rad`, `Q_precip` and the eddy viscosity without feeding them back into the temperature
+or momentum equations (the microphysics does remove the condensate it converts). Set a module's
+variable to 0 to switch it off.
 
 **Radiation**
 
 | Variable | Default | Effect |
 |----------|---------|--------|
-| `ATJUP_RADIATION` | 0 | grey two-stream solve; fills `Q_rad`, `radiation`, `epsilon` |
+| `ATJUP_RADIATION` | 1 | grey two-stream solve; fills `Q_rad`, `radiation`, `epsilon` |
 | `ATJUP_RAD_COUPLING` | 0 | feed `Q_rad` into the temperature equation (see note below) |
 | `ATJUP_SOLAR` | 1 | absorbed shortwave channel (only acts with `ATJUP_RADIATION`) |
 | `ATJUP_CIA_STRENGTH` | 1 | scale the H₂/He collision-induced opacity |
@@ -203,24 +206,30 @@ instead — so it has no `ATJUP_THERMAL_MASSFLUX` knob. The other three models d
 
 | Variable | Default | Effect |
 |----------|---------|--------|
-| `ATJUP_PRECIP` | 0 | three-category microphysics + NH₄SH sedimentation |
+| `ATJUP_PRECIP` | 1 | three-category microphysics + NH₄SH sedimentation |
 | `ATJUP_PRECIP_COUPLING` | 0 | feed the latent heat `Q_precip` into the temperature equation |
 
 **Turbulence**
 
 | Variable | Default | Effect |
 |----------|---------|--------|
-| `ATJUP_TURB` | 0 | run the closure |
+| `ATJUP_TURB` | 1 | run the closure (see the note below on what an *unset* variable does) |
 | `ATJUP_TURB_MODEL` | *param* | override `turb_model` (`k_epsilon`, `k_omega`, `k_omega_SST`) |
 | `ATJUP_TURB_COUPLING` | 0 | feed the eddy viscosity into momentum, heat and species diffusion |
 | `ATJUP_NUE_MAX` | 1e5 | eddy-viscosity ceiling [m²/s] — a runaway guard, not the operative limiter |
 | `ATJUP_ABL_TAPER` | 0 | restore ATOM's boundary-layer taper of the eddy viscosity |
 
 Worth stating plainly, because it is easy to believe otherwise: **`turb_model` in the XML does not
-switch the closure on.** It only selects which closure `ATJUP_TURB=1` would run. Without that
-variable `tke` and `nue` are identically zero however the XML is written, and without
+switch the closure on or off.** It only selects which closure `ATJUP_TURB` runs. With
+`ATJUP_TURB=0` `tke` and `nue` are identically zero however the XML is written, and without
 `ATJUP_TURB_COUPLING=1` the eddy viscosity is computed but never reaches the momentum, heat or
-species equations. A run described as "with k-ω SST" that set only the XML had no turbulence in it.
+species equations. Until `8df7626` `ATJUP_TURB` defaulted to 0, so a run of that time described as
+"with k-ω SST" that set only the XML had no turbulence in it.
+
+An **unset** `ATJUP_TURB` is not the same as `ATJUP_TURB=1`. `cJupiterModel.cpp` defaults it to 1,
+so `TurbulenceJup` runs and fills `tke`, `dis` and `nue`; `RHS_Jup_Turb.cpp` reads the variable
+separately and still defaults it to 0, so `rhs_tke` and `rhs_dis` are zero and k and ω are not
+advanced by the Runge-Kutta step. Set `ATJUP_TURB=1` explicitly for the prognostic closure.
 
 **Initial and boundary conditions**
 
@@ -487,8 +496,8 @@ coldest cell in the model holds at −163 °C until iteration 125 and then falls
 Eight iterations later the field is non-finite. A runaway updraft cools adiabatically at 2.33 K per
 kilometre climbed, and at several hundred m/s it climbs faster than anything can warm it back. The
 alternative candidate — a diffusive limit from a large turbulent viscosity — is ruled out: `tke` and
-`nue` are identically zero, because **`ATJUP_TURB` defaults to 0 regardless of the `turb_model` set
-in the XML**. With the closure off the only dissipation is 1/re = 0.001 plus the wall viscosity near
+`nue` are identically zero, because **`ATJUP_TURB` defaulted to 0 at the time (1 since `8df7626`) regardless of the
+`turb_model` set in the XML**. With the closure off the only dissipation is 1/re = 0.001 plus the wall viscosity near
 the obstacle, so the flow is very nearly inviscid, which is why it accelerates that far.
 
 The practical consequence at the time: **the body forces were correct but the model was not yet

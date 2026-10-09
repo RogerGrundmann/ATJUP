@@ -40,25 +40,27 @@ static int    shapiro_vel_order()  { static const int    v = [](){ const char* e
 static double shapiro_strength()   { static const double v = [](){ const char* e = getenv("ATJUP_SHAPIRO_STRENGTH");   return e ? atof(e) : 1.0; }(); return v; }
 static int    shapiro_vel_inloop() { static const int    v = [](){ const char* e = getenv("ATJUP_VEL_SHAPIRO_INLOOP"); return e ? atoi(e) : 0;   }(); return v; }
 
-// Radiation scaffold knob (default off = bit-identical). When set, RadiationJup runs
-// each even iteration and fills the diagnostic radiation/epsilon/Q_rad arrays; it does
-// not yet feed the temperature equation.
+// Radiation knob. DEFAULT ON since 8df7626 (ATJUP_RADIATION=0 switches it off). RadiationJup
+// runs each even iteration and fills the diagnostic radiation/epsilon/Q_rad arrays; Q_rad only
+// reaches rhs_t if ATJUP_RAD_COUPLING is also set (see RHS_Jup_Turb.cpp).
 //static int    radiation_enabled()  { static const int    v = [](){ const char* e = getenv("ATJUP_RADIATION");           return e ? atoi(e) : 0;   }(); return v; }
 static int    radiation_enabled()  { static const int    v = [](){ const char* e = getenv("ATJUP_RADIATION");           return e ? atoi(e) : 1;   }(); return v; }
 
-// Precipitation microphysics knob (default off = bit-identical). When set, PrecipitationJup
+// Precipitation microphysics knob (default on, see precip_enabled() below). PrecipitationJup
 // runs once per iteration and fills the rain/snow/graupel fluxes for H2O and NH3 plus the
 // NH4SH settling flux, and the latent-heat field Q_precip. It DOES feed back: the condensate
 // it converts is removed from the cloud/ice fields in place. That happens after the three
 // SaturationAdjustmentJup calls, so the removal persists and the next iteration must draw on
 // the vapour reservoir to rebuild cloud — which is what makes the rate self-limiting.
 // Q_precip only reaches rhs_t if ATJUP_PRECIP_COUPLING is also set (see RHS_Jup_Turb.cpp).
-// Turbulence knob (default off = bit-identical). Mirrors ATOM's TurbulenceAtm: all three models
-// (k_epsilon | k_omega | k_omega_SST) are available, selected by cJupiterModel::turb_model or
-// the ATJUP_TURB_MODEL environment variable. Fills tke/dis/nue/prod/tke_source/dis_source.
-// With it on, k* and dis* are prognostic: RHS_Jup_Turb.cpp assembles rhs_tke/rhs_dis and
-// RungeKutta_Jup_Turb.cpp integrates them, as in ATOM. nue* only reaches the momentum and
-// scalar equations if ATJUP_TURB_COUPLING is also set.
+// Turbulence knob. DEFAULT ON since 8df7626 (ATJUP_TURB=0 switches it off). Mirrors ATOM's
+// TurbulenceAtm: all three models (k_epsilon | k_omega | k_omega_SST) are available, selected by
+// cJupiterModel::turb_model or the ATJUP_TURB_MODEL environment variable. Fills
+// tke/dis/nue/prod/tke_source/dis_source. k* and dis* are prognostic (RHS_Jup_Turb.cpp assembles
+// rhs_tke/rhs_dis, RungeKutta_Jup_Turb.cpp integrates them, as in ATOM) ONLY IF ATJUP_TURB IS SET
+// EXPLICITLY: RHS_Jup_Turb.cpp reads the variable on its own and still defaults to 0, so in a
+// stock run TurbulenceJup runs here but rhs_tke = rhs_dis = 0. nue* only reaches the momentum
+// and scalar equations if ATJUP_TURB_COUPLING is also set.
 //static int    turb_enabled()       { static const int    v = [](){ const char* e = getenv("ATJUP_TURB");                 return e ? atoi(e) : 0;   }(); return v; }
 static int    turb_enabled()       { static const int    v = [](){ const char* e = getenv("ATJUP_TURB");                 return e ? atoi(e) : 1;   }(); return v; }
 
