@@ -769,6 +769,9 @@ private:
     // disagreement about where the hydrostatic pressure may respond to latent heating, and
     // sharing the routine was not the moment to settle it. False keeps ATJUP as it was.
     static bool satadj_updates_pstat(){ return false; }
+    // Newton step of the saturation adjustment on by default (2026-10-09): see the note on
+    // <TAG>_SATADJ_NEWTON in the shared SaturationAdjustment.h. ATJUP_SATADJ_NEWTON=0 restores.
+    static bool satadj_default_newton(){ return true; }
 
     // ---- What the SHARED PressureSolver.h asks of this model ----
     //
