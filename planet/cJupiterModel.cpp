@@ -300,6 +300,52 @@ void cJupiterModel::Run(){
 
     use_turbulence_model = turb_switch(turb_model);                     // the one closure switch (see turb_switch above)
 
+    // ATJUP_TURB_WALL_OMEGA (2026-10-09; DEFAULT 1 on the user's word, 0 restores): replace the wall value of
+    // omega* that apply_wall_bc() writes at the first fluid cell above the SeaMount by a
+    // WALL FUNCTION. apply_wall_bc() uses Menter's viscous-sublayer value 60 nu / (beta_1 y^2),
+    // which is meant for a first cell at y+ ~ 1; on a 3.5 km layer it gives omega* = 3.7e-6,
+    // i.e. zero, where a wall should carry the LARGEST omega of the column. Held at zero (as it
+    // is since ATJUP_TURB_WALL_HOLD) the cell is a sink of omega for its neighbour: MEASURED
+    // (satchk/V2, i=28 j=97 k=180) omega* there stays at 16.3 against a source of +36 per time
+    // unit, k*/omega* stays high, production is 4.6 x destruction and k* grows without end.
+    // The wall function is the log-layer value blended with the viscous one (Menter's
+    // automatic wall treatment):
+    //     omega_log = u_tau / (sqrt(beta*) kappa y),   omega = sqrt(omega_vis^2 + omega_log^2)
+    // with y the distance from the wall face to the cell, half a layer, and u_tau the
+    // friction velocity TurbulenceJup already computes. k-epsilon is left alone (its wall
+    // value is epsilon = 0 by construction). Applied after every apply_wall_bc(): init, run
+    // and the hold.
+    // 896 iterations, 8 threads (satchk/Z0 against Z1): max k* 502 -> 231 m2/s2 at 896, and
+    // its growth per 32 iterations at the end 11 -> 2.5 m2/s2, falling by about a tenth each
+    // time -- it is levelling off near 250, where without the wall function it is still
+    // climbing towards roughly 700. The wall omega* is 22.5 at iteration 100 and 14.6 at 800
+    // (it follows u_tau as the flow over the obstacle slows), omega* of the cell above it 16
+    // -> 23. 103 of 110 printed extrema identical: nothing outside the closure moves.
+    // ATJUP_TURB_COUPLING=1 on top (Z2): -1.4 %. NEITHER arm is flat at 896.
+    static const int turb_wall_omega = [](){
+        const char* e = getenv("ATJUP_TURB_WALL_OMEGA"); return e ? atoi(e) : 1; }();
+    const bool turb_is_k_eps = [&](){
+        const char* e = getenv("ATJUP_TURB_MODEL");
+        return (e ? std::string(e) : turb_model) == "k_epsilon"; }();
+    auto turbWallOmega = [&](){
+        if(turb_wall_omega == 0 || turb_is_k_eps) return;
+        constexpr double nue_gas_phys = 1.8e-5;     // kin. viscosity of the H2/He mix [m2/s]
+        constexpr double bet_star = 0.09, bet_1 = 0.0333, kappa = 0.41;
+        const double nd_omega = L_atm * 1.0e3 / u_0;                    // omega_phys -> omega*
+        #pragma omp parallel for collapse(2) schedule(static)
+        for(int j = 0; j < jm; j++){
+            for(int k = 0; k < km; k++){
+                const int i_w = surface_index(j, k);
+                if(i_w <= 0 || i_w >= im - 1) continue;                 // no obstacle in this column
+                const double y1     = std::max(layer_thickness_m(std::max(i_w - 1, 0)), 1.0);
+                const double y      = 0.5 * y1;
+                const double om_vis = 60.0 * nue_gas_phys / (bet_1 * y1 * y1);
+                const double om_log = vel_star.y[j][k] / (std::sqrt(bet_star) * kappa * y);
+                dis.x[i_w][j][k] = std::sqrt(om_vis * om_vis + om_log * om_log) * nd_omega;
+            }
+        }
+    };
+
     #ifdef _OPENMP
         printf("\n\n   number of processors: %d\n\n", omp_get_num_procs());
 
@@ -557,7 +603,7 @@ void cJupiterModel::Run(){
     // Seed the turbulence fields from the ABL profile and prime the source terms once,
     // mirroring ATOM's TurbulenceAtm::init(). Needs the velocity field, so it comes after
     // the initial BCs.
-    if(use_turbulence_model) TurbulenceJup(*this).init();
+    if(use_turbulence_model){ TurbulenceJup(*this).init(); turbWallOmega(); }
 
     restoreVar(1.0);
 
@@ -729,7 +775,7 @@ void cJupiterModel::Run(){
 
         // Turbulence closure. Reads the velocity field left by RK4 and the BCs, so it runs
         // after them, exactly as ATOM calls TurbulenceAtm::run() from its own iteration loop.
-        if(use_turbulence_model) TurbulenceJup(*this).run();
+        if(use_turbulence_model){ TurbulenceJup(*this).run(); turbWallOmega(); }
 
         ChemistryJup(*this).DiffMassFluxJup();                          // must precede ChemMassRateJup: massflux = w - difflux
 
@@ -807,7 +853,7 @@ void cJupiterModel::Run(){
         // 100 and 400). ATJUP_TURB_COUPLING=1 changes neither picture (V1, V3): -3 % at most.
         static const int turb_wall_hold = [](){
             const char* e = getenv("ATJUP_TURB_WALL_HOLD"); return e ? atoi(e) : 1; }();
-        if(use_turbulence_model && turb_wall_hold != 0) TurbulenceJup(*this).apply_wall_bc();
+        if(use_turbulence_model && turb_wall_hold != 0){ TurbulenceJup(*this).apply_wall_bc(); turbWallOmega(); }
 
         // Dry convective adjustment. It runs on the state the Runge-Kutta step just produced,
         // after the boundary conditions so that bcSolidGround has already written the solid

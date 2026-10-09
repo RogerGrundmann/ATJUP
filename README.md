@@ -219,6 +219,7 @@ instead — so it has no `ATJUP_THERMAL_MASSFLUX` knob. The other three models d
 | `ATJUP_NUE_MAX` | 1e5 | eddy-viscosity ceiling [m²/s] — a runaway guard, not the operative limiter |
 | `ATJUP_ABL_TAPER` | 0 | restore ATOM's boundary-layer taper of the eddy viscosity |
 | `ATJUP_TURB_WALL_HOLD` | 1 | reassert the closure's wall condition above the obstacle after every Runge-Kutta step, as ATOM does; with 0 (the behaviour until 2026-10-09) the step overwrites it and k there runs to its ceiling (1000 m²/s² at iteration 368) |
+| `ATJUP_TURB_WALL_OMEGA` | 1 | give the wall cell above the obstacle a log-layer wall function for ω; 0 (the behaviour until 2026-10-09) leaves the viscous-sublayer value, which on a 3.5 km layer is zero and drains ω from the shear layer above it. Max k at iteration 896: 502 with 0, 231 m²/s² with 1, levelling off |
 
 Worth stating plainly, because it is easy to believe otherwise: **`turb_model` in the XML does not
 Since 2026-10-09 **`turb_model` is the switch of the closure**, as in ATOM: `none` (or `laminar`,
