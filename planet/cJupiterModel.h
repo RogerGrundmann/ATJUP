@@ -473,7 +473,14 @@ private:
 
     double C_nh3_ice    = 34.948;                                       // NH3 ice SVP constant [bar]; calibrated at T_tp=195.4 K
     double L0_nh3_ice   = 2692.5;                                       // NH3 L0_ice = 2016.0*(ls/lv) = 2016.0*(1832/1372) [J/g]
-    double del_alf_nh3_ice = -1.2;
+    // -0.888 SINCE 2026-10-09, the liquid's value, as the rule above says. It was -1.2, which is
+    // not this model's liquid exponent, and the two curves did not meet: E_ice / E_liquid at the
+    // triple point (195.4 K) was 0.034 instead of ~1, and 0.0026 at 140 K where it should be
+    // 0.060 -- the NH3 ice saturation pressure was 23 to 30 times too low through the whole NH3
+    // cloud range. C_nh3_ice = 34.948 is the constant that belongs to -0.888 (continuity gives
+    // 34.954). The liquid curve itself is right: 0.0570 bar at 195.4 K against a measured triple
+    // point of 0.0606 bar. ATJUP_NH3_ICE_ALF=-1.2 restores the old value.
+    double del_alf_nh3_ice = -0.888;
     double del_bet_nh3_ice = 0.0;
 
     double del_alf_h2s = 0.0;

@@ -300,6 +300,10 @@ void cJupiterModel::Run(){
 
     use_turbulence_model = turb_switch(turb_model);                     // the one closure switch (see turb_switch above)
 
+    // ATJUP_NH3_ICE_ALF overrides the NH3 ice exponent (cJupiterModel.h has the note); -1.2 is
+    // the value every run before 2026-10-09 was made with.
+    if(const char* e = getenv("ATJUP_NH3_ICE_ALF")) del_alf_nh3_ice = atof(e);
+
     // ATJUP_TURB_WALL_OMEGA (2026-10-09; DEFAULT 1 on the user's word, 0 restores): replace the wall value of
     // omega* that apply_wall_bc() writes at the first fluid cell above the SeaMount by a
     // WALL FUNCTION. apply_wall_bc() uses Menter's viscous-sublayer value 60 nu / (beta_1 y^2),
