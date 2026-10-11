@@ -664,9 +664,22 @@ void cJupiterModel::Run(){
         if(!cwb_on) return;
         const double w_ = cwb_col(h2o, h2o_cloud, h2o_ice);
         cw_sum[stage] += w_ - cw_last; cw_last = w_; };
+    // The plane i = 0 alone, same weights and unit. It is not integrated: bcRadius sets it from
+    // the cells above, so its part of the column is the boundary form's doing and is printed
+    // apart from the integrated cells (2026-10-11, see ATJUP_BC_SPECIES_WALL_COPY in BC_Jup.h).
+    auto cwb_plane0 = [&]() -> double {
+        double s_ = 0.0;
+        const double dz = layer_thickness_m(0);
+        #pragma omp parallel for collapse(2) schedule(static) reduction(+:s_)
+        for(int k = 0; k < km; k++)
+            for(int j = 0; j < jm; j++)
+                s_ += std::sin(the.z[j]) * dz * (h2o.x[0][j][k] + h2o_cloud.x[0][j][k] + h2o_ice.x[0][j][k]);
+        return s_ * 1.0e3 / cw_norm; };
+    double cw_first0 = 0.0;
     if(cwb_on){
         for(int j = 0; j < jm; j++) cw_norm += std::sin(the.z[j]) * km;
         cw_last = cw_first = cwb_col(h2o, h2o_cloud, h2o_ice);
+        cw_first0 = cwb_plane0();
     }
 
     for(iter_n = iter_start; iter_n <= nm; iter_n++){
@@ -899,6 +912,11 @@ void cJupiterModel::Run(){
             double sum_ = 0.0;
             printf("\n      ATJUP: [CWB] H2O column (vapour+cloud+ice), cumulative over iterations %d..%d, g/m2:  start %.9e  now %.9e  change %+.6e (%+.4f %%)\n",
                    iter_start, iter_n, cw_first, cw_last, cw_last - cw_first, 100.0 * (cw_last / cw_first - 1.0));
+            {
+                const double p0_ = cwb_plane0() - cw_first0, in_ = (cw_last - cw_first) - p0_;
+                printf("      ATJUP: [CWB]   of the change: plane i=0 (set by bcRadius) %+.6e, integrated cells i>=1 %+.6e (%+.4f %% of their start)\n",
+                       p0_, in_, 100.0 * in_ / (cw_first - cw_first0));
+            }
             for(int q_ = 0; q_ < CW_N; q_++){
                 printf("      ATJUP: [CWB]   %-46s %+.6e\n", cw_name[q_], cw_sum[q_]); sum_ += cw_sum[q_];
                 if(q_ == CW_RK_RESET)

@@ -148,11 +148,27 @@ namespace BCJupKnobs {
 // state that the first budget mark and the first VTK files see, so the "start" of the column
 // was 2 372 g/m2 too low and the run's change read +0.087 % where it is -0.036 %. With 2 the
 // planes carry cloud where they carried zero: +1 268 g/m2 in the column, diffusion +50.
+//
+// ATJUP_BC_SPECIES_WALL_COPY (2026-10-11; DEFAULT 1 on the user's word, 0 restores): close the BOTTOM wall for the
+// eleven species. The 2-point form f[0] = (4/3)f[1] - (1/3)f[2] has zero one-sided gradient at
+// i = 0, but the Runge-Kutta step differences the cell i = 1 CENTRED, and that stencil sees
+// f[0] - f[1] = (f[1] - f[2])/3: a third of the interior gradient, a diffusive flux through a
+// wall that is meant to be closed. MEASURED (satchk/J1000, 1000 iterations, ATJUP_CWB_DIAG): the
+// integrated cells i >= 1 gain about +5 100 g/m2 of H2O (+0.27 %; "RungeKutta: diffusion"
+// +5 267) while the extrapolated plane falls by 8 837 ("bcRadius"), and the flux grows as the
+// shoulder of the initial profile erodes (1/(sc re) = 1.64e-3, one level in ~380 iterations).
+// A 1-D diffusion of the band-mean profile with this wall form reproduces the run to three
+// digits at every level; with the copy f[0] = f[1] the integrated cells keep their sum exactly.
+// With 1 the plane i = 0 is a ghost of the first cell: the centred stencil sees no gradient
+// across the wall. First order, cannot overshoot, so the floor below never binds there. The top
+// plane, t, u, v, w and every flux field keep the form of the shared routine.
+// 1000 iterations, 8 threads (satchk/K1000 against J1000): "RungeKutta: diffusion" +5 267 ->
+// +53 g/m2, integrated cells about +5 100 -> -49 g/m2 (-0.003 %), 104 of 120 printed extrema
+// identical (t, u, v, w, tke among them). The plane now follows the first cell, so the column
+// WITH the plane falls further (-0.63 %): read ATJUP_CWB_DIAG's "integrated cells" line.
 inline void BC_Jup::bcRadius(){
     BoundaryConditions<cJupiterModel>(m).bcRadius();
 
-    static const int positive = BCJupKnobs::env_int("ATJUP_BC_RADIUS_POSITIVE", 1);
-    if(positive == 0) return;
     Array* species[] = {
         &m.h2o, &m.h2o_cloud, &m.h2o_ice,
         &m.h2s,
@@ -161,6 +177,18 @@ inline void BC_Jup::bcRadius(){
         &m.nh4sh };
     const int ns = (int)(sizeof(species) / sizeof(species[0]));
     const int im = m.im, jm = m.jm, km = m.km;
+
+    static const int wall_copy = BCJupKnobs::env_int("ATJUP_BC_SPECIES_WALL_COPY", 1);
+    if(wall_copy != 0){
+        #pragma omp parallel for
+        for(int j = 0; j < jm; j++)
+            for(int k = 0; k < km; k++)
+                for(int f = 0; f < ns; f++)
+                    species[f]->x[0][j][k] = species[f]->x[1][j][k];
+    }
+
+    static const int positive = BCJupKnobs::env_int("ATJUP_BC_RADIUS_POSITIVE", 1);
+    if(positive == 0) return;
     #pragma omp parallel for
     for(int j = 0; j < jm; j++){
         for(int k = 0; k < km; k++){
