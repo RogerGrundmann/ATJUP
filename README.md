@@ -247,6 +247,7 @@ value. `ATJUP_TURB=1` set explicitly gave then what the default gives now, byte 
 | `ATJUP_BC_RIGID_LID` | 1 | u = 0 at both radial walls |
 | `ATJUP_BC_TOP_TAPER` | 1 | taper v, w to zero over the top three layers |
 | `ATJUP_BC_POLE_COPY` | 1 | plain copy instead of extrapolation at the poles |
+| `ATJUP_BC_POLE_FILL` | 0 | 1 = also set the two rows next to each pole (`j = 1, 2` and their mirrors) from the first row the Runge-Kutta step integrates (`j = 3`): scalars and `u` by copy, `v`, `w` and the flux fields by a linear ramp to their zero on the axis. Without it those rows are written by nobody and keep the initial condition for the whole run |
 | `ATJUP_R_NH3_ADD` | *param* | deep well-mixed NH₃ density [kg/m³] |
 
 **Geometry, scaling and the obstacle**

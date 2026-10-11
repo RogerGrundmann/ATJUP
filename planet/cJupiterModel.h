@@ -756,6 +756,7 @@ private:
     static int bc_default_top_taper(){ return 1; }
     static int bc_default_pole_copy(){ return 1; }
     static int bc_default_radius_copy(){ return 0; }
+    static int bc_pole_open_rows(){ return 2; }   // rows next to each pole that RungeKutta does not integrate (<TAG>_BC_POLE_FILL)
 
     std::vector<Array*> bc_fields_radius();
     std::vector<Array*> bc_fields_theta_extrap();
