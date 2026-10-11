@@ -104,8 +104,7 @@ public:
         init_u(m.u, 157);  // 7. Ferrel / 8. Hadley center
         init_u(m.u, 158);
         init_u(m.u, 160);
-        init_u(m.u, 166);  init_u(m.u, 168);  init_u(m.u, 170);  init_u(m.u, 172);   // polar cells (2, not mirrored)
-        init_u(m.u, 174);  init_u(m.u, 176);  init_u(m.u, 178);  init_u(m.u, 180);
+        init_u(m.u, 165);  init_u(m.u, 168);  init_u(m.u, 172);  init_u(m.u, 176);  init_u(m.u, 180);   // polar cell (centre j172), mirror of the northern one
 
         // --------------------------------------------------------------------
         // v/w velocity: linear profile between surface and tropopause values
@@ -204,7 +203,8 @@ public:
         // polar-cell construction), with the branch signs alternating from the 8. Ferrel cell
         // and zero meridional flow enforced at the poles j=0 / j=180. Magnitudes follow the
         // existing +-40 m/s cell pattern; tune as the physics dictates.
-        // ONE polar cell per cap (rising centre), mirror-positioned N<->S. Unit:
+        // ONE polar cell per cap (rising centre), mirror-positioned N<->S (true of both caps
+        // since 2026-10-11). Unit:
         // [Z boundary] R(v:trop+40,surf-40 equatorward flank) P(rising centre, v=0)
         // R(v:trop-40,surf+40 poleward flank) [Z pole] — flow converges at the surface,
         // rises at the centre, diverges aloft (one closed rotation, no redundant divider).
@@ -213,14 +213,18 @@ public:
         init_v_or_w(m.v,   8,   0.0,   0.0);   init_v_or_w(m.w,   8,   0.0,   0.0);   // rising centre
         init_v_or_w(m.v,   4, -40.0,  40.0);   init_v_or_w(m.w,   4,   0.0,   0.0);   // poleward flank
         init_v_or_w(m.v,   0,   0.0,   0.0);   init_v_or_w(m.w,   0,   0.0,   0.0);   // north pole
-        // southern cap: kept as two cells (Jupiter is not equator-symmetric; not mirrored to N)
-        init_v_or_w(m.v, 166, -40.0,  40.0);   init_v_or_w(m.w, 166,   0.0,   0.0);   //  9. equatorward flank
-        init_v_or_w(m.v, 168,   0.0,   0.0);   init_v_or_w(m.w, 168,   0.0,   0.0);   //  9. rising centre
-        init_v_or_w(m.v, 170,  40.0, -40.0);   init_v_or_w(m.w, 170,   0.0,   0.0);   //  9. poleward flank
-        init_v_or_w(m.v, 172,   0.0,   0.0);   init_v_or_w(m.w, 172,   0.0,   0.0);   //  9./10. boundary
-        init_v_or_w(m.v, 174, -40.0,  40.0);   init_v_or_w(m.w, 174,   0.0,   0.0);   // 10. equatorward flank
-        init_v_or_w(m.v, 176,   0.0,   0.0);   init_v_or_w(m.w, 176,   0.0,   0.0);   // 10. rising centre
-        init_v_or_w(m.v, 178,  40.0, -40.0);   init_v_or_w(m.w, 178,   0.0,   0.0);   // 10. poleward flank
+        // southern cap: THE MIRROR OF THE NORTHERN ONE since 2026-10-11 (the user's word) --
+        // centre j=172, flanks j=168/176, boundaries j=165/180, i.e. j -> 180 - j with the sign
+        // of v reversed. Until then it carried TWO cells of half the width (flanks 166 / 170 /
+        // 174 / 178, centres 168 / 176) under a note saying it was "not mirrored to N", so v
+        // peaked at j=4 in the north and at j=178 in the south and crossed zero at j=176.
+        // Between the 8. cell's flank at j=158 and the cap boundary at j=165 v ramps to zero in
+        // one piece (it used to reach zero at j=160); the band table equatorward of that is
+        // Jupiter's observed jets and is not mirrored.
+        init_v_or_w(m.v, 165,   0.0,   0.0);                                          // cap boundary
+        init_v_or_w(m.v, 168, -40.0,  40.0);   init_v_or_w(m.w, 168,   0.0,   0.0);   // equatorward flank
+        init_v_or_w(m.v, 172,   0.0,   0.0);   init_v_or_w(m.w, 172,   0.0,   0.0);   // rising centre
+        init_v_or_w(m.v, 176,  40.0, -40.0);   init_v_or_w(m.w, 176,   0.0,   0.0);   // poleward flank
         init_v_or_w(m.v, 180,   0.0,   0.0);   init_v_or_w(m.w, 180,   0.0,   0.0);   // south pole
 
         // --------------------------------------------------------------------
@@ -300,10 +304,9 @@ public:
         form_diagonals(m.u, 152, 153);  form_diagonals(m.u, 153, 154);
         form_diagonals(m.u, 154, 155);  form_diagonals(m.u, 155, 157);
         form_diagonals(m.u, 157, 158);  form_diagonals(m.u, 158, 160);
-        form_diagonals(m.u, 160, 166);  form_diagonals(m.u, 166, 168);   // polar cells
-        form_diagonals(m.u, 168, 170);  form_diagonals(m.u, 170, 172);   // polar cells
-        form_diagonals(m.u, 172, 174);  form_diagonals(m.u, 174, 176);   // polar cells
-        form_diagonals(m.u, 176, 178);  form_diagonals(m.u, 178, 180);   // polar cells
+        form_diagonals(m.u, 160, 165);  form_diagonals(m.u, 165, 168);   // polar cell
+        form_diagonals(m.u, 168, 172);  form_diagonals(m.u, 172, 176);   // polar cell
+        form_diagonals(m.u, 176, 180);                                  // polar cell
         // v
         form_diagonals(m.v,  90,  97);  form_diagonals(m.v,  97, 104);
         form_diagonals(m.v, 102, 107);  form_diagonals(m.v, 107, 111);
@@ -319,11 +322,10 @@ public:
         form_diagonals(m.v, 146, 149);  form_diagonals(m.v, 149, 152);
         form_diagonals(m.v, 152, 153);  form_diagonals(m.v, 153, 154);
         form_diagonals(m.v, 154, 155);  form_diagonals(m.v, 155, 157);
-        form_diagonals(m.v, 157, 158);  form_diagonals(m.v, 158, 160);
-        form_diagonals(m.v, 160, 166);  form_diagonals(m.v, 166, 168);   // polar cells
-        form_diagonals(m.v, 168, 170);  form_diagonals(m.v, 170, 172);   // polar cells
-        form_diagonals(m.v, 172, 174);  form_diagonals(m.v, 174, 176);   // polar cells
-        form_diagonals(m.v, 176, 178);  form_diagonals(m.v, 178, 180);   // polar cells
+        form_diagonals(m.v, 157, 158);  form_diagonals(m.v, 158, 165);
+         form_diagonals(m.v, 165, 168);   // polar cell
+        form_diagonals(m.v, 168, 172);  form_diagonals(m.v, 172, 176);   // polar cell
+        form_diagonals(m.v, 176, 180);                                  // polar cell
         // w
         form_diagonals(m.w,  90,  97);  form_diagonals(m.w,  97, 104);
         form_diagonals(m.w, 102, 107);  form_diagonals(m.w, 107, 111);
@@ -340,10 +342,9 @@ public:
         form_diagonals(m.w, 152, 153);  form_diagonals(m.w, 153, 154);
         form_diagonals(m.w, 154, 155);  form_diagonals(m.w, 155, 157);
         form_diagonals(m.w, 157, 158);  form_diagonals(m.w, 158, 160);
-        form_diagonals(m.w, 160, 166);  form_diagonals(m.w, 166, 168);   // polar cells (w overwritten by N->S mirror below)
-        form_diagonals(m.w, 168, 170);  form_diagonals(m.w, 170, 172);   // polar cells
-        form_diagonals(m.w, 172, 174);  form_diagonals(m.w, 174, 176);   // polar cells
-        form_diagonals(m.w, 176, 178);  form_diagonals(m.w, 178, 180);   // polar cells
+        form_diagonals(m.w, 160, 165);  form_diagonals(m.w, 165, 168);   // polar cell
+        form_diagonals(m.w, 168, 172);  form_diagonals(m.w, 172, 176);   // polar cell
+        form_diagonals(m.w, 176, 180);                                  // polar cell (w overwritten by N->S mirror below)
 
         // --------------------------------------------------------------------
         // Mirror w field north-south (Jupiter's hemispherical symmetry)
@@ -505,8 +506,7 @@ private:
             // (vertical) branch, so the cells are not flat. Boundaries/poles = Z (node),
             // branches alternate P/R like the neighbouring cells.
             case  12: return R;  case   8: return P;  case   4: return R;  case   0: return Z;  // north polar cell (centre j8)
-            case 166: return R;  case 168: return P;  case 170: return R;  case 172: return Z;  // south polar cell 9
-            case 174: return R;  case 176: return P;  case 178: return R;  case 180: return Z;  // south polar cell 10 + pole
+            case 165: return Z;  case 168: return R;  case 172: return P;  case 176: return R;  case 180: return Z;  // south polar cell (centre j172), mirror of the northern one
             default:  return Z;
         }
     }
