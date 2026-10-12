@@ -168,7 +168,10 @@ private:
     double t_000 = 235.15;                                              // in K == -20°C (precipitation module)
 
     double t_0_h2s = 187.66;                                            // in K == -53.15°C, triple point
-    double t_00_h2s = 220.0;                                            // in K == -85.5°C, h2s-ice cloud formation (Planetary Sciences, p. 96)
+    // t_00_h2s 220 -> 140 K (2026-10-12, on the user's word): 220 K stood ABOVE the triple point
+    // t_0_h2s = 187.66 K, the slip corrected for NH3 here on 07-31 and for all three on ATSAT,
+    // ATNEPT and ATURAN. Nothing reads it in this model (H2S has no cloud or ice here).
+    double t_00_h2s = 140.0;                                            // in K == -133.15 degC, h2s-ice cloud formation
 
     double t_0_nh3 = 195.5;                                             // in K == -77.65°C, triple point, gas and liquid pase
     double t_00_nh3 = 140.0;                                            // in K == -133.15°C, nh3-ice cloud formation (Planetary Sciences, p. 96)
