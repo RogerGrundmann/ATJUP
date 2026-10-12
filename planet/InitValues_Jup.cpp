@@ -159,7 +159,7 @@ void cJupiterModel::init_tropopause_layers(){
   
     for(int j = 0; j <= j_half; j++){                                                                                                                                                                    
         double x = x_max * (double)(j_half - j) / (double)j_half;
-        double h = JupiterUtils::Agnesi(tropopause_equator, x);                                                                                                                                             
+        double h = JupiterUtils::Agnesi(tropopause_equator, x);                                                                                        
         tropo_height_cache[j]       = h;
         tropo_height_cache[j_max-j] = h;                                                                                                                                                               
         tropopause_layers[j]        = round(h / L_atm);                                                                                                                                                 
