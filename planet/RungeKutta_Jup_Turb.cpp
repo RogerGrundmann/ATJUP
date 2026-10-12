@@ -12,6 +12,7 @@
 
 #include "cJupiterModel.h"
 #include "CwbJup.h"          // ATJUP_CWB_DIAG, print-only
+#include "TbJup.h"           // ATJUP_TB_DIAG, print-only
 
 #include <cstdint>
 #include <cstring>
@@ -281,6 +282,7 @@ void cJupiterModel::RungeKuttaJup(){
         const double c_in = (stage == 0 || stage == 1) ? 0.5 * dt : (stage == 2 ? dt : 0.0);
         const double wgt  = (stage == 0 || stage == 3) ? 1.0 : 2.0;
         JupCwb::st().stage_wgt = wgt;                 // ATJUP_CWB_DIAG: weight of the tendencies RHSJup is about to sum
+        JupTb::st().stage_wgt = wgt;                  // ATJUP_TB_DIAG: the same weight
 
         // ---- pass A: tendencies everywhere, from one consistent state ----
         #pragma omp parallel for collapse(2) schedule(static)

@@ -16,6 +16,7 @@
 #include "PressureSolverJup.h"
 #include "SaturationAdjustmentJup.h"
 #include "CwbJup.h"          // ATJUP_CWB_DIAG, print-only
+#include "TbJup.h"           // ATJUP_TB_DIAG, print-only
 #include "BC_Jup.h"
 #include "VelocityInitializerJup.h"
 #include "RadiationJup.h"
@@ -682,6 +683,40 @@ void cJupiterModel::Run(){
         cw_first0 = cwb_plane0();
     }
 
+    // ATJUP_TB_DIAG=<n> (print-only, see TbJup.h): the level-mean temperature after every stage of
+    // the loop that can write t, charged to that stage, in K; printed every n iterations. The
+    // stages are the ones ATJUP_CWB_DIAG marks.
+    static const int tb_every = [](){ const char* e = getenv("ATJUP_TB_DIAG"); return e ? atoi(e) : 0; }();
+    const bool tb_on = tb_every > 0 && im <= JupTb::MAXLEV;
+    JupTb::st().on = tb_on;
+    static const char* tb_name[CW_N] = { "pressure, rad.", "sat.adj. H2O", "sat.adj. other", "precip", "turb/chem/forc", "RK reset",
+        "RK rest", "bcRadius", "bcTheta", "bcPhi", "bcSolidGround", "conv.adj/Shap.", "clamp" };
+    static const char* tb_term[JupTb::NTERM] = { "RK press.work", "RK transp r", "RK transp the", "RK transp phi",
+        "RK diffusion", "RK radiation", "RK precip" };
+    std::vector<std::vector<double>> tb_sum(CW_N, std::vector<double>(im, 0.0)), tb_tsum(JupTb::NTERM, std::vector<double>(im, 0.0));
+    std::vector<double> tb_last(im, 0.0), tb_first(im, 0.0);
+    double tb_norm = 0.0;
+    auto tb_lev = [&](Array& a) -> std::vector<double> {
+        std::vector<double> m_(im, 0.0);
+        #pragma omp parallel for schedule(static)
+        for(int i = 0; i < im; i++){
+            double s_ = 0.0;
+            for(int j = 0; j < jm; j++){
+                const double sj = std::sin(the.z[j]);
+                for(int k = 0; k < km; k++) s_ += sj * a.x[i][j][k];
+            }
+            m_[i] = s_ * t_ref / tb_norm;
+        }
+        return m_; };
+    auto tb_mark = [&](int stage){
+        if(!tb_on) return;
+        const std::vector<double> w_ = tb_lev(t);
+        for(int i = 0; i < im; i++){ tb_sum[stage][i] += w_[i] - tb_last[i]; tb_last[i] = w_[i]; } };
+    if(tb_on){
+        for(int j = 0; j < jm; j++) tb_norm += std::sin(the.z[j]) * km;
+        tb_last = tb_first = tb_lev(t);
+    }
+
     for(iter_n = iter_start; iter_n <= nm; iter_n++){
 
         auto begin = std::chrono::high_resolution_clock::now();
@@ -714,7 +749,7 @@ void cJupiterModel::Run(){
         computeMixtureDensity();
 
         if(radiation_enabled()) RadiationJup(*this).run();
-        cwb_mark(CW_PRE);
+        cwb_mark(CW_PRE); tb_mark(CW_PRE);
 
         SaturationAdjustmentJup(*this).run("H2O",
             t_0_h2o, t_00_h2o,
@@ -722,7 +757,7 @@ void cJupiterModel::Run(){
             C_h2o, L0_h2o, R_h2o, del_alf_h2o, del_bet_h2o,
             C_h2o_ice, L0_h2o_ice, del_alf_h2o_ice, del_bet_h2o_ice,
             h2o, h2o_cloud, h2o_ice);
-        cwb_mark(CW_SATADJ);
+        cwb_mark(CW_SATADJ); tb_mark(CW_SATADJ);
 
         SaturationAdjustmentJup(*this).run("NH3",
             t_0_nh3, t_00_nh3,
@@ -740,9 +775,9 @@ void cJupiterModel::Run(){
 
         // Must stay AFTER the SaturationAdjustmentJup calls: its condensate depletion is applied
         // in place, and running it before them would let the adjustment simply undo the removal.
-        cwb_mark(CW_SATADJ_OTHER);
+        cwb_mark(CW_SATADJ_OTHER); tb_mark(CW_SATADJ_OTHER);
         if(precip_enabled()) PrecipitationJup(*this).run();   // H2O+NH3 3-cat + NH4SH settling
-        cwb_mark(CW_PRECIP);
+        cwb_mark(CW_PRECIP); tb_mark(CW_PRECIP);
 
         // ATJUP_RK_SCALAR_SYNC=<0|1|2> (2026-10-08). DEFAULT 2 SINCE 2026-10-08 (was 0), at the user's
         // instruction and on the 224-iteration measurement at the end of this note; 0 restores the
@@ -816,14 +851,37 @@ void cJupiterModel::Run(){
 
         }  // if loop
 
-        cwb_mark(CW_PHYS_REST);
+        cwb_mark(CW_PHYS_REST); tb_mark(CW_PHYS_REST);
         double cw_n = 0.0;
         if(cwb_on){
             cw_n = cwb_col(h2on, h2o_cloudn, h2o_icen);                 // what the step starts from
             for(int t_ = 0; t_ < JupCwb::MAXTHR; t_++) for(int q_ = 0; q_ < 8; q_++) JupCwb::st().acc[t_][q_] = 0.0;
         }
 
+        std::vector<double> tb_n;
+        if(tb_on){
+            tb_n = tb_lev(tn);                                          // what the step starts from
+            for(int t_ = 0; t_ < JupTb::MAXTHR; t_++) for(int q_ = 0; q_ < JupTb::NTERM; q_++)
+                for(int i = 0; i < im; i++) JupTb::st().acc[t_][q_][i] = 0.0;
+        }
+
         RungeKuttaJup();
+
+        if(tb_on){
+            const std::vector<double> w_ = tb_lev(t);
+            for(int i = 0; i < im; i++){
+                double step_terms = 0.0;
+                for(int q_ = 0; q_ < JupTb::NTERM; q_++){
+                    double a_ = 0.0;
+                    for(int t_ = 0; t_ < JupTb::MAXTHR; t_++) a_ += JupTb::st().acc[t_][q_][i];
+                    a_ *= dt / 6.0 * t_ref / tb_norm;
+                    tb_tsum[q_][i] += a_; step_terms += a_;
+                }
+                tb_sum[CW_RK_RESET][i] += tb_n[i] - tb_last[i];
+                tb_sum[CW_RK_REST][i]  += w_[i] - tb_n[i] - step_terms;
+                tb_last[i] = w_[i];
+            }
+        }
 
         if(cwb_on){
             const double w_ = cwb_col(h2o, h2o_cloud, h2o_ice);
@@ -841,15 +899,15 @@ void cJupiterModel::Run(){
         }
 
         BC_Jup(*this).bcRadius();                                       // extrapolation in i-direction alomg grid boundaries
-        cwb_mark(CW_BC_RADIUS);
+        cwb_mark(CW_BC_RADIUS); tb_mark(CW_BC_RADIUS);
         BC_Jup(*this).bcTheta();                                        // extrapolation in j-direction alomg grid boundaries
-        cwb_mark(CW_BC_THETA);
+        cwb_mark(CW_BC_THETA); tb_mark(CW_BC_THETA);
         BC_Jup(*this).bcPhi();                                          // extrapolation in k-direction alomg grid boundaries
-        cwb_mark(CW_BC_PHI);
+        cwb_mark(CW_BC_PHI); tb_mark(CW_BC_PHI);
 
 //        BC_Jup(*this).bcScalarSurfSur();                                // scalar variable at surfaces extrapolated by von Neumann
         BC_Jup(*this).bcSolidGround();                                  // values inside mountains
-        cwb_mark(CW_BC_SOLID);
+        cwb_mark(CW_BC_SOLID); tb_mark(CW_BC_SOLID);
 
         // ATJUP_TURB_WALL_HOLD (2026-10-09; DEFAULT 1 on the user's word, 0 restores): reassert the closure's wall
         // condition after the Runge-Kutta step and the boundary conditions, every iteration, as
@@ -893,9 +951,9 @@ void cJupiterModel::Run(){
         // values are what the next Runge-Kutta step starts from. Runs after the Shapiro pass,
         // which can itself undershoot at a sharp cloud edge. See FileIO_Jup.cpp for the
         // measurement that says a plain floor is enough here.
-        cwb_mark(CW_CONVADJ_SHAPIRO);
+        cwb_mark(CW_CONVADJ_SHAPIRO); tb_mark(CW_CONVADJ_SHAPIRO);
         clampNegativeSpecies();
-        cwb_mark(CW_FLOOR);
+        cwb_mark(CW_FLOOR); tb_mark(CW_FLOOR);
 
         // Steady-state query: max|f - f_n| per field with its location, plus the continuity
         // residual. BEFORE restoreVar, which is what makes the differences non-zero — see the
@@ -907,6 +965,26 @@ void cJupiterModel::Run(){
         restoreVar(1.0);
 
         panorama_cnt++;
+
+        if(tb_on && iter_n % tb_every == 0){
+            static const int lv_[] = { 0, 1, 2, 3, 5, 8, 12, 16, 20, 24, 28, 32, 35, 37, 38, 39, 40 };
+            const int nl_ = (int)(sizeof(lv_) / sizeof(lv_[0]));
+            printf("\n      ATJUP: [TB] level-mean temperature, cumulative over iterations %d..%d, K\n      ATJUP: [TB] %-15s", iter_start, iter_n, "level");
+            for(int l = 0; l < nl_; l++) if(lv_[l] < im) printf(" %8d", lv_[l]);
+            printf("\n      ATJUP: [TB] %-15s", "T now");
+            for(int l = 0; l < nl_; l++) if(lv_[l] < im) printf(" %8.2f", tb_last[lv_[l]]);
+            printf("\n      ATJUP: [TB] %-15s", "change");
+            for(int l = 0; l < nl_; l++) if(lv_[l] < im) printf(" %+8.3f", tb_last[lv_[l]] - tb_first[lv_[l]]);
+            for(int q_ = 0; q_ < CW_N; q_++){
+                printf("\n      ATJUP: [TB] %-15s", tb_name[q_]);
+                for(int l = 0; l < nl_; l++) if(lv_[l] < im) printf(" %+8.3f", tb_sum[q_][lv_[l]]);
+                if(q_ == CW_RK_RESET) for(int r_ = 0; r_ < JupTb::NTERM; r_++){
+                    printf("\n      ATJUP: [TB] %-15s", tb_term[r_]);
+                    for(int l = 0; l < nl_; l++) if(lv_[l] < im) printf(" %+8.3f", tb_tsum[r_][lv_[l]]);
+                }
+            }
+            printf("\n");
+        }
 
         if(cwb_on && iter_n % checkpoint == 0){
             double sum_ = 0.0;

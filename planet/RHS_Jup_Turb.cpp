@@ -17,6 +17,7 @@
 #include "cJupiterModel.h"
 #include "TurbulenceJup.h"   // shares nue_max_phys() with the closure
 #include "CwbJup.h"          // ATJUP_CWB_DIAG, print-only
+#include "TbJup.h"           // ATJUP_TB_DIAG, print-only
 
 #include <cstdlib>   // getenv/atof for the radiative-coupling knob
 #include <string>
@@ -904,6 +905,20 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
         + diffusion_t * (1.0 / (re * pr) + nue_t_s)
         + radiation_t
         + precip_t;
+
+    // ATJUP_TB_DIAG (print-only, see TbJup.h): RK4-weighted level sums of each term of rhs_t, per
+    // thread. Nothing here is read by the model.
+    if(JupTb::st().on && i < JupTb::MAXLEV){
+        const double cw = JupTb::st().stage_wgt * std::sin(the.z[j]);
+        double (*a_)[JupTb::MAXLEV] = JupTb::st().acc[omp_get_thread_num()];
+        a_[JupTb::T_PRESS][i]  += cw * pressure_t;
+        a_[JupTb::T_TR_RAD][i] -= cw * u_ijk * dtdr;
+        a_[JupTb::T_TR_THE][i] -= cw * v_invrm * dtdthe;
+        a_[JupTb::T_TR_PHI][i] -= cw * w_invrs * dtdphi;
+        a_[JupTb::T_DIFF][i]   += cw * diffusion_t * (1.0 / (re * pr) + nue_t_s);
+        a_[JupTb::T_RAD][i]    += cw * radiation_t;
+        a_[JupTb::T_PRECIP][i] += cw * precip_t;
+    }
 
     // ===== Buoyancy: a Boussinesq anomaly, with the sign and the scale it needs =====
     //
