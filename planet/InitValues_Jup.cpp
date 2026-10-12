@@ -275,6 +275,36 @@ void cJupiterModel::init_PressureDynamic(){
         }
     }
 
+    // ATJUP_PDYN_INIT (2026-10-12; DEFAULT 2 on the user's word, 0 restores the zero start this
+    // routine has always made): p_dyn starts in balance with the metric term of the radial
+    // momentum equation, as on the other three models. rhs_u carries + (v2 + w2) / rm, the
+    // centrifugal acceleration of the horizontal flow itself; with p_dyn = 0 nothing opposes it
+    // and it pushes u upward in every column. The pressure solver has the term in its source,
+    // but one sweep per call does not build the gradient. rhs_u takes
+    // -pgrad_scale * exp_rm * dp_dyn/dr, so d p_dyn / dr = (v2 + w2) / (rm * exp_rm * pgrad_scale),
+    // integrated up from zero at the bottom, trapezoid in r (inside the SeaMount v = w = 0 and
+    // the pressure is carried through unchanged). The README row has the measurement.
+    static const int pdyn_init = [](){ const char* e = getenv("ATJUP_PDYN_INIT"); return e ? atoi(e) : 2; }();
+    if(pdyn_init == 2){
+        static const double pgrad_scale = [](){ const char* e = getenv("ATJUP_PGRAD_SCALE"); return e ? atof(e) : 1.0; }();
+        double pmax = 0.0;
+        #pragma omp parallel for collapse(2) schedule(static) reduction(max:pmax)
+        for (int j = 0; j < jm; j++) {
+            for (int k = 0; k < km; k++) {
+                double f_prev = 0.0, p_ = 0.0;
+                for (int i = 0; i < im; i++) {
+                    const double rm     = rad.z[i];
+                    const double exp_rm = coord_stretching ? 1.0 / (rm + 1.0) : 1.0;
+                    const double f = (v.x[i][j][k] * v.x[i][j][k] + w.x[i][j][k] * w.x[i][j][k]) / (rm * exp_rm * pgrad_scale);
+                    if (i > 0) p_ += 0.5 * (f_prev + f) * dr;
+                    p_dyn.x[i][j][k] = p_; f_prev = f;
+                    if (p_ > pmax) pmax = p_;
+                }
+            }
+        }
+        printf("      ATJUP: init_PressureDynamic: p_dyn balances the metric term (v2 + w2)/rm of rhs_u; max %.6f (the model's unit) (ATJUP_PDYN_INIT=0 starts it at zero)\n", pmax);
+    }
+
     std::cout << "      ATJUP: init_PressureDynamic ended" << std::endl;
 }
 
