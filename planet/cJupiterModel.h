@@ -699,6 +699,13 @@ public:
     // Planet template parameter, and ATPhys::polar_divisor_floor() is a free function
     // rather than a friend class, so they cannot be private here and public there.
     static const char* planet_tag(){ return "ATJUP"; }
+    // ATJUP_METRIC_SPLIT (2026-10-13; DEFAULT 1 on the user's word, 0 restores): the radial metric term (v2 + w2)/r of rhs_u is
+    // carried by p_hydro -- ATOM_Precipitation's hydrostatic split (AtmHydroSplit.h) applied to
+    // the other radial body force; default on ATNEPT and ATURAN, where it was measured. See
+    // computeHydrostaticPressure().
+    static bool metric_split(){
+        static const bool v = [](){ const char* e = getenv("ATJUP_METRIC_SPLIT"); return e ? atoi(e) != 0 : true; }();
+        return v; }
     static int bc_default_phi_periodic(){ return 1; }   // ATJUP_BC_PHI_PERIODIC, see ATPhys.h; 1 since 2026-10-13 on the user's word, 0 restores
 
     // ---- ATJUP_QHEAT_SCALE / the latent+sensible heating scale ----

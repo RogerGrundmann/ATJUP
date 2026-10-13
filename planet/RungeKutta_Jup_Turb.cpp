@@ -151,6 +151,29 @@ void cJupiterModel::computeHydrostaticPressure(){
                 return std::isfinite(f) ? f : 0.0;
             };
 
+            // ATJUP_METRIC_SPLIT=1: the column integral carries the metric term (v2 + w2)/r as
+            // rhs_u forms it, with the buoyancy only while ATJUP_HYDRO_SPLIT carries that. The
+            // pressure solver cannot hold the gradient that balances a radial body force
+            // (measured on ATNEPT with ATNEPT_UB_DIAG, and in ATOM_Precipitation, where the
+            // column integral was the cure). With the knob rhs_u drops the term -- it and
+            // -dp_hydro/dr cancel by construction -- and rhs_v / rhs_w take the horizontal
+            // gradient of p_hydro. Over the fluid part of the column only, from zero at its foot.
+            if(metric_split()){
+                static const bool hs_ = [](){
+                    const char* e = getenv("ATJUP_HYDRO_SPLIT");
+                    if(e) return atoi(e) != 0;
+                    const char* n = getenv("ATJUP_NONDIM");
+                    return n ? atoi(n) != 0 : false; }();
+                auto f_ = [&](int i)->double{
+                    const double exp_rm_ = coord_stretching ? 1.0 / (rad.z[i] + 1.0) : 1.0;
+                    return (hs_ ? buoy(i) : 0.0)
+                         + (v.x[i][j][k] * v.x[i][j][k] + w.x[i][j][k] * w.x[i][j][k]) / (rad.z[i] * exp_rm_); };
+                p_hydro.x[i0][j][k] = 0.0;
+                for(int i = i0 + 1; i <= i1; i++)
+                    p_hydro.x[i][j][k] = p_hydro.x[i-1][j][k] + 0.5 * (f_(i-1) + f_(i)) * dr;
+                continue;
+            }
+
             if(!ref_top){
                 p_hydro.x[i0][j][k] = 0.0;
                 for(int i = i0 + 1; i <= i1; i++)

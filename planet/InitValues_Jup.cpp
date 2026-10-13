@@ -285,7 +285,10 @@ void cJupiterModel::init_PressureDynamic(){
     // integrated up from zero at the bottom, trapezoid in r (inside the SeaMount v = w = 0 and
     // the pressure is carried through unchanged). The README row has the measurement.
     static const int pdyn_init = [](){ const char* e = getenv("ATJUP_PDYN_INIT"); return e ? atoi(e) : 2; }();
-    if(pdyn_init == 2){
+    // With ATJUP_METRIC_SPLIT the metric term is balanced by p_hydro, so a p_dyn that balances it
+    // too would be an unopposed force: it starts at zero then (as with ATJUP_PDYN_INIT=0).
+    const bool pdyn_balanced = (pdyn_init == 2) && !metric_split();
+    if(pdyn_balanced){
         static const double pgrad_scale = [](){ const char* e = getenv("ATJUP_PGRAD_SCALE"); return e ? atof(e) : 1.0; }();
         double pmax = 0.0;
         #pragma omp parallel for collapse(2) schedule(static) reduction(max:pmax)
