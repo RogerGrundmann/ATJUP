@@ -372,6 +372,16 @@ void cJupiterModel::Run(){
 
     m_model = this;
 
+    // ATJUP_BC_PHI_PERIODIC (2026-10-13; DEFAULT 1 on the user's word, 0 restores byte-identically;
+    // ATPhys.h has the description): the seam
+    // meridian k = 0 = km-1 is integrated instead of being reconstructed from its neighbours.
+    // The knob is read by every loop that differences in phi; the Shapiro filter lives in lib/
+    // and is told here. bcSolidGround (BC_Jup.h) still works k = 1..km-2: the obstacle spans
+    // k = 140..220 and does not reach the seam.
+    JupiterUtils::set_phi_seam_periodic(ATPhys::phi_periodic<cJupiterModel>());
+    if(ATPhys::phi_periodic<cJupiterModel>())
+        printf("      ATJUP: the phi seam is periodic: k = 0 is integrated, k = km-1 is its copy (ATJUP_BC_PHI_PERIODIC=0 restores the reconstructed seam)\n");
+
     // ---- Metric radius (ATJUP_METRIC_RADIUS=<planet radius in km>, default off) ----
     //
     // rad.z is the radius that enters every horizontal metric factor: inv_rm, inv_rmsinthe,
@@ -1353,9 +1363,14 @@ void cJupiterModel::restoreVar(double coeff){
  * lid is there to close.
  */
 void cJupiterModel::prepareProjectionBoundaries(bool rigid_lid){
+    // ATJUP_BC_PHI_PERIODIC (ATPhys.h): with 1 the seam meridian k = 0 is a cell of the solver
+    // and takes its radial planes here. NOTE for the 0 case, found on 2026-10-13: nothing sets
+    // aux_w at k = 0 or km-1, so the divergence source at k = 1 and km-2 differences aux_w
+    // against whatever those two planes hold.
+    const int k_first = ATPhys::phi_first(ATPhys::phi_periodic<cJupiterModel>());
     #pragma omp parallel for collapse(2)
     for (int j = 1; j < jm-1; j++) {
-        for (int k = 1; k < km-1; k++) {
+        for (int k = k_first; k < km-1; k++) {
             if(rigid_lid){
                 aux_u.x[0][j][k]    = 0.0;
                 aux_u.x[im-1][j][k] = 0.0;

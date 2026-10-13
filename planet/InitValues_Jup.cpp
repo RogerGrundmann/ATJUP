@@ -415,6 +415,10 @@ void cJupiterModel::Forces(){
     // ========================================================================
     // Interior points only (boundaries handled elsewhere)
     // ========================================================================
+    // ATJUP_BC_PHI_PERIODIC (ATPhys.h): with 1 the seam meridian k = 0 is computed like any other.
+    const bool phi_per = ATPhys::phi_periodic<cJupiterModel>();
+    const int  k_first = ATPhys::phi_first(phi_per);
+
     #pragma omp parallel for collapse(2) schedule(static)
     for (int i = 1; i < im-1; i++) {
         for (int j = 1; j < jm-1; j++) {
@@ -424,7 +428,9 @@ void cJupiterModel::Forces(){
             if (costhe_abs() && j > 90) costhe    = -costhe;
             const double rmsinthe = rm * sinthe;
 
-            for (int k = 1; k < km-1; k++) {
+            for (int k = k_first; k < km-1; k++) {
+                const int kw = ATPhys::phi_wrap(phi_per, k-1, km);
+                const int ke = ATPhys::phi_wrap(phi_per, k+1, km);
 
                 // Coriolis components
                 const double Cor_r   = -2.0 * omega * sinthe * w.x[i][j][k];
@@ -435,7 +441,7 @@ void cJupiterModel::Forces(){
                 // Pressure-gradient components (central differences)
                 const double dpdr   = (p_dyn.x[i+1][j][k] - p_dyn.x[i-1][j][k]) / (2.0 * dr);
                 const double dpdthe = (p_dyn.x[i][j+1][k] - p_dyn.x[i][j-1][k]) / (2.0 * dthe);
-                const double dpdphi = (p_dyn.x[i][j][k+1] - p_dyn.x[i][j][k-1]) / (2.0 * dphi);
+                const double dpdphi = (p_dyn.x[i][j][ke] - p_dyn.x[i][j][kw]) / (2.0 * dphi);
 
                 CoriolisForce.x[i][j][k] = Coriolis * r_mix
                     * sqrt((pow(Cor_r, 2) + pow(Cor_the, 2) + pow(Cor_phi, 2)) / 3.0);

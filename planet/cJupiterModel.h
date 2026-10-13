@@ -699,6 +699,7 @@ public:
     // Planet template parameter, and ATPhys::polar_divisor_floor() is a free function
     // rather than a friend class, so they cannot be private here and public there.
     static const char* planet_tag(){ return "ATJUP"; }
+    static int bc_default_phi_periodic(){ return 1; }   // ATJUP_BC_PHI_PERIODIC, see ATPhys.h; 1 since 2026-10-13 on the user's word, 0 restores
 
     // ---- ATJUP_QHEAT_SCALE / the latent+sensible heating scale ----
     //

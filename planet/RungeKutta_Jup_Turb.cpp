@@ -277,6 +277,11 @@ void cJupiterModel::RungeKuttaJup(){
     //
     // SOLID CELLS are skipped in both passes exactly as the single loop skipped them, so the
     // SeaMount interior is left untouched and no tendency is ever evaluated inside the body.
+    // ATJUP_BC_PHI_PERIODIC (ATPhys.h): with 1 the seam meridian k = 0 is integrated like every
+    // other cell (RHSJup takes its phi neighbours round the ring); k = km-1 is its copy, written
+    // by bcPhi after the step. With 0 the loops run k = 1..km-2, as before.
+    const int k_first = ATPhys::phi_first(ATPhys::phi_periodic<cJupiterModel>());
+
     for(int stage = 0; stage < 4; stage++){
 
         const double c_in = (stage == 0 || stage == 1) ? 0.5 * dt : (stage == 2 ? dt : 0.0);
@@ -310,7 +315,7 @@ void cJupiterModel::RungeKuttaJup(){
                 geo.inv_dr2   = inv_dr2;
                 geo.inv_dthe2 = inv_dthe2;
                 geo.inv_dphi2 = inv_dphi2;
-                for(int k = 1; k < km-1; k++){
+                for(int k = k_first; k < km-1; k++){
                     if(SeaMount.x[i][j][k] == 1.0) continue;
                     cJupiterModel::RHSJup(i, j, k, geo);
                 }
@@ -321,7 +326,7 @@ void cJupiterModel::RungeKuttaJup(){
         #pragma omp parallel for collapse(2) schedule(static)
         for(int i = 1; i < im-1; i++){
             for(int j = 3; j < jm-3; j++){
-                for(int k = 1; k < km-1; k++){
+                for(int k = k_first; k < km-1; k++){
                     if(SeaMount.x[i][j][k] == 1.0) continue;
                     acc_t.x[i][j][k] = (stage == 0) ? wgt * rhs_t.x[i][j][k]
                                       : acc_t.x[i][j][k] + wgt * rhs_t.x[i][j][k];
@@ -394,7 +399,7 @@ void cJupiterModel::RungeKuttaJup(){
                 reduction(+:t_clip_hits, nh4sh_cap_hits)
         for(int i = 1; i < im-1; i++){
             for(int j = 3; j < jm-3; j++){
-                for(int k = 1; k < km-1; k++){
+                for(int k = k_first; k < km-1; k++){
                     if(SeaMount.x[i][j][k] == 1.0) continue;
 
                     const double tn_ijk = tn.x[i][j][k];

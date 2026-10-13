@@ -156,7 +156,7 @@ public:
         #ifdef _OPENMP
         #pragma omp parallel for schedule(dynamic)
         #endif
-        for (int k = 1; k < m.km-1; k++) {
+        for (int k = ATPhys::phi_first(ATPhys::phi_periodic<cJupiterModel>()); k < m.km-1; k++) {   // ATJUP_BC_PHI_PERIODIC
             for (int j = 3; j < m.jm-3; j++) {
                 for (int i = 1; i < m.im-1; i++) {
 
@@ -166,7 +166,8 @@ public:
                     if (m.SeaMount.x[i][j][k] == 1.0
                         && m.SeaMount.x[i-1][j][k] == 1.0 && m.SeaMount.x[i+1][j][k] == 1.0
                         && m.SeaMount.x[i][j-1][k] == 1.0 && m.SeaMount.x[i][j+1][k] == 1.0
-                        && m.SeaMount.x[i][j][k-1] == 1.0 && m.SeaMount.x[i][j][k+1] == 1.0) {
+                        && m.SeaMount.x[i][j][ATPhys::phi_wrap(ATPhys::phi_periodic<cJupiterModel>(), k-1, m.km)] == 1.0
+                        && m.SeaMount.x[i][j][ATPhys::phi_wrap(ATPhys::phi_periodic<cJupiterModel>(), k+1, m.km)] == 1.0) {
                         m.w_nh3.x[i][j][k]          = 0.0;
                         m.w_h2s.x[i][j][k]          = 0.0;
                         m.w_nh4sh.x[i][j][k]        = 0.0;
@@ -284,7 +285,7 @@ public:
         #ifdef _OPENMP
         #pragma omp parallel for schedule(dynamic)
         #endif
-        for (int k = 1; k < m.km-1; k++) {
+        for (int k = ATPhys::phi_first(ATPhys::phi_periodic<cJupiterModel>()); k < m.km-1; k++) {   // ATJUP_BC_PHI_PERIODIC
             for (int j = 1; j < m.jm-1; j++) {
                 const double sinthe = std::max(sin(m.the.z[j]),
                                                ATPhys::polar_divisor_floor<cJupiterModel>());
@@ -537,6 +538,12 @@ private:
         const double dr_2   = 2.0 * m.dr;
         const double dthe_2 = 2.0 * m.dthe;
         const double dphi_2 = 2.0 * m.dphi;
+
+        // The phi neighbours: k-1, k+1, k-2, k+2, taken round the ring at the seam when
+        // ATJUP_BC_PHI_PERIODIC=1 (ATPhys.h).
+        const bool phi_per = ATPhys::phi_periodic<cJupiterModel>();
+        const int kw  = ATPhys::phi_wrap(phi_per, k-1, m.km), ke  = ATPhys::phi_wrap(phi_per, k+1, m.km);
+        const int kw2 = ATPhys::phi_wrap(phi_per, k-2, m.km), ke2 = ATPhys::phi_wrap(phi_per, k+2, m.km);
         const double exp_rm = m.coord_stretching ? 1.0 / (m.rad.z[i] + 1.0) : 1.0;
 
         // r-direction: cubic extrapolation at solid surface, central diff at adjacent fluid
@@ -579,26 +586,26 @@ private:
             dcdthe = (c.x[i][j+1][k] - c.x[i][j-1][k]) / dthe_2;
 
         // phi-direction: cubic extrapolation at solid surface, central diff at adjacent fluid
-        if ((m.SeaMount.x[i][j][k] == 1.0) && (m.SeaMount.x[i][j][k+1] == 0.0)
-            && (m.SeaMount.x[i][j][k+2] == 0.0)) {
-            c.x[i][j][k] = 4.0/3.0*c.x[i][j][k+1] - 1.0/3.0*c.x[i][j][k+2];
-            dcdphi = (-3.0*c.x[i][j][k] + 4.0*c.x[i][j][k+1] - c.x[i][j][k+2]) / dphi_2;
+        if ((m.SeaMount.x[i][j][k] == 1.0) && (m.SeaMount.x[i][j][ke] == 0.0)
+            && (m.SeaMount.x[i][j][ke2] == 0.0)) {
+            c.x[i][j][k] = 4.0/3.0*c.x[i][j][ke] - 1.0/3.0*c.x[i][j][ke2];
+            dcdphi = (-3.0*c.x[i][j][k] + 4.0*c.x[i][j][ke] - c.x[i][j][ke2]) / dphi_2;
         }
-        if ((m.SeaMount.x[i][j][k-1] == 1.0) && (m.SeaMount.x[i][j][k] == 0.0)
-            && (m.SeaMount.x[i][j][k+1] == 0.0))
-            dcdphi = (c.x[i][j][k+1] - c.x[i][j][k-1]) / dphi_2;
-        if ((m.SeaMount.x[i][j][k-1] == 0.0) && (m.SeaMount.x[i][j][k] == 0.0)
-            && (m.SeaMount.x[i][j][k+1] == 1.0))
-            dcdphi = (c.x[i][j][k+1] - c.x[i][j][k-1]) / dphi_2;
+        if ((m.SeaMount.x[i][j][kw] == 1.0) && (m.SeaMount.x[i][j][k] == 0.0)
+            && (m.SeaMount.x[i][j][ke] == 0.0))
+            dcdphi = (c.x[i][j][ke] - c.x[i][j][kw]) / dphi_2;
+        if ((m.SeaMount.x[i][j][kw] == 0.0) && (m.SeaMount.x[i][j][k] == 0.0)
+            && (m.SeaMount.x[i][j][ke] == 1.0))
+            dcdphi = (c.x[i][j][ke] - c.x[i][j][kw]) / dphi_2;
 
-        if ((m.SeaMount.x[i][j][k] == 1.0) && (m.SeaMount.x[i][j][k-1] == 0.0)
-            && (m.SeaMount.x[i][j][k-2] == 0.0)) {
-            c.x[i][j][k] = 4.0/3.0*c.x[i][j][k-1] - 1.0/3.0*c.x[i][j][k-2];
-            dcdphi = (-3.0*c.x[i][j][k] + 4.0*c.x[i][j][k-1] - c.x[i][j][k-2]) / dphi_2;
+        if ((m.SeaMount.x[i][j][k] == 1.0) && (m.SeaMount.x[i][j][kw] == 0.0)
+            && (m.SeaMount.x[i][j][kw2] == 0.0)) {
+            c.x[i][j][k] = 4.0/3.0*c.x[i][j][kw] - 1.0/3.0*c.x[i][j][kw2];
+            dcdphi = (-3.0*c.x[i][j][k] + 4.0*c.x[i][j][kw] - c.x[i][j][kw2]) / dphi_2;
         }
-        if ((m.SeaMount.x[i][j][k-1] == 0.0) && (m.SeaMount.x[i][j][k] == 0.0)
-            && (m.SeaMount.x[i][j][k+1] == 0.0))
-            dcdphi = (c.x[i][j][k+1] - c.x[i][j][k-1]) / dphi_2;
+        if ((m.SeaMount.x[i][j][kw] == 0.0) && (m.SeaMount.x[i][j][k] == 0.0)
+            && (m.SeaMount.x[i][j][ke] == 0.0))
+            dcdphi = (c.x[i][j][ke] - c.x[i][j][kw]) / dphi_2;
     }
 
     void derivative_1_order_boundary(int i, int j, int k,
@@ -640,7 +647,9 @@ private:
 
         const double d2cdr2   = (c.x[i+1][j][k] - 2.0*c.x[i][j][k] + c.x[i-1][j][k]) / (m.dr   * m.dr) * exp_2_rm;
         const double d2cdthe2 = (c.x[i][j+1][k] - 2.0*c.x[i][j][k] + c.x[i][j-1][k]) / (m.dthe * m.dthe);
-        const double d2cdphi2 = (c.x[i][j][k+1] - 2.0*c.x[i][j][k] + c.x[i][j][k-1]) / (m.dphi * m.dphi);
+        const bool phi_per = ATPhys::phi_periodic<cJupiterModel>();         // ATJUP_BC_PHI_PERIODIC
+        const int kw = ATPhys::phi_wrap(phi_per, k-1, m.km), ke = ATPhys::phi_wrap(phi_per, k+1, m.km);
+        const double d2cdphi2 = (c.x[i][j][ke] - 2.0*c.x[i][j][k] + c.x[i][j][kw]) / (m.dphi * m.dphi);
 
         const double dcdr   = (c.x[i+1][j][k] - c.x[i-1][j][k]) / (2.0 * m.dr) * exp_rm;
         const double dcdthe = (c.x[i][j+1][k] - c.x[i][j-1][k]) / (2.0 * m.dthe);

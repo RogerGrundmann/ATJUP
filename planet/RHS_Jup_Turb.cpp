@@ -52,6 +52,12 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     const double exp_rm    = geo.exp_rm;
     const double exp_2_rm  = geo.exp_2_rm;
 
+    // The phi neighbours. k-1 and k+1, except with ATJUP_BC_PHI_PERIODIC=1 at the seam, where
+    // they go round the ring of the km-1 distinct meridians (ATPhys.h).
+    const bool phi_per = ATPhys::phi_periodic<cJupiterModel>();
+    const int kw = ATPhys::phi_wrap(phi_per, k-1, km);
+    const int ke = ATPhys::phi_wrap(phi_per, k+1, km);
+
     // Cache local cell values
     const double u_ijk = u.x[i][j][k];
     const double v_ijk = v.x[i][j][k];
@@ -211,8 +217,8 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
 
     // ===== Phi-direction derivatives (central differences) =====
     #define COMPUTE_DPHI(FIELD, d1, d2) \
-        d1 = (FIELD.x[i][j][k+1] - FIELD.x[i][j][k-1]) * inv_2dphi; \
-        d2 = (FIELD.x[i][j][k+1] - 2.0*FIELD.x[i][j][k] + FIELD.x[i][j][k-1]) * inv_dphi2;
+        d1 = (FIELD.x[i][j][ke] - FIELD.x[i][j][kw]) * inv_2dphi; \
+        d2 = (FIELD.x[i][j][ke] - 2.0*FIELD.x[i][j][k] + FIELD.x[i][j][kw]) * inv_dphi2;
 
     COMPUTE_DPHI(u,         dudphi,    d2udphi2)
     COMPUTE_DPHI(v,         dvdphi,    d2vdphi2)
@@ -248,8 +254,8 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
         const bool solid_ip1 = (SeaMount.x[i+1][j][k] == 1.0);
         const bool solid_jm1 = (SeaMount.x[i][j-1][k] == 1.0);
         const bool solid_jp1 = (SeaMount.x[i][j+1][k] == 1.0);
-        const bool solid_km1 = (SeaMount.x[i][j][k-1] == 1.0);
-        const bool solid_kp1 = (SeaMount.x[i][j][k+1] == 1.0);
+        const bool solid_km1 = (SeaMount.x[i][j][kw] == 1.0);
+        const bool solid_kp1 = (SeaMount.x[i][j][ke] == 1.0);
 
         if(solid_im1 || solid_ip1){
             const double tke_im1 = solid_im1 ? tke.x[i][j][k] : tke.x[i-1][j][k];
@@ -272,10 +278,10 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
             d2disdthe2 = (dis_jp1 - 2.0*dis.x[i][j][k] + dis_jm1) * inv_dthe2;
         }
         if(solid_km1 || solid_kp1){
-            const double tke_km1 = solid_km1 ? tke.x[i][j][k] : tke.x[i][j][k-1];
-            const double tke_kp1 = solid_kp1 ? tke.x[i][j][k] : tke.x[i][j][k+1];
-            const double dis_km1 = solid_km1 ? dis.x[i][j][k] : dis.x[i][j][k-1];
-            const double dis_kp1 = solid_kp1 ? dis.x[i][j][k] : dis.x[i][j][k+1];
+            const double tke_km1 = solid_km1 ? tke.x[i][j][k] : tke.x[i][j][kw];
+            const double tke_kp1 = solid_kp1 ? tke.x[i][j][k] : tke.x[i][j][ke];
+            const double dis_km1 = solid_km1 ? dis.x[i][j][k] : dis.x[i][j][kw];
+            const double dis_kp1 = solid_kp1 ? dis.x[i][j][k] : dis.x[i][j][ke];
             dtkedphi   = (tke_kp1 - tke_km1) * inv_2dphi;
             d2tkedphi2 = (tke_kp1 - 2.0*tke.x[i][j][k] + tke_km1) * inv_dphi2;
             ddisdphi   = (dis_kp1 - dis_km1) * inv_2dphi;
