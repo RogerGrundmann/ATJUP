@@ -17,6 +17,7 @@
 #include "cJupiterModel.h"
 #include "TurbulenceJup.h"   // shares nue_max_phys() with the closure
 #include "CwbJup.h"          // ATJUP_CWB_DIAG, print-only
+#include "UbJup.h"           // ATJUP_UB_DIAG, print-only
 #include "TbJup.h"           // ATJUP_TB_DIAG, print-only
 
 #include <cstdlib>   // getenv/atof for the radiative-coupling knob
@@ -452,6 +453,7 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
 
     // ATJUP_METRIC_SPLIT=1: the metric term leaves rhs_u, p_hydro balances it (RungeKutta_Jup_Turb.cpp)
     const double metric_on = metric_split() ? 0.0 : 1.0;
+    const double cor_rad_on = coriolis_split() ? 0.0 : 1.0;
     double transport_u = u_ijk * dudr + v_invrm * dudthe + w_invrs * dudphi
         - metric_on * (v_ijk * v_ijk + w_ijk * w_ijk) * inv_rm;
     double transport_v = u_ijk * dvdr + v_invrm * dvdthe + w_invrs * dvdphi
@@ -1015,8 +1017,33 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
         + ((hydro_split != 0) ? 0.0 : buoyancy_u)
         - transport_u
         + diffusion_u * (1.0 / re + nue_t + nue_wall)
-        - Coriolis    * Coriolis_rad
+        - cor_rad_on * Coriolis * Coriolis_rad             // ATJUP_CORIOLIS_SPLIT: 0 when p_hydro carries it
         + centrifugal * centrifugal_rad;
+
+    // ATJUP_UB_DIAG (print-only, see UbJup.h): RK4-weighted level sums of each term of rhs_u, per
+    // thread, for the whole level and for the equatorial band. Nothing here is read by the model.
+    if(JupUb::st().on && i < JupUb::MAXLEV){
+        const double cw = JupUb::st().stage_wgt * std::sin(the.z[j]);
+        #ifdef _OPENMP
+            const int th_ = omp_get_thread_num();
+        #else
+            const int th_ = 0;
+        #endif
+        const double tm_[JupUb::NTERM] = {
+            - dpdr_term,
+            + metric_on * (v_ijk * v_ijk + w_ijk * w_ijk) * inv_rm,
+            - (u_ijk * dudr + v_invrm * dudthe + w_invrs * dudphi),
+            + diffusion_u * (1.0 / re + nue_t + nue_wall),
+            - cor_rad_on * Coriolis * Coriolis_rad,
+            + centrifugal * centrifugal_rad,
+            + ((hydro_split != 0) ? 0.0 : buoyancy_u),
+            0.0 };
+        const bool eq_ = (j >= JupUb::st().j_lo && j <= JupUb::st().j_hi);
+        for(int q_ = 0; q_ < JupUb::NTERM; q_++){
+            JupUb::st().acc[th_][JupUb::R_ALL][q_][i] += cw * tm_[q_];
+            if(eq_) JupUb::st().acc[th_][JupUb::R_EQ][q_][i] += cw * tm_[q_];
+        }
+    }
 
 
 /*
@@ -1096,7 +1123,7 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
                        (hydro_split != 0) ? 0.0 : buoyancy_u,
                        -transport_u,
                        diffusion_u * (1.0 / re + nue_t + nue_wall),
-                       -Coriolis * Coriolis_rad,
+                       -cor_rad_on * Coriolis * Coriolis_rad,
                        centrifugal * centrifugal_rad);
                 // transport_u split the same way as PROBEADV does for w: the three directional
                 // derivatives, then the spherical metric group -(v^2 + w^2)/r, which is the

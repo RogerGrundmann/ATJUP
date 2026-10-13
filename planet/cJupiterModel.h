@@ -706,6 +706,13 @@ public:
     static bool metric_split(){
         static const bool v = [](){ const char* e = getenv("ATJUP_METRIC_SPLIT"); return e ? atoi(e) != 0 : true; }();
         return v; }
+    // ATJUP_CORIOLIS_SPLIT (2026-10-13; DEFAULT 1 on the user's word, 0 restores; acts only with
+    // ATJUP_METRIC_SPLIT): the radial Coriolis term of rhs_u joins the metric term in p_hydro. It
+    // is a radial body force like the other, and with the metric term gone it was the one thing
+    // left driving u (measured on ATNEPT with ATNEPT_UB_DIAG).
+    static bool coriolis_split(){
+        static const bool v = [](){ const char* e = getenv("ATJUP_CORIOLIS_SPLIT"); return e ? atoi(e) != 0 : true; }();
+        return v && metric_split(); }
     static int bc_default_phi_periodic(){ return 1; }   // ATJUP_BC_PHI_PERIODIC, see ATPhys.h; 1 since 2026-10-13 on the user's word, 0 restores
 
     // ---- ATJUP_QHEAT_SCALE / the latent+sensible heating scale ----

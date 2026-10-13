@@ -12,6 +12,7 @@
 
 #include "cJupiterModel.h"
 #include "CwbJup.h"          // ATJUP_CWB_DIAG, print-only
+#include "UbJup.h"           // ATJUP_UB_DIAG, print-only
 #include "TbJup.h"           // ATJUP_TB_DIAG, print-only
 
 #include <cstdint>
@@ -164,10 +165,19 @@ void cJupiterModel::computeHydrostaticPressure(){
                     if(e) return atoi(e) != 0;
                     const char* n = getenv("ATJUP_NONDIM");
                     return n ? atoi(n) != 0 : false; }();
+                // ATJUP_CORIOLIS_SPLIT: plus the radial Coriolis force as rhs_u forms it,
+                // -Coriolis * nd_cor * (-2 omega sin(theta) w), true sine, nd_cor read as the RHS reads it.
+                static const bool nd_cor_on_ = [](){
+                    const char* e = getenv("ATJUP_ND_COR"); const char* n = getenv("ATJUP_NONDIM");
+                    const int c_ = e ? atoi(e) : -1, a_ = n ? atoi(n) : 0;
+                    return (c_ >= 0 ? c_ : a_) != 0; }();
+                const double cor_ = coriolis_split()
+                    ? Coriolis * (nd_cor_on_ ? L_atm * 1.0e3 / u_0 : 1.0) * 2.0 * omega * std::abs(sin(the.z[j])) : 0.0;
                 auto f_ = [&](int i)->double{
                     const double exp_rm_ = coord_stretching ? 1.0 / (rad.z[i] + 1.0) : 1.0;
                     return (hs_ ? buoy(i) : 0.0)
-                         + (v.x[i][j][k] * v.x[i][j][k] + w.x[i][j][k] * w.x[i][j][k]) / (rad.z[i] * exp_rm_); };
+                         + ((v.x[i][j][k] * v.x[i][j][k] + w.x[i][j][k] * w.x[i][j][k]) / rad.z[i]
+                            + cor_ * w.x[i][j][k]) / exp_rm_; };
                 p_hydro.x[i0][j][k] = 0.0;
                 for(int i = i0 + 1; i <= i1; i++)
                     p_hydro.x[i][j][k] = p_hydro.x[i-1][j][k] + 0.5 * (f_(i-1) + f_(i)) * dr;
@@ -311,6 +321,7 @@ void cJupiterModel::RungeKuttaJup(){
         const double wgt  = (stage == 0 || stage == 3) ? 1.0 : 2.0;
         JupCwb::st().stage_wgt = wgt;                 // ATJUP_CWB_DIAG: weight of the tendencies RHSJup is about to sum
         JupTb::st().stage_wgt = wgt;                  // ATJUP_TB_DIAG: the same weight
+        JupUb::st().stage_wgt = wgt;                 // ATJUP_UB_DIAG: the same weight
 
         // ---- pass A: tendencies everywhere, from one consistent state ----
         #pragma omp parallel for collapse(2) schedule(static)

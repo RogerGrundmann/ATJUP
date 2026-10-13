@@ -16,6 +16,7 @@
 #include "PressureSolverJup.h"
 #include "SaturationAdjustmentJup.h"
 #include "CwbJup.h"          // ATJUP_CWB_DIAG, print-only
+#include "UbJup.h"           // ATJUP_UB_DIAG, print-only
 #include "TbJup.h"           // ATJUP_TB_DIAG, print-only
 #include "BC_Jup.h"
 #include "VelocityInitializerJup.h"
@@ -643,6 +644,80 @@ void cJupiterModel::Run(){
         restoreVar(1.0);          // refresh the n-level copies from the restored fields
     }
 
+    // ATJUP_UB_DIAG=<n> (print-only, see UbJup.h): the level mean of the radial wind after every
+    // stage of the loop that can write u, charged to that stage, in m/s; the Runge-Kutta step split
+    // into the terms of rhs_u; and the radial pressure force with what the pressure solver and the
+    // filter on p_dyn did to it. For the whole level and for the equatorial band (5 S .. 5 N by
+    // default, ATJUP_UB_BAND=<degrees>). Printed every n iterations.
+    static const int ub_every = [](){ const char* e = getenv("ATJUP_UB_DIAG"); return e ? atoi(e) : 0; }();
+    static const int ub_band  = [](){ const char* e = getenv("ATJUP_UB_BAND"); return e ? atoi(e) : 5; }();
+    const bool ub_on = ub_every > 0 && im <= JupUb::MAXLEV;
+    JupUb::st().on = ub_on;
+    JupUb::st().j_lo = (jm - 1) / 2 - ub_band;
+    JupUb::st().j_hi = (jm - 1) / 2 + ub_band;
+    enum { UB_RK_RESET = 0, UB_RK_REST, UB_FILTER, UB_BC, UB_N };
+    static const char* ub_name[UB_N] = { "RK reset", "RK rest", "filter on u", "BC" };
+    static const char* ub_term[JupUb::NTERM] = { "RK -dp/dr", "RK +(v2+w2)/r", "RK -advection", "RK diffusion",
+        "RK Coriolis", "RK centrifugal", "RK buoyancy", "RK sponge" };
+    static const char* ub_reg[JupUb::NREG] = { "whole level", "equatorial band" };
+    typedef std::vector<std::vector<double>> ub_tab;                       // [region][level]
+    std::vector<ub_tab> ub_sum(UB_N, ub_tab(JupUb::NREG, std::vector<double>(im, 0.0)));
+    std::vector<ub_tab> ub_tsum(JupUb::NTERM, ub_tab(JupUb::NREG, std::vector<double>(im, 0.0)));
+    ub_tab ub_last(JupUb::NREG, std::vector<double>(im, 0.0)), ub_first = ub_last;
+    ub_tab ub_f_first = ub_last, ub_m_first = ub_last, ub_f_solver = ub_last, ub_f_filter = ub_last;
+    double ub_norm[JupUb::NREG] = { 0.0, 0.0 };
+    // the cells the Runge-Kutta step integrates in phi: k = 0..km-2 with the periodic seam
+    const int ub_k0 = ATPhys::phi_first(ATPhys::phi_periodic<cJupiterModel>());
+    auto ub_in = [&](int r_, int j) -> bool {
+        return r_ == JupUb::R_ALL || (j >= JupUb::st().j_lo && j <= JupUb::st().j_hi); };
+    // level mean of a field [m/s]
+    auto ub_lev = [&](Array& a) -> ub_tab {
+        ub_tab m_(JupUb::NREG, std::vector<double>(im, 0.0));
+        #pragma omp parallel for schedule(static)
+        for(int i = 0; i < im; i++){
+            double s_[JupUb::NREG] = { 0.0, 0.0 };
+            for(int j = 1; j < jm-1; j++){
+                const double sj = std::sin(the.z[j]);
+                double row_ = 0.0;
+                for(int k = ub_k0; k < km-1; k++) row_ += a.x[i][j][k];
+                for(int r_ = 0; r_ < JupUb::NREG; r_++) if(ub_in(r_, j)) s_[r_] += sj * row_;
+            }
+            for(int r_ = 0; r_ < JupUb::NREG; r_++) m_[r_][i] = s_[r_] * u_0 / ub_norm[r_];
+        }
+        return m_; };
+    // level mean of the radial pressure force -dp_dyn/dr and of the metric term (v2 + w2)/r as
+    // rhs_u forms them, in m/s per iteration
+    auto ub_force = [&](bool metric) -> ub_tab {
+        ub_tab m_(JupUb::NREG, std::vector<double>(im, 0.0));
+        const double scale_p_ = 1.0e5 / (r_mix * u_0 * u_0);
+        #pragma omp parallel for schedule(static)
+        for(int i = 1; i < im-1; i++){
+            double s_[JupUb::NREG] = { 0.0, 0.0 };
+            const double inv_rm_ = 1.0 / rad.z[i];
+            for(int j = 1; j < jm-1; j++){
+                const double sj = std::sin(the.z[j]);
+                double row_ = 0.0;
+                for(int k = ub_k0; k < km-1; k++)
+                    row_ += metric ? (v.x[i][j][k] * v.x[i][j][k] + w.x[i][j][k] * w.x[i][j][k]) * inv_rm_
+                                   : -(p_dyn.x[i+1][j][k] - p_dyn.x[i-1][j][k]) / (2.0 * dr) * (coord_stretching ? inv_rm_ / (1.0 + inv_rm_) : 1.0) + 0.0 * scale_p_;
+                for(int r_ = 0; r_ < JupUb::NREG; r_++) if(ub_in(r_, j)) s_[r_] += sj * row_;
+            }
+            for(int r_ = 0; r_ < JupUb::NREG; r_++) m_[r_][i] = s_[r_] * dt * u_0 / ub_norm[r_];
+        }
+        return m_; };
+    auto ub_mark = [&](int stage){
+        if(!ub_on) return;
+        const ub_tab w_ = ub_lev(u);
+        for(int r_ = 0; r_ < JupUb::NREG; r_++) for(int i = 0; i < im; i++){
+            ub_sum[stage][r_][i] += w_[r_][i] - ub_last[r_][i]; ub_last[r_][i] = w_[r_][i]; } };
+    if(ub_on){
+        for(int j = 1; j < jm-1; j++) for(int r_ = 0; r_ < JupUb::NREG; r_++)
+            if(ub_in(r_, j)) ub_norm[r_] += std::sin(the.z[j]) * (km - 1 - ub_k0);
+        ub_last = ub_first = ub_lev(u);
+        ub_f_first = ub_force(false);
+        ub_m_first = ub_force(true);
+    }
+
     // ATJUP_CWB_DIAG=1 (print-only, default off; see CwbJup.h): the H2O column marked after every
     // stage of the loop that can write it. cwb_col() is the sin(colatitude)- and thickness-weighted
     // mean of the three fields in g/m2; cwb_mark() charges the change since the last mark.
@@ -749,8 +824,18 @@ void cJupiterModel::Run(){
         // restored state before anything consumes them.
         if(iter_n % 2 == 0 || iter_n == iter_start){
 
+        ub_tab ub_f0, ub_f1;
+        if(ub_on) ub_f0 = ub_force(false);
         PressureSolverJup(*this).run();
+        if(ub_on) ub_f1 = ub_force(false);
         JupiterUtils::damp_wiggles(p_dyn, &i_topography, true, true, true);
+            if(ub_on){
+                const ub_tab ub_f2 = ub_force(false);
+                for(int r_ = 0; r_ < JupUb::NREG; r_++) for(int i = 0; i < im; i++){
+                    ub_f_solver[r_][i] += ub_f1[r_][i] - ub_f0[r_][i];
+                    ub_f_filter[r_][i] += ub_f2[r_][i] - ub_f1[r_][i];
+                }
+            }
 
         // Refresh the local mixture density FIRST, so the saturation adjustment, the
         // precipitation microphysics and the Lewis groups all see a rho built from the p_dyn and
@@ -875,7 +960,31 @@ void cJupiterModel::Run(){
                 for(int i = 0; i < im; i++) JupTb::st().acc[t_][q_][i] = 0.0;
         }
 
+        ub_tab ub_n;
+        if(ub_on){
+            ub_n = ub_lev(un);                                          // what the step starts from
+            for(int t_ = 0; t_ < JupUb::MAXTHR; t_++) for(int r_ = 0; r_ < JupUb::NREG; r_++)
+                for(int q_ = 0; q_ < JupUb::NTERM; q_++) for(int i = 0; i < im; i++) JupUb::st().acc[t_][r_][q_][i] = 0.0;
+        }
+
         RungeKuttaJup();
+
+        if(ub_on){
+            const ub_tab w_ = ub_lev(u);
+            for(int r_ = 0; r_ < JupUb::NREG; r_++) for(int i = 0; i < im; i++){
+                double step_terms = 0.0;
+                for(int q_ = 0; q_ < JupUb::NTERM; q_++){
+                    double a_ = 0.0;
+                    for(int t_ = 0; t_ < JupUb::MAXTHR; t_++) a_ += JupUb::st().acc[t_][r_][q_][i];
+                    a_ *= dt / 6.0 * u_0 / ub_norm[r_];
+                    ub_tsum[q_][r_][i] += a_; step_terms += a_;
+                }
+                ub_sum[UB_RK_RESET][r_][i] += ub_n[r_][i] - ub_last[r_][i];
+                ub_sum[UB_RK_REST][r_][i]  += w_[r_][i] - ub_n[r_][i] - step_terms;
+                ub_last[r_][i] = w_[r_][i];
+            }
+        }
+
 
         if(tb_on){
             const std::vector<double> w_ = tb_lev(t);
@@ -914,6 +1023,7 @@ void cJupiterModel::Run(){
         cwb_mark(CW_BC_THETA); tb_mark(CW_BC_THETA);
         BC_Jup(*this).bcPhi();                                          // extrapolation in k-direction alomg grid boundaries
         cwb_mark(CW_BC_PHI); tb_mark(CW_BC_PHI);
+        ub_mark(UB_BC);
 
 //        BC_Jup(*this).bcScalarSurfSur();                                // scalar variable at surfaces extrapolated by von Neumann
         BC_Jup(*this).bcSolidGround();                                  // values inside mountains
@@ -956,6 +1066,7 @@ void cJupiterModel::Run(){
             JupiterUtils::damp_wiggles_ho(v, &i_topography, true, true, true, s, shapiro_vel_inloop());
             JupiterUtils::damp_wiggles_ho(w, &i_topography, true, true, true, s, shapiro_vel_inloop());
         }
+        ub_mark(UB_FILTER);
 
         // Floor the species at zero before the n-level copies are refreshed, so the clamped
         // values are what the next Runge-Kutta step starts from. Runs after the Shapiro pass,
@@ -994,6 +1105,38 @@ void cJupiterModel::Run(){
                 }
             }
             printf("\n");
+        }
+
+        if(ub_on && iter_n % ub_every == 0){
+            static const int lv_[] = { 0, 1, 2, 3, 5, 8, 12, 16, 20, 24, 28, 32, 35, 37, 38, 39, 40 };
+            const int nl_ = (int)(sizeof(lv_) / sizeof(lv_[0]));
+            const ub_tab f_now = ub_force(false), m_now = ub_force(true);
+            for(int r_ = 0; r_ < JupUb::NREG; r_++){
+                auto row_ = [&](const char* name, const std::vector<double>& x_, const char* fmt){
+                    printf("\n      ATJUP: [UB] %-16s", name);
+                    for(int l = 0; l < nl_; l++) if(lv_[l] < im) printf(fmt, x_[lv_[l]]); };
+                printf("\n      ATJUP: [UB] radial wind, %s (rows %d..%d), cumulative over iterations %d..%d, m/s\n      ATJUP: [UB] %-16s",
+                       ub_reg[r_], r_ == JupUb::R_ALL ? 1 : JupUb::st().j_lo, r_ == JupUb::R_ALL ? jm-2 : JupUb::st().j_hi, 1, iter_n, "level");
+                for(int l = 0; l < nl_; l++) if(lv_[l] < im) printf(" %9d", lv_[l]);
+                row_("u now", ub_last[r_], " %+9.5f");
+                std::vector<double> d_(im, 0.0);
+                for(int i = 0; i < im; i++) d_[i] = ub_last[r_][i] - ub_first[r_][i];
+                row_("change", d_, " %+9.5f");
+                for(int q_ = 0; q_ < UB_N; q_++){
+                    row_(ub_name[q_], ub_sum[q_][r_], " %+9.5f");
+                    if(q_ == UB_RK_RESET) for(int t_ = 0; t_ < JupUb::NTERM; t_++) row_(ub_term[t_], ub_tsum[t_][r_], " %+9.5f");
+                }
+                printf("\n      ATJUP: [UB] the radial force in the same region, m/s per iteration (x 1e3)");
+                std::vector<double> x_(im, 0.0);
+                for(int i = 0; i < im; i++) x_[i] = 1.0e3 * f_now[r_][i];                 row_("-dp/dr now", x_, " %+9.4f");
+                for(int i = 0; i < im; i++) x_[i] = 1.0e3 * m_now[r_][i];                 row_("(v2+w2)/r now", x_, " %+9.4f");
+                for(int i = 0; i < im; i++) x_[i] = 1.0e3 * (f_now[r_][i] + m_now[r_][i]); row_("sum of the two", x_, " %+9.4f");
+                for(int i = 0; i < im; i++) x_[i] = 1.0e3 * ub_m_first[r_][i];            row_("(v2+w2)/r start", x_, " %+9.4f");
+                for(int i = 0; i < im; i++) x_[i] = 1.0e3 * ub_f_first[r_][i];            row_("-dp/dr at start", x_, " %+9.4f");
+                for(int i = 0; i < im; i++) x_[i] = 1.0e3 * ub_f_solver[r_][i];           row_("  solver", x_, " %+9.4f");
+                for(int i = 0; i < im; i++) x_[i] = 1.0e3 * ub_f_filter[r_][i];           row_("  filter on p", x_, " %+9.4f");
+                printf("\n");
+            }
         }
 
         if(cwb_on && iter_n % checkpoint == 0){
