@@ -521,7 +521,7 @@ private:
     double coeff_ch4_A_i = -1033.3;                                     // ice phase, invented
     double coeff_ch4_B_i = 6.3910;
 
-    double rho_cond_ch4 = 0.657;                                        // liquid methane density [kg/m³]
+    double rho_cond_ch4 = 422.6;                                        // liquid methane density [kg/m³] at 112 K (was 0.657, the gas density at STP; unused here)
     double rg_ch4       = 0.657;                                        // mass density of ch4 vapour
     double m_ch4        = 16.042;                                       // molecular weight of methane [kg/kmol]
     double r_ch4        = 0.19;                                         // density of ch4 vapour [kg/m³]
