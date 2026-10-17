@@ -106,13 +106,23 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     // different and stronger condition than the solver's and would also throw away the legitimate
     // fluid-side variation. This matches the k*/dis* land-face branch further down in this same
     // function, which is the model's established treatment.
+    // ATJUP_PGRAD_WRAP=1 (2026-10-17; DEFAULT 1 on the user's word, 0 = the indices before):
+    // the phi neighbours through phi_wrap, as every other phi derivative here takes them. Since
+    // ATJUP_BC_PHI_PERIODIC integrates the seam meridian k = 0, k - 1 read P.x[i][j][-1], out of
+    // bounds (the last cell of row j-1 in a contiguous layout: the MERIDIONAL difference of a
+    // zonally uniform field, entering rhs_w as a zonal pressure force on that one meridian).
+    // Measured 10-17 with the balanced p_dyn (GEO224): w at k = 0 +8.6 m/s in 100 it at 86 N,
+    // every other meridian +0.4. ATSAT / ATNEPT / ATURAN take dpdphi with ke / kw already.
+    static const bool pgrad_wrap = [](){ const char* e = getenv("ATJUP_PGRAD_WRAP"); return e ? atoi(e) != 0 : true; }();
     auto pgrad = [&](const Array& P, int di, int dj, int dk, double inv_2d) -> double {
         const double loc = P.x[i][j][k];
-        double hi = P.x[i+di][j+dj][k+dk];
-        double lo = P.x[i-di][j-dj][k-dk];
+        const int kh = (dk != 0 && pgrad_wrap) ? ke : k + dk;
+        const int kl = (dk != 0 && pgrad_wrap) ? kw : k - dk;
+        double hi = P.x[i+di][j+dj][kh];
+        double lo = P.x[i-di][j-dj][kl];
         if(pgrad_wall_on){
-            if(SeaMount.x[i+di][j+dj][k+dk] == 1.0) hi = loc;
-            if(SeaMount.x[i-di][j-dj][k-dk] == 1.0) lo = loc;
+            if(SeaMount.x[i+di][j+dj][kh] == 1.0) hi = loc;
+            if(SeaMount.x[i-di][j-dj][kl] == 1.0) lo = loc;
         }
         return (hi - lo) * inv_2d;
     };
@@ -320,8 +330,9 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     // The pressure gradient is deliberately NOT in this list. It needs no factor at all — see
     // p_dyn_to_bar() in cJupiterModel.h for why, and leave ATJUP_PGRAD_SCALE at 1.0.
     static const int nd_all = [](){ const char* e = getenv("ATJUP_NONDIM"); return e ? atoi(e) : 0; }();
+    // ATJUP_ND_COR unset: on with ATJUP_NONDIM or ATJUP_GEO_BALANCE (the balanced start is for it)
     static const int nd_cor_on = [](){
-        const char* e = getenv("ATJUP_ND_COR");  return e ? atoi(e) : -1; }();
+        const char* e = getenv("ATJUP_ND_COR");  return e ? atoi(e) : (geo_balance() ? 1 : -1); }();
     static const int nd_cent_on = [](){
         const char* e = getenv("ATJUP_ND_CENT"); return e ? atoi(e) : -1; }();
     static const int nd_buoy_on = [](){

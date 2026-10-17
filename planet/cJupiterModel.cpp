@@ -616,6 +616,12 @@ void cJupiterModel::Run(){
 //    BC_Jup(*this).bcScalarSurfSur();                                    // scalar variable at surfaces extrapolated by von Neumann
     BC_Jup(*this).bcSolidGround();                                      // values inside mountains
 
+    // ATJUP_GEO_BALANCE (cJupiterModel.h): the balanced start, after the boundary passes. Its
+    // solver half is the shared PressureSolver's ATJUP_PRESS_INCR, whose default is 0 there; the
+    // balanced start sets it unless the knob is given.
+    if(geo_balance()) setenv("ATJUP_PRESS_INCR", "1", 0);
+    initGeoBalance();
+
     // Seed the turbulence fields from the ABL profile and prime the source terms once,
     // mirroring ATOM's TurbulenceAtm::init(). Needs the velocity field, so it comes after
     // the initial BCs.
@@ -828,7 +834,10 @@ void cJupiterModel::Run(){
         if(ub_on) ub_f0 = ub_force(false);
         PressureSolverJup(*this).run();
         if(ub_on) ub_f1 = ub_force(false);
-        JupiterUtils::damp_wiggles(p_dyn, &i_topography, true, true, true);
+        // ATJUP_DAMP_PDYN=0 (default 0 with ATJUP_GEO_BALANCE, else 1): no Shapiro pass on p_dyn; on
+        // ATNEPT it halved the balancing meridional gradient in 224 iterations (DAMP_P_HORIZ)
+        static const bool damp_pdyn = [](){ const char* e = getenv("ATJUP_DAMP_PDYN"); return e ? atoi(e) != 0 : !geo_balance(); }();
+        if(damp_pdyn) JupiterUtils::damp_wiggles(p_dyn, &i_topography, true, true, true);
             if(ub_on){
                 const ub_tab ub_f2 = ub_force(false);
                 for(int r_ = 0; r_ < JupUb::NREG; r_++) for(int i = 0; i < im; i++){

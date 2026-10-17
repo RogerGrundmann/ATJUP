@@ -713,6 +713,25 @@ public:
     static bool coriolis_split(){
         static const bool v = [](){ const char* e = getenv("ATJUP_CORIOLIS_SPLIT"); return e ? atoi(e) != 0 : true; }();
         return v && metric_split(); }
+    // ATJUP_GEO_BALANCE (2026-10-17; default 0, which is byte-identical to the head before): the
+    // geostrophically balanced start of the ice giants (ATNEPT / ATURAN GEO_BALANCE, from
+    // ATOM_Precipitation), for lead (b). Measured 10-17 (satchk/cor_2026-10-17, 1000 it): with
+    // ATJUP_ND_COR=1 alone v grows at exactly f w (2.66 m/s per 100 it at 25 N) because nothing
+    // balances the Coriolis force of the prescribed jets. It switches on, each with its own knob:
+    //   ATJUP_ND_COR 1          the Coriolis force at its full scale L / u_0 = 1400
+    //   ATJUP_PDYN_GEO 1        p_dyn starts as the barotropic pressure that balances Coriolis and
+    //                           metric force of each column's jet-level wind in rhs_v, and p_baro
+    //                           (frozen, added to p_hydro) the per-level rest; see initGeoBalance()
+    //   ATJUP_PRESS_INCR 1      the shared solver's defect-correction source (PressureSolver.h):
+    //                           a balanced p_dyn is a fixed point of it
+    //   ATJUP_DAMP_PDYN 0       no Shapiro pass on p_dyn after the solver (it flattens the balance)
+    static bool geo_balance(){
+        static const bool v = [](){ const char* e = getenv("ATJUP_GEO_BALANCE"); return e ? atoi(e) != 0 : false; }();
+        return v; }
+    static bool knob_or_geo(const char* name){ const char* e = getenv(name); return e ? atoi(e) != 0 : geo_balance(); }
+    static bool pdyn_geo(){ static const bool v = knob_or_geo("ATJUP_PDYN_GEO"); return v; }
+    std::vector<double> p_baro;          // [(i*jm + j)*km + k], empty unless ATJUP_PDYN_GEO
+    void initGeoBalance();
     static int bc_default_phi_periodic(){ return 1; }   // ATJUP_BC_PHI_PERIODIC, see ATPhys.h; 1 since 2026-10-13 on the user's word, 0 restores
 
     // ---- ATJUP_QHEAT_SCALE / the latent+sensible heating scale ----

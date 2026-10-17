@@ -169,7 +169,7 @@ void cJupiterModel::computeHydrostaticPressure(){
                 // -Coriolis * nd_cor * (-2 omega sin(theta) w), true sine, nd_cor read as the RHS reads it.
                 static const bool nd_cor_on_ = [](){
                     const char* e = getenv("ATJUP_ND_COR"); const char* n = getenv("ATJUP_NONDIM");
-                    const int c_ = e ? atoi(e) : -1, a_ = n ? atoi(n) : 0;
+                    const int c_ = e ? atoi(e) : (geo_balance() ? 1 : -1), a_ = n ? atoi(n) : 0;
                     return (c_ >= 0 ? c_ : a_) != 0; }();
                 const double cor_ = coriolis_split()
                     ? Coriolis * (nd_cor_on_ ? L_atm * 1.0e3 / u_0 : 1.0) * 2.0 * omega * std::abs(sin(the.z[j])) : 0.0;
@@ -181,6 +181,9 @@ void cJupiterModel::computeHydrostaticPressure(){
                 p_hydro.x[i0][j][k] = 0.0;
                 for(int i = i0 + 1; i <= i1; i++)
                     p_hydro.x[i][j][k] = p_hydro.x[i-1][j][k] + 0.5 * (f_(i-1) + f_(i)) * dr;
+                // ATJUP_PDYN_GEO: the frozen per-level rest of the balanced start (initGeoBalance)
+                if(!p_baro.empty())
+                    for(int i = i0; i <= i1; i++) p_hydro.x[i][j][k] += p_baro[((size_t)i * jm + j) * km + k];
                 continue;
             }
 

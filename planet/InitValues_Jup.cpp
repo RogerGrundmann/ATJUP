@@ -313,6 +313,103 @@ void cJupiterModel::init_PressureDynamic(){
 
 
 // ============================================================================
+// ATJUP_PDYN_GEO (on with ATJUP_GEO_BALANCE): the geostrophically balanced start, ported from
+// ATNEPT's init_PressureDynamic (PDYN_GEO=2, PDYN_GEO_EXACT, PDYN_GEO_BC). Called after the
+// initial boundary passes, so p_baro is built from the fields the first RK stage sees.
+//
+// With the radial forces carried by p_hydro (ATJUP_METRIC_SPLIT, CORIOLIS_SPLIT) what is left at
+// the start is the meridional balance of rhs_v:
+//     dp/dtheta = rm * Coriolis * nd_cor * 2 omega cos(theta) w + w2 cot(theta)
+// (pgrad_scale 1; cot with the RK's floored sine, cos as the RK takes it). It is integrated from
+// the north pole by p[j+1] = p[j-1] + 2 dthe G[j], so the centred difference rhs_v takes returns
+// G exactly. G is built from the ZONAL MEAN of w over the fluid cells of each (i, j): the
+// SeaMount holds w = 0, and a pressure integrated through it would differ from its neighbours in
+// phi and push w along the band. p_dyn takes the barotropic part (each latitude's jet level, the
+// level of the largest zonal-mean |w|); p_baro, frozen and added to p_hydro, takes what each
+// level's own wind needs on top: p_baro = Q_i - p_dyn - p_hydro(start). One global constant is
+// removed so that p_dyn has zero area mean.
+// ============================================================================
+void cJupiterModel::initGeoBalance(){
+    if(!pdyn_geo()) return;
+    if(!metric_split()){
+        std::cout << "      ATJUP: initGeoBalance: ATJUP_PDYN_GEO needs ATJUP_METRIC_SPLIT, skipped" << std::endl;
+        return;
+    }
+    static const int nd_all_ = [](){ const char* n = getenv("ATJUP_NONDIM"); return n ? atoi(n) : 0; }();
+    static const int nd_cor_on_ = [](){
+        const char* e = getenv("ATJUP_ND_COR"); return e ? atoi(e) : (geo_balance() ? 1 : -1); }();
+    const double nd_cor = ((nd_cor_on_ >= 0 ? nd_cor_on_ : nd_all_) != 0) ? L_atm * 1.0e3 / u_0 : 1.0;
+    const double smin = sinthe_min();
+
+    // zonal mean of w over the fluid cells, per (i, j)
+    std::vector<double> wbar((size_t)im * jm, 0.0);
+    #pragma omp parallel for collapse(2) schedule(static)
+    for(int i = 0; i < im; i++) for(int j = 0; j < jm; j++){
+        double s = 0.0; int n_ = 0;
+        for(int k = 0; k < km - 1; k++) if(SeaMount.x[i][j][k] != 1.0){ s += w.x[i][j][k]; n_++; }
+        wbar[(size_t)i * jm + j] = n_ ? s / n_ : 0.0;
+    }
+    auto G = [&](int i, int j)->double{
+        if(j == 0 || j == jm - 1) return 0.0;
+        const double sth = std::max(smin, std::abs(sin(the.z[j])));
+        double cth = cos(the.z[j]);
+        if(costhe_abs() && j > 90) cth = -cth;
+        const double wb = wbar[(size_t)i * jm + j];
+        return rad.z[i] * Coriolis * nd_cor * 2.0 * omega * cth * wb + wb * wb * cth / sth;
+    };
+    auto integrate = [&](const std::vector<double>& g, std::vector<double>& P){
+        P[0] = 0.0;
+        for(int j = 1; j < jm; j++)
+            P[j] = (j >= 2) ? P[j-2] + 2.0 * dthe * g[j-1] : P[j-1] + 0.5 * (g[j-1] + g[j]) * dthe;
+    };
+
+    // barotropic part: each latitude's jet level
+    std::vector<double> g(jm), P(jm);
+    std::vector<int> ia(jm, im - 1);
+    for(int j = 0; j < jm; j++){
+        int a = 0;
+        for(int i = 1; i < im; i++) if(std::abs(wbar[(size_t)i * jm + j]) > std::abs(wbar[(size_t)a * jm + j])) a = i;
+        ia[j] = a;
+        g[j] = G(a, j);
+    }
+    integrate(g, P);
+    double sw = 0.0, sp = 0.0;
+    for(int j = 0; j < jm; j++){ const double s_ = std::abs(sin(the.z[j])); sw += s_; sp += s_ * P[j]; }
+    const double p_off = sp / sw;
+    double pmin = 0.0, pmax = 0.0;
+    for(int j = 0; j < jm; j++){
+        P[j] -= p_off;
+        pmin = std::min(pmin, P[j]); pmax = std::max(pmax, P[j]);
+        for(int i = 0; i < im; i++) for(int k = 0; k < km; k++) p_dyn.x[i][j][k] = P[j];
+    }
+    printf("      ATJUP: initGeoBalance: nd_cor %.1f, p_dyn = barotropic balance of the jet-level wind in rhs_v, %.6f .. %.6f (the model's unit; %.4f .. %.4f bar), jet level at the equator %d\n",
+           nd_cor, pmin, pmax, pmin * p_dyn_to_bar(), pmax * p_dyn_to_bar(), ia[(jm - 1) / 2]);
+
+    // per-level rest, frozen in p_baro
+    p_baro.clear();
+    computeBuoyancyRefLevel();
+    computeHydrostaticPressure();                                  // p_baro still empty
+    std::vector<double> pb((size_t)im * jm * km, 0.0);
+    double bmin = 0.0, bmax = 0.0;
+    #pragma omp parallel for schedule(static) reduction(min:bmin) reduction(max:bmax)
+    for(int i = 0; i < im; i++){
+        std::vector<double> gi(jm), Q(jm);
+        for(int j = 0; j < jm; j++) gi[j] = G(i, j);
+        integrate(gi, Q);
+        for(int j = 0; j < jm; j++) for(int k = 0; k < km; k++){
+            if(SeaMount.x[i][j][k] == 1.0) continue;               // p_hydro is zero there and stays so
+            const double b_ = (Q[j] - p_off) - p_dyn.x[i][j][k] - p_hydro.x[i][j][k];
+            pb[((size_t)i * jm + j) * km + k] = b_;
+            bmin = std::min(bmin, b_); bmax = std::max(bmax, b_);
+        }
+    }
+    p_baro.swap(pb);
+    computeHydrostaticPressure();                                  // now with p_baro
+    printf("      ATJUP: initGeoBalance: p_baro (the per-level rest, added to p_hydro, frozen) %.6e .. %.6e\n", bmin, bmax);
+}
+
+
+// ============================================================================
 // Static Pressure Initialization (hypsometric / power-law profile)
 // ============================================================================
 void cJupiterModel::init_PressureStatic(){
@@ -391,6 +488,11 @@ void cJupiterModel::init_PressureStatic(){
 // consistent with the p_stat and t it is built from. Whole grid, boundaries included, unlike
 // Forces() itself, since nothing here needs neighbours.
 void cJupiterModel::computeMixtureDensity(){
+    // ATJUP_RHO_PDYN=0 (2026-10-17; default 0 with ATJUP_GEO_BALANCE, else 1): the density from
+    // p_stat alone, as the buoyancy builds it (buoy_pressure). p_dyn is a potential on the constant
+    // reference density r_mix; the balanced start gives it -1.25 .. +1.02 bar, which against the
+    // 0.02 bar under the lid would make rho_mix negative where the chemistry reads it.
+    static const double pdyn_w = [](){ const char* e = getenv("ATJUP_RHO_PDYN"); return (e ? atoi(e) != 0 : !geo_balance()) ? 1.0 : 0.0; }();
     #pragma omp parallel for collapse(2) schedule(static)
     for (int i = 0; i < im; i++) {
         for (int j = 0; j < jm; j++) {
@@ -402,7 +504,7 @@ void cJupiterModel::computeMixtureDensity(){
                 // p_dyn is the nondimensional kinematic pressure, not bar — see p_dyn_to_bar()
                 // in cJupiterModel.h. Added to p_stat unconverted it counted 7.79x too heavily.
                 const double p_pa = (p_stat.x[i][j][k]
-                                     + p_dyn.x[i][j][k] * p_dyn_to_bar()) * 1.0e5;
+                                     + pdyn_w * p_dyn.x[i][j][k] * p_dyn_to_bar()) * 1.0e5;
                 const double rho  = p_pa / (R_mix * T);
                 rho_mix.x[i][j][k] = std::isfinite(rho) ? rho : 0.0;
             }
