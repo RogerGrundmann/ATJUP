@@ -738,6 +738,12 @@ public:
         static const int v = [](){ const char* e = getenv("ATJUP_U_INIT_CONT"); return e ? atoi(e) : 0; }();
         return v; }
     void initUFromContinuity();
+    double balanceColumnV(long* nskip_out);     // InitValues_Jup.cpp; =2 above and the loop's V_MASSBAL_STRIDE
+    // ATJUP_V_MASSBAL_STRIDE=<N> (default 0 = off): the column balance of v re-imposed every N
+    // iterations in the loop, as ATOM's ATM_V_MASSBAL_STRIDE; see cJupiterModel.cpp.
+    static int v_massbal_stride(){
+        static const int v = [](){ const char* e = getenv("ATJUP_V_MASSBAL_STRIDE"); return e ? atoi(e) : 0; }();
+        return v; }
     // the zonal-mean meridional streamfunction (ATOM's write_meridional_streamfunction), filled
     // into Psi and written as PsiMerid with every VTK set; see FileIO_Jup.cpp
     void writeMeridionalStreamfunction(int iter);

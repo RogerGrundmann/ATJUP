@@ -934,23 +934,7 @@ void cJupiterModel::initUFromContinuity(){
     // (=2) the column balance of v
     double vshift = 0.0;
     long nskip = 0;
-    if(mode == 2){
-        #pragma omp parallel for collapse(2) schedule(static) reduction(max:vshift) reduction(+:nskip)
-        for(int j = 1; j < jm-1; j++){
-            for(int k = 0; k < km; k++){
-                const int i0 = i_topography[j][k];
-                if(i0 > 0){ nskip++; continue; }                         // on the obstacle: see above
-                double I1 = 0.0, I0 = 0.0;
-                for(int i = i0; i < im-1; i++){
-                    I1 += 0.5 * (rad.z[i] * v.x[i][j][k] + rad.z[i+1] * v.x[i+1][j][k]) * dr;
-                    I0 += 0.5 * (rad.z[i] + rad.z[i+1]) * dr;
-                }
-                const double dv = I1 / I0;
-                for(int i = i0; i < im; i++) v.x[i][j][k] -= dv;
-                vshift = std::max(vshift, std::fabs(dv));
-            }
-        }
-    }
+    if(mode == 2) vshift = balanceColumnV(&nskip);
 
     // u from continuity
     double umax = 0.0;
@@ -1020,4 +1004,36 @@ void cJupiterModel::initUFromContinuity(){
            q(imbal, 0.5), q(imbal, 0.95), q(imbal, 1.0), q(resid, 0.5), q(resid, 0.95), q(resid, 1.0));
     printf("      ATJUP: [U_INIT_CONT] continuity residuum (floored geometry, nondim) max %.4e -> %.4e,"
            "  rms %.4e -> %.4e\n", r0max, r1max, r0rms, r1rms);
+}
+
+
+// ============================================================================
+// THE COLUMN BALANCE OF v: v <- v - INT r v dr / INT r dr in every column that reaches the
+// bottom wall (i_topography = 0), from j = 1 to jm-2, all k (the seam copy gets the same shift as
+// k = 0 because it holds the same column). Columns on the obstacle are left out: they hold only
+// the upper part of a cell, and taking out their mean reversed v there (initUFromContinuity).
+// Returns the largest shift, nondimensional; *nskip counts the columns left out.
+//
+// Used twice: by ATJUP_U_INIT_CONT=2 at the start, and by ATJUP_V_MASSBAL_STRIDE in the loop.
+// ============================================================================
+double cJupiterModel::balanceColumnV(long* nskip_out){
+    double vshift = 0.0;
+    long nskip = 0;
+    #pragma omp parallel for collapse(2) schedule(static) reduction(max:vshift) reduction(+:nskip)
+    for(int j = 1; j < jm-1; j++){
+        for(int k = 0; k < km; k++){
+            const int i0 = i_topography[j][k];
+            if(i0 > 0){ nskip++; continue; }                             // on the obstacle: see above
+            double I1 = 0.0, I0 = 0.0;
+            for(int i = i0; i < im-1; i++){
+                I1 += 0.5 * (rad.z[i] * v.x[i][j][k] + rad.z[i+1] * v.x[i+1][j][k]) * dr;
+                I0 += 0.5 * (rad.z[i] + rad.z[i+1]) * dr;
+            }
+            const double dv = I1 / I0;
+            for(int i = i0; i < im; i++) v.x[i][j][k] -= dv;
+            vshift = std::max(vshift, std::fabs(dv));
+        }
+    }
+    if(nskip_out) *nskip_out = nskip;
+    return vshift;
 }

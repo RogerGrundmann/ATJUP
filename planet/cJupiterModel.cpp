@@ -1081,6 +1081,26 @@ void cJupiterModel::Run(){
         }
         ub_mark(UB_FILTER);
 
+        // ATJUP_V_MASSBAL_STRIDE=<N> (2026-10-18, default 0 = off and byte-identical): the column
+        // balance of v (balanceColumnV, InitValues_Jup.cpp) every N iterations, ported from ATOM's
+        // ATM_V_MASSBAL_STRIDE at the user's request. WHY: ATJUP_U_INIT_CONT=2 closes the cells
+        // exactly at the start (Psi(bottom)/max|Psi| 0.0000 away from the cone latitudes) and the
+        // model does not keep it -- 0.058 at 500 and 0.093 at 1000 iterations, against the default's
+        // 0.111 (satchk/ucont_2026-10-18/UC2_1000). ATOM measured the same erosion and the same
+        // reason holds here: p_stat is diagnosed, not prognostic, so a net column mass flux has
+        // nothing to raise and nowhere to go. It removes one number per column -- the column mean
+        // of v -- and leaves the shear, which is the cell; columns on the obstacle are left out.
+        // After every filter that writes v and before restoreVar, so the balanced v is what the
+        // next step integrates from. The largest shift is printed at every checkpoint.
+        if(v_massbal_stride() > 0 && iter_n % v_massbal_stride() == 0){
+            static double vb_max = 0.0;
+            const double vb = balanceColumnV(nullptr);
+            vb_max = std::max(vb_max, vb);
+            if(iter_n % checkpoint == 0)
+                printf("      ATJUP: [V_MASSBAL_STRIDE %d] iter %d: largest column shift of v %.4e m/s (max so far %.4e)\n",
+                       v_massbal_stride(), iter_n, vb * u_0, vb_max * u_0);
+        }
+
         // Floor the species at zero before the n-level copies are refreshed, so the clamped
         // values are what the next Runge-Kutta step starts from. Runs after the Shapiro pass,
         // which can itself undershoot at a sharp cloud edge. See FileIO_Jup.cpp for the
