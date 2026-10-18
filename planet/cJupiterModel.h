@@ -732,6 +732,15 @@ public:
     static bool pdyn_geo(){ static const bool v = knob_or_geo("ATJUP_PDYN_GEO"); return v; }
     std::vector<double> p_baro;          // [(i*jm + j)*km + k], empty unless ATJUP_PDYN_GEO
     void initGeoBalance();
+    // ATJUP_U_INIT_CONT=<n> (default 0): the initial radial velocity from the model's own discrete
+    // continuity, ported from ATOM_Precipitation's install_u_from_cells; see InitValues_Jup.cpp.
+    static int u_init_cont(){
+        static const int v = [](){ const char* e = getenv("ATJUP_U_INIT_CONT"); return e ? atoi(e) : 0; }();
+        return v; }
+    void initUFromContinuity();
+    // the zonal-mean meridional streamfunction (ATOM's write_meridional_streamfunction), filled
+    // into Psi and written as PsiMerid with every VTK set; see FileIO_Jup.cpp
+    void writeMeridionalStreamfunction(int iter);
     static int bc_default_phi_periodic(){ return 1; }   // ATJUP_BC_PHI_PERIODIC, see ATPhys.h; 1 since 2026-10-13 on the user's word, 0 restores
 
     // ---- ATJUP_QHEAT_SCALE / the latent+sensible heating scale ----
@@ -1217,6 +1226,7 @@ private:
     Array aux_u;                // auxilliar field u-velocity component
     Array aux_v;                // auxilliar field v-velocity component
     Array aux_w;                // auxilliar field w-velocity component
+    Array Psi;                  // zonal-mean meridional streamfunction [kg/s], replicated in k (output only)
 
     Array Q_Latent;                // latent heat
     Array Q_Sensible;            // sensible heat

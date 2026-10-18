@@ -616,6 +616,10 @@ void cJupiterModel::Run(){
 //    BC_Jup(*this).bcScalarSurfSur();                                    // scalar variable at surfaces extrapolated by von Neumann
     BC_Jup(*this).bcSolidGround();                                      // values inside mountains
 
+    // ATJUP_U_INIT_CONT (default 0): u from continuity against the final initial v and w, so
+    // after the boundary passes that still write them
+    if(u_init_cont() != 0) initUFromContinuity();
+
     // ATJUP_GEO_BALANCE (cJupiterModel.h): the balanced start, after the boundary passes. Its
     // solver half is the shared PressureSolver's ATJUP_PRESS_INCR, whose default is 0 there; the
     // balanced start sets it unless the knob is given.
@@ -1326,6 +1330,7 @@ void cJupiterModel::resetArrays(){
     rho_mix.initArray(im, jm, km, 0.0);          // local mixture density
 
     rho_mix.initArray(im, jm, km, 1.0);                // density of mixture
+    Psi.initArray(im, jm, km, 0.0);                    // meridional streamfunction, output only
 
     rhs_t.initArray(im, jm, km, 0.0);                // auxilliar field RHS temperature
     rhs_u.initArray(im, jm, km, 0.0);                // auxilliar field RHS u-velocity component

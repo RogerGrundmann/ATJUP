@@ -850,3 +850,174 @@ void cJupiterModel::init_nh4sh(std::string gas, double &c_tropopause,
            elapsed.count() * 1e-9, gas.c_str());
     std::cout << "      ATJUP: init_nh4sh of " << gas << " ended" << std::endl;
 }
+
+
+// ============================================================================
+// ATJUP_U_INIT_CONT=<n> (2026-10-18, default 0 = off and byte-identical): THE INITIAL RADIAL
+// VELOCITY FROM THE MODEL'S OWN DISCRETE CONTINUITY. Ported from ATOM_Precipitation's
+// install_u_from_cells (8285348, ATM_CELLS_U_FROM_PSI), at the user's request.
+//
+// WHY. Since ATJUP_U_INIT_SCALE 0 (7615b7e) the initial u is exactly zero, so the prescribed
+// meridional cells are horizontal sheets: v reverses with height (60 N, k = 180: +7.2 m/s at the
+// bottom, -6.2 under the lid) and nothing joins the two branches. Continuity against that v asks
+// for |u| up to 0.66 m/s (JNC1000, k = 180, iteration 0); the model makes 0.02 m/s by iteration
+// 1000 on its own.
+//
+// WHAT. Per column, in the geometry the Runge-Kutta step and the pressure solver integrate in
+// (metric radius rad.z, true cosine, sine floored at sinthe_min()), with D the horizontal part of
+// the residuum Reporting.h prints,
+//     (1/r^2) d(r^2 u)/dr = -D,     D = dv/dthe / r + cos/(r s) v + dw/dphi / (r s),
+// centred in theta and phi (phi through phi_wrap), integrated upward with the trapezoid rule from
+// u = 0 at the bottom wall, or at the first fluid cell over the obstacle. Solid neighbours carry
+// no flux. Against the v and w the model actually holds, after the boundary passes, not against
+// an analytic cell: that is ATOM's reason too.
+//
+// CLOSURE AT THE RIGID LID. u(lid) = 0 needs INT r^2 D dr = 0 in every column. The prescribed v
+// does not have it (0.66 m/s is left at the lid at k = 180), so:
+//   =1  ATOM's BOUNDED correction only: the column remainder R is taken out of the source in
+//       proportion to |source|, R |S_i| / INT |S|, so no level can more than double. (ATOM's first
+//       attempt scaled the two signs as its v balancing does and produced max|u| = 84 m/s next to
+//       terrain.) A column more than 90 % one-signed cannot hold a closed vertical circulation and
+//       keeps u = 0, as in ATOM.
+//   =2  first ATOM's column balance of v (ATM_V_MASSBAL, its default since 2026-08-28):
+//       v <- v - INT r v dr / INT r dr per column. The meridional part of R is the theta
+//       derivative of INT r v dr, so it vanishes; what is left is the zonal part at the obstacle
+//       flanks, which the correction above takes. This CHANGES v by one constant per column; the
+//       shear, which is the cell, is untouched. The largest shift is printed.
+//       ONLY COLUMNS THAT REACH THE BOTTOM WALL (i_topography = 0). A column standing on the
+//       obstacle holds only the upper part of the cell, its mean v is that part's, and taking it
+//       out REVERSED the branch: the first version, balancing every column, turned v at i = 20,
+//       k = 180 from -4.90 to +9.15 m/s at 6 N and from -4.71 to +4.86 at 58 S (327 of the 444
+//       sign flips in that slice were over the cone, shifts up to 23 m/s; seen by the user in the
+//       zonal VTK, satchk/ucont_2026-10-18/UC2_200). Those columns keep the prescribed v and get
+//       the =1 treatment.
+// VOLUME, NOT MASS: ATJUP's continuity carries no density (incompressible on r_mix), where
+// ATOM's is anelastic and weights with r_humid.
+//
+// PRINTED: max |u|, the closure left at the lid against each column's own peak |r^2 u| (ATOM's
+// lesson: the endpoint, not the peak, or the check always reads ~1), the remainder removed, the
+// zeroed columns, and the continuity residuum in the floored geometry before and after.
+// ============================================================================
+void cJupiterModel::initUFromContinuity(){
+    const int mode = u_init_cont();
+    std::cout << "\n      ATJUP: initUFromContinuity, ATJUP_U_INIT_CONT = " << mode << std::endl;
+    const bool   periodic = ATPhys::phi_periodic<cJupiterModel>();
+    const int    k_first  = ATPhys::phi_first(periodic);
+    const double smin     = sinthe_min();
+    auto solid = [&](int i, int j, int k){ return SeaMount.x[i][j][k] == 1.0; };
+    auto s_of  = [&](int j){ return std::max(smin, std::abs(std::sin(the.z[j]))); };
+    auto c_of  = [&](int j){ double c = std::cos(the.z[j]); if(costhe_abs() && j > 90) c = -c; return c; };
+
+    // the continuity residuum in the floored geometry, max and rms over the cells the RK step
+    // integrates (j = 3..jm-4) with no solid neighbour
+    auto residuum = [&](double& rmax, double& rrms){
+        double mx = 0.0, s2 = 0.0; long n = 0;
+        #pragma omp parallel for collapse(2) schedule(static) reduction(max:mx) reduction(+:s2,n)
+        for(int i = 1; i < im-1; i++){
+            for(int j = 3; j < jm-3; j++){
+                const double r = rad.z[i], s = s_of(j), c = c_of(j);
+                for(int k = k_first; k < km-1; k++){
+                    const int kw = ATPhys::phi_wrap(periodic, k-1, km), ke = ATPhys::phi_wrap(periodic, k+1, km);
+                    if(solid(i,j,k) || solid(i-1,j,k) || solid(i+1,j,k) || solid(i,j-1,k) || solid(i,j+1,k)
+                       || solid(i,j,kw) || solid(i,j,ke)) continue;
+                    const double res = (u.x[i+1][j][k] - u.x[i-1][j][k]) / (2.0 * dr) + 2.0 * u.x[i][j][k] / r
+                        + (v.x[i][j+1][k] - v.x[i][j-1][k]) / (2.0 * dthe) / r + c / (r * s) * v.x[i][j][k]
+                        + (w.x[i][j][ke] - w.x[i][j][kw]) / (2.0 * dphi) / (r * s);
+                    mx = std::max(mx, std::fabs(res)); s2 += res * res; n++;
+                }
+            }
+        }
+        rmax = mx; rrms = n > 0 ? std::sqrt(s2 / n) : 0.0;
+    };
+    double r0max, r0rms; residuum(r0max, r0rms);
+
+    // (=2) the column balance of v
+    double vshift = 0.0;
+    long nskip = 0;
+    if(mode == 2){
+        #pragma omp parallel for collapse(2) schedule(static) reduction(max:vshift) reduction(+:nskip)
+        for(int j = 1; j < jm-1; j++){
+            for(int k = 0; k < km; k++){
+                const int i0 = i_topography[j][k];
+                if(i0 > 0){ nskip++; continue; }                         // on the obstacle: see above
+                double I1 = 0.0, I0 = 0.0;
+                for(int i = i0; i < im-1; i++){
+                    I1 += 0.5 * (rad.z[i] * v.x[i][j][k] + rad.z[i+1] * v.x[i+1][j][k]) * dr;
+                    I0 += 0.5 * (rad.z[i] + rad.z[i+1]) * dr;
+                }
+                const double dv = I1 / I0;
+                for(int i = i0; i < im; i++) v.x[i][j][k] -= dv;
+                vshift = std::max(vshift, std::fabs(dv));
+            }
+        }
+    }
+
+    // u from continuity
+    double umax = 0.0;
+    long ncol = 0, nzero = 0;
+    std::vector<double> resid, imbal;
+    #pragma omp parallel for collapse(2) schedule(static) reduction(max:umax) reduction(+:ncol,nzero)
+    for(int j = 1; j < jm-1; j++){
+        for(int k = k_first; k < km-1; k++){
+            const int i0 = i_topography[j][k];
+            for(int i = 0; i < im; i++) u.x[i][j][k] = 0.0;
+            if(i0 >= im-1) continue;
+            const double s = s_of(j), c = c_of(j);
+            const int kw = ATPhys::phi_wrap(periodic, k-1, km), ke = ATPhys::phi_wrap(periodic, k+1, km);
+            std::vector<double> src(im, 0.0);                           // r^2 D
+            for(int i = i0; i < im; i++){
+                const double r  = rad.z[i];
+                const double vn = solid(i,j-1,k) ? 0.0 : v.x[i][j-1][k];
+                const double vs = solid(i,j+1,k) ? 0.0 : v.x[i][j+1][k];
+                const double ww = solid(i,j,kw)  ? 0.0 : w.x[i][j][kw];
+                const double we = solid(i,j,ke)  ? 0.0 : w.x[i][j][ke];
+                const double D  = (vs - vn) / (2.0 * dthe) / r + c / (r * s) * v.x[i][j][k]
+                                + (we - ww) / (2.0 * dphi) / (r * s);
+                src[i] = r * r * D;
+            }
+            double R = 0.0, S = 0.0;
+            for(int i = i0; i < im-1; i++){
+                R += 0.5 * (src[i] + src[i+1]) * dr;
+                S += 0.5 * (std::fabs(src[i]) + std::fabs(src[i+1])) * dr;
+            }
+            if(!(S > 0.0)) continue;
+            const double imb = std::fabs(R) / S;
+            #pragma omp critical(ucont_stats)
+            imbal.push_back(imb);
+            if(imb > 0.9){ nzero++; continue; }                          // one-signed: no closed cell
+            const double corr = R / S;
+            for(int i = i0; i < im; i++) src[i] -= corr * std::fabs(src[i]);
+            double r2u = 0.0, peak = 0.0;
+            for(int i = i0; i < im-1; i++){
+                r2u -= 0.5 * (src[i] + src[i+1]) * dr;
+                if(i + 1 < im - 1) u.x[i+1][j][k] = r2u / (rad.z[i+1] * rad.z[i+1]);
+                peak = std::max(peak, std::fabs(r2u));
+                if(i + 1 < im - 1) umax = std::max(umax, std::fabs(u.x[i+1][j][k]));
+            }
+            ncol++;
+            if(peak > 0.0){
+                #pragma omp critical(ucont_stats)
+                resid.push_back(std::fabs(r2u) / peak);                 // what the lid has to take
+            }
+        }
+    }
+    // the seam copy, and the rigid walls as bcRadius sets them
+    for(int i = 0; i < im; i++)
+        for(int j = 0; j < jm; j++){
+            if(periodic) u.x[i][j][km-1] = u.x[i][j][0];
+        }
+    for(int j = 0; j < jm; j++) for(int k = 0; k < km; k++){ u.x[0][j][k] = 0.0; u.x[im-1][j][k] = 0.0; }
+
+    double r1max, r1rms; residuum(r1max, r1rms);
+    std::sort(resid.begin(), resid.end()); std::sort(imbal.begin(), imbal.end());
+    auto q = [](const std::vector<double>& a, double f){
+        return a.empty() ? 0.0 : a[std::min(a.size()-1, (size_t)(f * a.size()))]; };
+    printf("      ATJUP: [U_INIT_CONT] u from continuity over %ld columns (%ld zeroed as one-signed),"
+           " max |u| = %.4f m/s; v column balance %s, largest shift %.4f m/s (%ld columns on the obstacle left out)\n",
+           ncol, nzero, umax * u_0, mode == 2 ? "ON" : "off", vshift * u_0, nskip);
+    printf("      ATJUP: [U_INIT_CONT] column remainder removed |R|/INT|S|: median %.4f  p95 %.4f  worst %.4f;"
+           "  lid closure |r2u(lid)|/peak: median %.2e  p95 %.2e  worst %.2e\n",
+           q(imbal, 0.5), q(imbal, 0.95), q(imbal, 1.0), q(resid, 0.5), q(resid, 0.95), q(resid, 1.0));
+    printf("      ATJUP: [U_INIT_CONT] continuity residuum (floored geometry, nondim) max %.4e -> %.4e,"
+           "  rms %.4e -> %.4e\n", r0max, r1max, r0rms, r1rms);
+}

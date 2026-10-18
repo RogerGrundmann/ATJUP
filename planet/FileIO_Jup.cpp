@@ -10,6 +10,7 @@
 #include "cJupiterModel.h"
 #include "Utils.h"
 
+#include <cfloat>
 #include <cstdint>
 #include <cstring>
 #include <vector>
@@ -21,6 +22,8 @@ void cJupiterModel::writeData(){
     cout << endl << "      ATJUP: writeData" << endl;
 
     auto begin = std::chrono::high_resolution_clock::now();
+
+    writeMeridionalStreamfunction(iter_n);       // fills Psi, which the slices below write
 
     int i_radial = 20;
     paraview_vtk_radial(iter_n, i_radial);
@@ -644,3 +647,94 @@ bool cJupiterModel::restart_state_is_clean(){
 /*
 *
 */
+
+// ============================================================================
+// THE MERIDIONAL STREAMFUNCTION, ported from ATOM_Precipitation's write_meridional_streamfunction
+// (MinMax_Atm.cpp) on 2026-10-18 at the user's request. Output only: nothing reads Psi.
+//
+// WHY. The meridional cells are flat: a cell is 1248 km per degree against 3.5 km per level, so
+// continuity holds u at ~v/350 and a (v, u) glyph or streamline plot lies flat along the latitude
+// axis. The streamfunction integrates v and shows the cells that close through those small u.
+//
+//     Psi(theta, r) = 2 pi sin(theta) r_mix (1/n_k) SUM_k INT_r^lid r' v dr'        [kg/s]
+//
+// Integrated downward from Psi = 0 at the lid, each column first and then the zonal mean (ATOM's
+// "exact zonal mean": a column over the obstacle starts at its own ground, and rock contributes
+// zero flux rather than being left out of the mean). n_k = km-1 distinct meridians, k = km-1 is
+// the seam copy of k = 0.
+//
+// DENSITY. r_mix, the constant reference density, NOT rho_mix. ATJUP's continuity carries no
+// density (Reporting.h: du/dr + 2u/r + ...), so the volume flux is what closes; on Jupiter rho
+// falls by two orders of magnitude over the 140 km column, and a rho_mix-weighted Psi would not
+// close at the bottom even for a column whose volume flux does. ATOM uses rho because its
+// continuity is anelastic. The metric radius r' = rad.z * L_atm and the TRUE sine are used: this
+// is the physical flux through a latitude circle, the sine floor is the model's polar metric.
+//
+// Sign as in ATOM: v is southward-positive (theta is colatitude). The check is Psi at the bottom
+// wall, which must vanish where every column closes; it is printed against max |Psi|.
+// ============================================================================
+void cJupiterModel::writeMeridionalStreamfunction(int iter){
+    const double Lm     = L_atm * 1.0e3;                               // m per nondimensional length
+    const double rho    = (r_mix > 0.0 && std::isfinite(r_mix)) ? r_mix : 1.0;
+    const int    nk     = km - 1;
+    std::vector<double> psi((size_t)im * jm, 0.0), vbar((size_t)im * jm, 0.0);
+
+    #pragma omp parallel for schedule(static)
+    for(int j = 0; j < jm; j++){
+        const double coeff = 2.0 * M_PI * std::sin(the.z[j]) * rho * u_0 * Lm * Lm;   // r', dr in Lm
+        std::vector<double> acc(im, 0.0), vs(im, 0.0);
+        for(int k = 0; k < nk; k++){
+            double running = 0.0;
+            for(int i = im - 2; i >= 0; i--){
+                const bool solid_i  = SeaMount.x[i][j][k] == 1.0;
+                const bool solid_i1 = SeaMount.x[i+1][j][k] == 1.0;
+                const double f1 = solid_i  ? 0.0 : rad.z[i]   * v.x[i][j][k];
+                const double f2 = solid_i1 ? 0.0 : rad.z[i+1] * v.x[i+1][j][k];
+                if(std::isfinite(f1) && std::isfinite(f2)) running += 0.5 * (f1 + f2) * dr;
+                acc[i] += running;
+            }
+            for(int i = 0; i < im; i++) if(SeaMount.x[i][j][k] != 1.0) vs[i] += v.x[i][j][k];
+        }
+        for(int i = 0; i < im; i++){
+            psi[(size_t)i * jm + j]  = coeff * acc[i] / (double)nk;
+            vbar[(size_t)i * jm + j] = vs[i] / (double)nk * u_0;           // rock contributes zero
+        }
+    }
+
+    #pragma omp parallel for collapse(2) schedule(static)
+    for(int i = 0; i < im; i++)
+        for(int j = 0; j < jm; j++)
+            for(int k = 0; k < km; k++)
+                Psi.x[i][j][k] = psi[(size_t)i * jm + j];
+
+    auto lat_of = [&](int j){ return 90.0 - (double)j * 180.0 / (double)(jm - 1); };
+
+    std::ostringstream fname;
+    fname << output_path << "/meridional_streamfunction_" << iter << ".csv";
+    std::ofstream f(fname.str().c_str());
+    if(f.is_open()){
+        f << "lat_deg,height_km,vbar_mps,psi_kg_per_s\n";
+        f << std::setprecision(8);
+        for(int j = 0; j < jm; j++)
+            for(int i = 0; i < im; i++)
+                f << lat_of(j) << "," << get_layer_height(i) << ","
+                  << vbar[(size_t)i * jm + j] << "," << psi[(size_t)i * jm + j] << "\n";
+        f.close();
+    }
+
+    double pmax = -DBL_MAX, pmin = DBL_MAX, gnd = 0.0;
+    int imx = 0, jmx = 0, imn = 0, jmn = 0;
+    for(int j = 0; j < jm; j++){
+        for(int i = 0; i < im; i++){
+            const double p_ = psi[(size_t)i * jm + j];
+            if(p_ > pmax){ pmax = p_; imx = i; jmx = j; }
+            if(p_ < pmin){ pmin = p_; imn = i; jmn = j; }
+        }
+        gnd = std::max(gnd, std::fabs(psi[j]));                        // i = 0, the bottom wall
+    }
+    const double pabs = std::max(std::fabs(pmax), std::fabs(pmin));
+    printf("      [streamfn] iter=%d  Psi_max=%.3f (1e9 kg/s) @ lat=%.0f z=%.1f km   Psi_min=%.3f @ lat=%.0f z=%.1f km"
+           "   max|Psi(bottom)|/max|Psi| = %.4f   -> %s\n",
+           iter, pmax / 1.0e9, lat_of(jmx), get_layer_height(imx), pmin / 1.0e9, lat_of(jmn),
+           get_layer_height(imn), pabs > 0.0 ? gnd / pabs : 0.0, fname.str().c_str());
+}

@@ -177,6 +177,9 @@ void cJupiterModel::paraview_vtk_radial(int n, int i_radial){
     dump_radial("PressureDyn", p_dyn, p_dyn_to_bar() * 1.0e3, i_radial, Jupiter_vtk_radial_File);
     dump_radial("PressureStat", p_stat, 1.0, i_radial, Jupiter_vtk_radial_File);
     dump_radial("rho_mix", rho_mix, 1.0, i_radial, Jupiter_vtk_radial_File);
+    // PsiMerid: the zonal-mean meridional streamfunction in 1e9 kg/s (writeMeridionalStreamfunction,
+    // FileIO_Jup.cpp; ported from ATOM 2026-10-18). A zonal mean, so constant along a latitude.
+    dump_radial("PsiMerid", Psi, 1.0e-9, i_radial, Jupiter_vtk_radial_File);
 
     dump_radial("CoriolisForce", CoriolisForce, 1.0, i_radial, Jupiter_vtk_radial_File);
     dump_radial("CentrifugalForce", CentrifugalForce, 1.0, i_radial, Jupiter_vtk_radial_File);
@@ -307,6 +310,9 @@ void cJupiterModel::paraview_vtk_zonal(int n, int k_zonal){
     dump_zonal("PressureDyn", p_dyn, p_dyn_to_bar() * 1.0e3, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("PressureStat", p_stat, 1.0, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("rho_mix", rho_mix, 1.0, k_zonal, Jupiter_vtk_zonal_File);
+    // PsiMerid: the zonal-mean meridional streamfunction in 1e9 kg/s (writeMeridionalStreamfunction,
+    // FileIO_Jup.cpp; ported from ATOM 2026-10-18). A zonal mean, so constant along a latitude.
+    dump_zonal("PsiMerid", Psi, 1.0e-9, k_zonal, Jupiter_vtk_zonal_File);
 
     dump_zonal("CoriolisForce", CoriolisForce, 1.0, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("CentrifugalForce", CentrifugalForce, 1.0, k_zonal, Jupiter_vtk_zonal_File);
@@ -359,6 +365,27 @@ void cJupiterModel::paraview_vtk_zonal(int n, int k_zonal){
     for(int i = 0; i < im; i++){
         for(int j = 0; j < jm; j++){
             Jupiter_vtk_zonal_File << u.x[i][j][k_zonal] << " " << v.x[i][j][k_zonal] << " " << z << endl;
+        }
+    }
+
+    // uv_plot (ported from ATOM's zonal writer, 2026-10-18): the velocity converted INTO this
+    // slice's plot coordinates, so a closed cell is drawn closed and glyphs and streamlines agree
+    // by construction. u-v-Cell above is nondimensional raw (u, v): a level is 3.5 km and a degree
+    // 1220 km, so every raw glyph lies flat along the latitude axis. The points are x = 0.1 per
+    // level and y = 0.05 per degree (open_slice), and the vertical exaggeration is ONE constant
+    // because the levels are evenly spaced in height. Units are plot units per DAY: the file is
+    // precision(4) fixed, and per second would print 0.0000 almost everywhere. A uniform factor,
+    // so it cannot change direction.
+    {
+        const double per_day = 86400.0;
+        const double sx = 0.1  / (dr * L_atm * 1.0e3);                          // plot units per metre, radial
+        const double sy = 0.05 / (R_planet_km * 1.0e3 * M_PI / 180.0);          // plot units per metre, meridional
+        Jupiter_vtk_zonal_File <<  "VECTORS uv_plot float" << endl;
+        for(int i = 0; i < im; i++){
+            for(int j = 0; j < jm; j++){
+                Jupiter_vtk_zonal_File << u.x[i][j][k_zonal] * u_0 * sx * per_day << " "
+                                       << v.x[i][j][k_zonal] * u_0 * sy * per_day << " " << z << endl;
+            }
         }
     }
     ParaViewWriter<cJupiterModel>(*this).close_slice(Jupiter_vtk_zonal_File, "zonal", k_zonal, n);
@@ -429,6 +456,9 @@ void cJupiterModel::paraview_vtk_longal(int n, int j_longal){
     dump_longal("PressureDyn", p_dyn, p_dyn_to_bar() * 1.0e3, j_longal, Jupiter_vtk_longal_File);
     dump_longal("PressureStat", p_stat, 1.0, j_longal, Jupiter_vtk_longal_File);
     dump_longal("rho_mix", rho_mix, 1.0, j_longal, Jupiter_vtk_longal_File);
+    // PsiMerid: the zonal-mean meridional streamfunction in 1e9 kg/s (writeMeridionalStreamfunction,
+    // FileIO_Jup.cpp; ported from ATOM 2026-10-18). A zonal mean, so constant along a latitude.
+    dump_longal("PsiMerid", Psi, 1.0e-9, j_longal, Jupiter_vtk_longal_File);
 
     dump_longal("CoriolisForce", CoriolisForce, 1.0, j_longal, Jupiter_vtk_longal_File);
     dump_longal("CentrifugalForce", CentrifugalForce, 1.0, j_longal, Jupiter_vtk_longal_File);
