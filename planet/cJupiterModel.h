@@ -738,6 +738,12 @@ public:
         static const int v = [](){ const char* e = getenv("ATJUP_U_INIT_CONT"); return e ? atoi(e) : 2; }();
         return v; }
     void initUFromContinuity();
+    // ATJUP_CONE_PROJ=<n> (default 0): the initial horizontal wind made to flow AROUND the obstacle,
+    // a per-level potential-flow correction with no flow through its walls; InitValues_Jup.cpp.
+    static int cone_proj(){
+        static const int v = [](){ const char* e = getenv("ATJUP_CONE_PROJ"); return e ? atoi(e) : 0; }();
+        return v; }
+    void projectAroundObstacle();
     double balanceColumnV(long* nskip_out);     // InitValues_Jup.cpp; =2 above and the loop's V_MASSBAL_STRIDE
     // ATJUP_V_MASSBAL_STRIDE=<N> (DEFAULT 1 since 2026-10-18 on the user's word, 0 = off): the column balance of v re-imposed every N
     // iterations in the loop, as ATOM's ATM_V_MASSBAL_STRIDE; see cJupiterModel.cpp.

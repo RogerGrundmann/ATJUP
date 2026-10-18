@@ -1038,3 +1038,144 @@ double cJupiterModel::balanceColumnV(long* nskip_out){
     if(nskip_out) *nskip_out = nskip;
     return vshift;
 }
+
+
+// ============================================================================
+// ATJUP_CONE_PROJ=<n> (2026-10-18, default 0 = off and byte-identical): THE INITIAL HORIZONTAL
+// WIND MADE TO FLOW AROUND THE OBSTACLE. At the user's request ("build the projection, there
+// should be no flow inside the cone").
+//
+// WHY. The prescribed jets and cells are written into the grid and the cone is cut out of them,
+// so the first fluid cells keep whatever the fields gave them: at i = 20 the wall-normal flow in
+// the ring around the cone averaged 3.78 m/s against 4.76 tangential (normal/speed 0.56, the same
+// at iteration 0 and 1000, REF1000 and UCM1000), up to 13.6 m/s straight into the wall. Inside
+// the cone the velocity is zero; it is the cells next to it that blow into it.
+//
+// WHY NOT ATOM's project_initial_velocity. That runs the 3-D pressure solver with the velocity
+// as source and corrects with -grad p. The shared PressureSolver.h moves information one cell per
+// sweep, the cone is 40+ cells across, so the solve would need thousands of sweeps; ATOM itself
+// retired its sweep knob as measured null.
+//
+// WHAT, per level i that cuts the obstacle. A potential-flow correction grad(phi) with
+//     (1/s) d/dthe(s dphi/dthe) + (1/s^2) d2phi/dlam2 = 0      in the fluid (s floored, the RK geometry)
+//     dphi/dn = -U.n                                           at every face to a solid cell
+//     phi = 0                                                  at the edge of a box 40 cells wider than
+//                                                              the obstacle's cross-section
+// on the staircase in finite-volume form: a fluid cell's faces to solid neighbours carry the
+// prescribed flux and are left out of the operator, so the wall flux of the corrected field is
+// zero. The correction is horizontally divergence-free and decays away from the body; it does not
+// touch u. Solved by SOR per level, levels in parallel. Applied as the average of the two face
+// values of the corrected velocity, so a cell next to the wall carries half of its other face.
+// Then U_INIT_CONT builds u from the deflected field.
+//
+// WHAT IT DOES NOT DO: it turns the flow AROUND the body at each level; it does not lift any of it
+// over the top (2-D per level, no radial part), and the prescribed slow-down next to the surfaces
+// (bcSeaMount / bcVelSurfSur) stays. Printed: mean |U toward the wall| over the wall faces before
+// and after, the rms horizontal divergence in the boxes before and after, SOR iterations.
+// ============================================================================
+void cJupiterModel::projectAroundObstacle(){
+    std::cout << "\n      ATJUP: projectAroundObstacle, ATJUP_CONE_PROJ = " << cone_proj() << std::endl;
+    const double smin = sinthe_min();
+    std::vector<double> s(jm);
+    for(int j = 0; j < jm; j++) s[j] = std::max(smin, std::abs(std::sin(the.z[j])));
+    const int M = 40;
+    auto solid = [&](int i, int j, int k){ return SeaMount.x[i][j][k] == 1.0; };
+
+    // wall-face statistics and box divergence, before and after
+    struct Stat { double wall_sum = 0.0; long wall_n = 0; double div2 = 0.0; long div_n = 0; };
+    auto stats = [&](int i, int jlo, int jhi, int klo, int khi, Stat& st){
+        for(int j = jlo; j <= jhi; j++) for(int k = klo; k <= khi; k++){
+            if(solid(i,j,k)) continue;
+            const double vp = v.x[i][j][k], wp = w.x[i][j][k];
+            if(solid(i,j-1,k)){ st.wall_sum += std::fabs(std::min(0.0,  vp)); st.wall_n++; }   // toward N: -v
+            if(solid(i,j+1,k)){ st.wall_sum += std::fabs(std::max(0.0,  vp)); st.wall_n++; }   // toward S: +v
+            if(solid(i,j,k-1)){ st.wall_sum += std::fabs(std::min(0.0,  wp)); st.wall_n++; }   // toward W: -w
+            if(solid(i,j,k+1)){ st.wall_sum += std::fabs(std::max(0.0,  wp)); st.wall_n++; }   // toward E: +w
+            if(solid(i,j-1,k) || solid(i,j+1,k) || solid(i,j,k-1) || solid(i,j,k+1)) continue;
+            const double c = std::cos(the.z[j]);
+            const double D = (v.x[i][j+1][k] - v.x[i][j-1][k]) / (2.0 * dthe) + c / s[j] * vp
+                           + (w.x[i][j][k+1] - w.x[i][j][k-1]) / (2.0 * dphi) / s[j];
+            st.div2 += D * D; st.div_n++;
+        }
+    };
+
+    double t_wall0 = 0.0, t_wall1 = 0.0, t_div0 = 0.0, t_div1 = 0.0, phimax = 0.0;
+    long n_wall = 0, n_div = 0, n_lev = 0, it_max = 0;
+
+    #pragma omp parallel for schedule(dynamic) reduction(+:t_wall0,t_wall1,t_div0,t_div1,n_wall,n_div,n_lev) reduction(max:it_max,phimax)
+    for(int i = 1; i < im-1; i++){
+        int jmin = jm, jmax = -1, kmin = km, kmax = -1;
+        for(int j = 0; j < jm; j++) for(int k = 0; k < km; k++) if(solid(i,j,k)){
+            jmin = std::min(jmin, j); jmax = std::max(jmax, j); kmin = std::min(kmin, k); kmax = std::max(kmax, k); }
+        if(jmax < 0) continue;                                           // the level is above the body
+        const int jlo = std::max(1, jmin - M), jhi = std::min(jm - 2, jmax + M);
+        const int klo = std::max(1, kmin - M), khi = std::min(km - 2, kmax + M);
+        const int nj = jhi - jlo + 3, nk = khi - klo + 3;                // with a halo of phi = 0
+        auto at = [&](int j, int k){ return (size_t)(j - jlo + 1) * nk + (k - klo + 1); };
+        std::vector<double> phi((size_t)nj * nk, 0.0);
+
+        Stat st0; stats(i, jlo, jhi, klo, khi, st0);
+
+        // SOR, lexicographic within the level
+        const double omega = 1.9;
+        double dmax = 0.0, pmax = 0.0; int it = 0;
+        for(it = 1; it <= 40000; it++){
+            dmax = 0.0; pmax = 0.0;
+            for(int j = jlo; j <= jhi; j++){
+                const double aN = 0.5 * (s[j] + s[j-1]) / (dthe * dthe);
+                const double aS = 0.5 * (s[j] + s[j+1]) / (dthe * dthe);
+                const double aL = 1.0 / (s[j] * dphi * dphi);
+                for(int k = klo; k <= khi; k++){
+                    if(solid(i,j,k)) continue;
+                    const double vp = v.x[i][j][k], wp = w.x[i][j][k];
+                    double A = 0.0, B = 0.0;
+                    // a fluid face enters the operator; a wall face carries the prescribed flux
+                    if(solid(i,j-1,k)) B -= aN * dthe * (-vp); else { A += aN; B += aN * phi[at(j-1,k)]; }
+                    if(solid(i,j+1,k)) B -= aS * dthe * ( vp); else { A += aS; B += aS * phi[at(j+1,k)]; }
+                    if(solid(i,j,k-1)) B -= aL * s[j] * dphi * (-wp); else { A += aL; B += aL * phi[at(j,k-1)]; }
+                    if(solid(i,j,k+1)) B -= aL * s[j] * dphi * ( wp); else { A += aL; B += aL * phi[at(j,k+1)]; }
+                    if(!(A > 0.0)) continue;
+                    double& p = phi[at(j,k)];
+                    const double pn = p + omega * (B / A - p);
+                    dmax = std::max(dmax, std::fabs(pn - p)); p = pn;
+                    pmax = std::max(pmax, std::fabs(p));
+                }
+            }
+            if(dmax <= 1.0e-10 * std::max(pmax, 1.0e-30)) break;
+        }
+
+        // the corrected velocity: the average of its two face values in each direction; a face to
+        // a solid cell carries zero
+        std::vector<double> vn((size_t)nj * nk, 0.0), wn((size_t)nj * nk, 0.0);
+        for(int j = jlo; j <= jhi; j++){
+            for(int k = klo; k <= khi; k++){
+                if(solid(i,j,k)) continue;
+                const double vp = v.x[i][j][k], wp = w.x[i][j][k], pp = phi[at(j,k)];
+                const double fN = solid(i,j-1,k) ? 0.0 : 0.5 * (vp + v.x[i][j-1][k]) + (pp - phi[at(j-1,k)]) / dthe;
+                const double fS = solid(i,j+1,k) ? 0.0 : 0.5 * (vp + v.x[i][j+1][k]) + (phi[at(j+1,k)] - pp) / dthe;
+                const double fW = solid(i,j,k-1) ? 0.0 : 0.5 * (wp + w.x[i][j][k-1]) + (pp - phi[at(j,k-1)]) / (s[j] * dphi);
+                const double fE = solid(i,j,k+1) ? 0.0 : 0.5 * (wp + w.x[i][j][k+1]) + (phi[at(j,k+1)] - pp) / (s[j] * dphi);
+                vn[at(j,k)] = 0.5 * (fN + fS);
+                wn[at(j,k)] = 0.5 * (fW + fE);
+            }
+        }
+        for(int j = jlo; j <= jhi; j++) for(int k = klo; k <= khi; k++){
+            if(solid(i,j,k)) continue;
+            v.x[i][j][k] = vn[at(j,k)]; w.x[i][j][k] = wn[at(j,k)];
+        }
+
+        Stat st1; stats(i, jlo, jhi, klo, khi, st1);
+        t_wall0 += st0.wall_sum; t_wall1 += st1.wall_sum; n_wall += st0.wall_n;
+        t_div0 += st0.div2; t_div1 += st1.div2; n_div += st0.div_n;
+        n_lev++; it_max = std::max<long>(it_max, it); phimax = std::max(phimax, pmax);
+    }
+    // the seam copy
+    if(ATPhys::phi_periodic<cJupiterModel>())
+        for(int i = 0; i < im; i++) for(int j = 0; j < jm; j++){ v.x[i][j][km-1] = v.x[i][j][0]; w.x[i][j][km-1] = w.x[i][j][0]; }
+
+    printf("      ATJUP: [CONE_PROJ] %ld levels, SOR iterations up to %ld, max |phi| %.4e;"
+           "  mean |U toward the wall| over %ld wall faces %.4f -> %.4f m/s;"
+           "  rms horizontal divergence in the boxes (nondim) %.4e -> %.4e\n",
+           n_lev, it_max, phimax, n_wall, n_wall ? t_wall0 / n_wall * u_0 : 0.0, n_wall ? t_wall1 / n_wall * u_0 : 0.0,
+           n_div ? std::sqrt(t_div0 / n_div) : 0.0, n_div ? std::sqrt(t_div1 / n_div) : 0.0);
+}

@@ -701,11 +701,14 @@ void cJupiterModel::writeMeridionalStreamfunction(int iter){
         }
     }
 
+    // Replicated across k, as ATOM does, so the cells show in every slice -- but NOT into the
+    // obstacle: there is no flow inside it, and the zonal mean of the latitude written into rock
+    // drew the cell straight through the cone (the user, in the zonal VTK, 2026-10-18).
     #pragma omp parallel for collapse(2) schedule(static)
     for(int i = 0; i < im; i++)
         for(int j = 0; j < jm; j++)
             for(int k = 0; k < km; k++)
-                Psi.x[i][j][k] = psi[(size_t)i * jm + j];
+                Psi.x[i][j][k] = SeaMount.x[i][j][k] == 1.0 ? 0.0 : psi[(size_t)i * jm + j];
 
     auto lat_of = [&](int j){ return 90.0 - (double)j * 180.0 / (double)(jm - 1); };
 
