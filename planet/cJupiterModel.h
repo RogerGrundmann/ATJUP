@@ -732,17 +732,17 @@ public:
     static bool pdyn_geo(){ static const bool v = knob_or_geo("ATJUP_PDYN_GEO"); return v; }
     std::vector<double> p_baro;          // [(i*jm + j)*km + k], empty unless ATJUP_PDYN_GEO
     void initGeoBalance();
-    // ATJUP_U_INIT_CONT=<n> (default 0): the initial radial velocity from the model's own discrete
+    // ATJUP_U_INIT_CONT=<n> (DEFAULT 2 since 2026-10-18 on the user's word, 0 restores): the initial radial velocity from the model's own discrete
     // continuity, ported from ATOM_Precipitation's install_u_from_cells; see InitValues_Jup.cpp.
     static int u_init_cont(){
-        static const int v = [](){ const char* e = getenv("ATJUP_U_INIT_CONT"); return e ? atoi(e) : 0; }();
+        static const int v = [](){ const char* e = getenv("ATJUP_U_INIT_CONT"); return e ? atoi(e) : 2; }();
         return v; }
     void initUFromContinuity();
     double balanceColumnV(long* nskip_out);     // InitValues_Jup.cpp; =2 above and the loop's V_MASSBAL_STRIDE
-    // ATJUP_V_MASSBAL_STRIDE=<N> (default 0 = off): the column balance of v re-imposed every N
+    // ATJUP_V_MASSBAL_STRIDE=<N> (DEFAULT 1 since 2026-10-18 on the user's word, 0 = off): the column balance of v re-imposed every N
     // iterations in the loop, as ATOM's ATM_V_MASSBAL_STRIDE; see cJupiterModel.cpp.
     static int v_massbal_stride(){
-        static const int v = [](){ const char* e = getenv("ATJUP_V_MASSBAL_STRIDE"); return e ? atoi(e) : 0; }();
+        static const int v = [](){ const char* e = getenv("ATJUP_V_MASSBAL_STRIDE"); return e ? atoi(e) : 1; }();
         return v; }
     // the zonal-mean meridional streamfunction (ATOM's write_meridional_streamfunction), filled
     // into Psi and written as PsiMerid with every VTK set; see FileIO_Jup.cpp

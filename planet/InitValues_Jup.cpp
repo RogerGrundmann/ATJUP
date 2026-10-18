@@ -853,7 +853,8 @@ void cJupiterModel::init_nh4sh(std::string gas, double &c_tropopause,
 
 
 // ============================================================================
-// ATJUP_U_INIT_CONT=<n> (2026-10-18, default 0 = off and byte-identical): THE INITIAL RADIAL
+// ATJUP_U_INIT_CONT=<n> (2026-10-18; DEFAULT 2 since c3d0446 on the user's word, 0 = off restores; with
+// ATJUP_V_MASSBAL_STRIDE 1, which keeps the closure =2 makes): THE INITIAL RADIAL
 // VELOCITY FROM THE MODEL'S OWN DISCRETE CONTINUITY. Ported from ATOM_Precipitation's
 // install_u_from_cells (8285348, ATM_CELLS_U_FROM_PSI), at the user's request.
 //

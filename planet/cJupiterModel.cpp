@@ -616,7 +616,7 @@ void cJupiterModel::Run(){
 //    BC_Jup(*this).bcScalarSurfSur();                                    // scalar variable at surfaces extrapolated by von Neumann
     BC_Jup(*this).bcSolidGround();                                      // values inside mountains
 
-    // ATJUP_U_INIT_CONT (default 0): u from continuity against the final initial v and w, so
+    // ATJUP_U_INIT_CONT (default 2 since 2026-10-18, 0 restores): u from continuity against the final initial v and w, so
     // after the boundary passes that still write them
     if(u_init_cont() != 0) initUFromContinuity();
 
@@ -1081,7 +1081,7 @@ void cJupiterModel::Run(){
         }
         ub_mark(UB_FILTER);
 
-        // ATJUP_V_MASSBAL_STRIDE=<N> (2026-10-18, default 0 = off and byte-identical): the column
+        // ATJUP_V_MASSBAL_STRIDE=<N> (2026-10-18; DEFAULT 1 since c3d0446 on the user's word, 0 = off restores): the column
         // balance of v (balanceColumnV, InitValues_Jup.cpp) every N iterations, ported from ATOM's
         // ATM_V_MASSBAL_STRIDE at the user's request. WHY: ATJUP_U_INIT_CONT=2 closes the cells
         // exactly at the start (Psi(bottom)/max|Psi| 0.0000 away from the cone latitudes) and the
