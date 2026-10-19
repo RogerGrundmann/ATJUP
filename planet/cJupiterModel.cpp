@@ -482,6 +482,30 @@ void cJupiterModel::Run(){
 
     init_PressureStatic();
 
+    // ATJUP_INIT_SPECIES_FULL (2026-10-19, DEFAULT 1, 0 restores): the species below are set up as if the
+    // obstacle were not there, and zeroed inside it afterwards. WHY (traced with init probes,
+    // satchk/grs_2026-10-19/IP0): every profile is the same over the obstacle as beside it (NH3 at i = 27,
+    // 22 S: 0.820 g/m3 both), but the vertical pass of damp_wiggles clamps at the fluid floor
+    // (im1 = max(i-1, i_surf)). The analytic NH3 profile falls ~4x per level near the cloud deck, so the
+    // floor cell on the obstacle top is averaged with itself and the poorer cell above (0.820 -> 0.672)
+    // while the same level beside it takes the richer cell below (0.820 -> 1.115). The saturation
+    // adjustment splits the two totals differently (vapour 0.020 / 0.085, ice 0.567 / 1.108) and the
+    // second damp carries the deficit up (i = 28 ice 0.347 / 0.458); H2S the same. That is the deficit
+    // over the obstacle top at iteration 0. Here the obstacle is lifted for the species set-up: SeaMount
+    // and i_topography are cleared, so the filters and the adjustment (which skips is_solid cells) see
+    // a plain column; t and p_stat inside the obstacle hold the ambient profile at this point (they are
+    // never zeroed, see bcSolidGround). Both are restored before the chemistry, and every species is
+    // zeroed inside the obstacle, as init_* would have done.
+    std::vector<double> sm_save_;
+    std::vector<std::vector<int>> itopo_save_;
+    if(init_species_full()){
+        sm_save_.assign((size_t)im * jm * km, 0.0);
+        for(int i = 0; i < im; i++) for(int j = 0; j < jm; j++) for(int k = 0; k < km; k++){
+            sm_save_[((size_t)i * jm + j) * km + k] = SeaMount.x[i][j][k]; SeaMount.x[i][j][k] = 0.0; }
+        itopo_save_ = i_topography;
+        for(auto& row : i_topography) for(auto& v_ : row) v_ = 0;
+    }
+
     init_vapour_cloud_ice("H2O", h2o_tropopause, 
         coeff_h2o_A, coeff_h2o_B, 
         coeff_h2o_A_i, coeff_h2o_B_i, 
@@ -580,6 +604,17 @@ void cJupiterModel::Run(){
     JupiterUtils::damp_wiggles(ch4_cloud, &i_topography, true, true, true);
     JupiterUtils::damp_wiggles(ch4_ice,   &i_topography, true, true, true);
 
+
+    if(init_species_full()){
+        for(int i = 0; i < im; i++) for(int j = 0; j < jm; j++) for(int k = 0; k < km; k++)
+            SeaMount.x[i][j][k] = sm_save_[((size_t)i * jm + j) * km + k];
+        i_topography = itopo_save_;
+        Array* sp_[] = { &h2o, &h2o_cloud, &h2o_ice, &nh3, &nh3_cloud, &nh3_ice, &ch4, &ch4_cloud, &ch4_ice, &h2s, &nh4sh };
+        for(Array* a_ : sp_)
+            for(int i = 0; i < im; i++) for(int j = 0; j < jm; j++) for(int k = 0; k < km; k++)
+                if(SeaMount.x[i][j][k] == 1.0) a_->x[i][j][k] = 0.0;
+        printf("      ATJUP: ATJUP_INIT_SPECIES_FULL: species initialised without the obstacle, zeroed inside it\n");
+    }
 
 //    goto Printout;
 

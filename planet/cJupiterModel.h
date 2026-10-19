@@ -760,6 +760,11 @@ public:
         static const int v = [](){ const char* e = getenv("ATJUP_CONE_PROJ"); return e ? atoi(e) : 1; }();
         return v; }
     void projectAroundObstacle(bool in_loop = false, bool verbose = false);
+    // ATJUP_INIT_SPECIES_FULL=<n> (2026-10-19, DEFAULT 1 on the user's word, 0 restores): the species are initialised, smoothed and
+    // saturation-adjusted as if there were no obstacle, then zeroed inside it; cJupiterModel.cpp.
+    static int init_species_full(){
+        static const int v = [](){ const char* e = getenv("ATJUP_INIT_SPECIES_FULL"); return e ? atoi(e) : 1; }();
+        return v; }
     // ATJUP_CONE_PROJ_STRIDE=<N> (2026-10-19, DEFAULT 10 on the user's word, 0 = off restores): the projection around
     // the obstacle every N iterations inside the loop, warm-started, in increment form; cJupiterModel.cpp.
     static int cone_proj_stride(){
