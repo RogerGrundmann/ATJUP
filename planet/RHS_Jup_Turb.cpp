@@ -1183,7 +1183,7 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
         if(dz_cwb > 0.0){
             const double cw = JupCwb::st().stage_wgt * std::sin(the.z[j]) * dz_cwb;
             double* a = JupCwb::st().acc[omp_get_thread_num()];
-            const double kd = 1.0 / (sc_h2o * re) + nue_t_s;
+            const double kd = species_diff_scale() / (sc_h2o * re) + nue_t_s;
             a[JupCwb::T_RAD]    -= cw * u_ijk   * (dh2odr   + dh2ocdr   + dh2oidr);
             a[JupCwb::T_THE]    -= cw * v_invrm * (dh2odthe + dh2ocdthe + dh2oidthe);
             a[JupCwb::T_PHI]    -= cw * w_invrs * (dh2odphi + dh2ocdphi + dh2oidphi);
@@ -1196,53 +1196,53 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
 
     rhs_h2o.x[i][j][k] =
         - transport_h2o
-        + diffusion_h2o * (1.0 / (sc_h2o * re) + nue_t_s)
+        + diffusion_h2o * (species_diff_scale() / (sc_h2o * re) + nue_t_s)
         + precip_coupling * S_precip_h2o.x[i][j][k];
 
     rhs_h2o_cloud.x[i][j][k] =
         - transport_h2o_cloud
-        + diffusion_h2o_cloud * (1.0 / (sc_h2o * re) + nue_t_s)
+        + diffusion_h2o_cloud * (species_diff_scale() / (sc_h2o * re) + nue_t_s)
         + precip_coupling * S_precip_h2o_cloud.x[i][j][k];
 
     rhs_h2o_ice.x[i][j][k] =
         - transport_h2o_ice
-        + diffusion_h2o_ice * (1.0 / (sc_h2o * re) + nue_t_s)
+        + diffusion_h2o_ice * (species_diff_scale() / (sc_h2o * re) + nue_t_s)
         + precip_coupling * S_precip_h2o_ice.x[i][j][k];
 
     rhs_h2s.x[i][j][k] =
         - transport_h2s
-        + diffusion_h2s * (1.0 / (sc_h2s * re) + nue_t_s)
+        + diffusion_h2s * (species_diff_scale() / (sc_h2s * re) + nue_t_s)
         + chemical_reaction * massflux_h2s.x[i][j][k];
 
     rhs_nh3.x[i][j][k] =
         - transport_nh3
-        + diffusion_nh3 * (1.0 / (sc_nh3 * re) + nue_t_s)
+        + diffusion_nh3 * (species_diff_scale() / (sc_nh3 * re) + nue_t_s)
         + chemical_reaction * massflux_nh3.x[i][j][k]
         + precip_coupling * S_precip_nh3.x[i][j][k];
 
     rhs_nh3_cloud.x[i][j][k] =
         - transport_nh3_cloud
-        + diffusion_nh3_cloud * (1.0 / (sc_nh3 * re) + nue_t_s)
+        + diffusion_nh3_cloud * (species_diff_scale() / (sc_nh3 * re) + nue_t_s)
         + precip_coupling * S_precip_nh3_cloud.x[i][j][k];
 
     rhs_nh3_ice.x[i][j][k] =
         - transport_nh3_ice
-        + diffusion_nh3_ice * (1.0 / (sc_nh3 * re) + nue_t_s)
+        + diffusion_nh3_ice * (species_diff_scale() / (sc_nh3 * re) + nue_t_s)
         + precip_coupling * S_precip_nh3_ice.x[i][j][k];
 
     rhs_ch4.x[i][j][k] =
         - transport_ch4
-        + diffusion_ch4 * (1.0 / (sc_ch4 * re) + nue_t_s)
+        + diffusion_ch4 * (species_diff_scale() / (sc_ch4 * re) + nue_t_s)
         + precip_coupling * S_precip_ch4.x[i][j][k];
 
     rhs_ch4_cloud.x[i][j][k] =
         - transport_ch4_cloud
-        + diffusion_ch4_cloud * (1.0 / (sc_ch4 * re) + nue_t_s)
+        + diffusion_ch4_cloud * (species_diff_scale() / (sc_ch4 * re) + nue_t_s)
         + precip_coupling * S_precip_ch4_cloud.x[i][j][k];
 
     rhs_ch4_ice.x[i][j][k] =
         - transport_ch4_ice
-        + diffusion_ch4_ice * (1.0 / (sc_ch4 * re) + nue_t_s)
+        + diffusion_ch4_ice * (species_diff_scale() / (sc_ch4 * re) + nue_t_s)
         + precip_coupling * S_precip_ch4_ice.x[i][j][k];
 
     // Stokes terminal velocity for NH4SH crystals falling in the -r direction.
@@ -1257,7 +1257,7 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     rhs_nh4sh.x[i][j][k] =
         - transport_nh4sh
         + fluxlim_nh4sh.x[i][j][k]
-        + diffusion_nh4sh * (1.0 / (sc_nh4sh * re) + nue_t_s)
+        + diffusion_nh4sh * (species_diff_scale() / (sc_nh4sh * re) + nue_t_s)
         + chemical_reaction * massflux_nh4sh.x[i][j][k]
         + (v_stokes_nh4sh / u_0) * dnh4shdr;
 
@@ -1269,7 +1269,7 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
         double tr_r = 0.0, tr_t = 0.0, tr_p = 0.0, dmol = 0.0, dturb = 0.0, chem = 0.0, prec = 0.0, sett = 0.0;
         switch(JupQb::st().group){
         case JupQb::G_NH3: {
-            const double s_ = 1.0 / (sc_nh3 * re);
+            const double s_ = species_diff_scale() / (sc_nh3 * re);
             tr_r = u_ijk * (dnh3dr + dnh3cdr + dnh3idr);
             tr_t = v_invrm * (dnh3dthe + dnh3cdthe + dnh3idthe);
             tr_p = w_invrs * (dnh3dphi + dnh3cdphi + dnh3idphi);
@@ -1280,12 +1280,12 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
             break; }
         case JupQb::G_H2S:
             tr_r = u_ijk * dh2sdr; tr_t = v_invrm * dh2sdthe; tr_p = w_invrs * dh2sdphi;
-            dmol = diffusion_h2s / (sc_h2s * re); dturb = diffusion_h2s * nue_t_s;
+            dmol = diffusion_h2s * species_diff_scale() / (sc_h2s * re); dturb = diffusion_h2s * nue_t_s;
             chem = chemical_reaction * massflux_h2s.x[i][j][k];
             break;
         default:
             tr_r = u_ijk * dnh4shdr; tr_t = v_invrm * dnh4shdthe; tr_p = w_invrs * dnh4shdphi;
-            dmol = diffusion_nh4sh / (sc_nh4sh * re); dturb = diffusion_nh4sh * nue_t_s;
+            dmol = diffusion_nh4sh * species_diff_scale() / (sc_nh4sh * re); dturb = diffusion_nh4sh * nue_t_s;
             chem = chemical_reaction * massflux_nh4sh.x[i][j][k];
             sett = fluxlim_nh4sh.x[i][j][k] + (v_stokes_nh4sh / u_0) * dnh4shdr;
             break;

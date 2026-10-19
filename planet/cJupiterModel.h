@@ -423,6 +423,16 @@ private:
 // Schmidt number
     double sc_h2 = 0.20;                                                // Schmidt numbert of h2o, Sc = nue/D
     double sc_he = 0.22;                                                // Schmidt numbert of h2o, Sc = nue/D
+    // ATJUP_SPECIES_DIFF_SCALE=<f> (2026-10-19, DEFAULT 0.01 on the user's word, 1 restores): factor on the laminar diffusivity
+    // 1/(sc re) of every species (H2O, H2S, NH3, CH4 and their condensates, NH4SH); the temperature's
+    // 1/(re pr) and the momentum's 1/re are untouched. WHY: with re = 1000 the species diffuse with
+    // u_0 L_atm/(sc re) ~ 2.3e4 m2/s (NH3), crossing a 3.5 km level in ~530 s = ~380 iterations; the
+    // budget ATJUP_QB_DIAG shows it as the only term that moves NH3 between levels (GRS_200, i = 28:
+    // +0.048 of +0.049 g/m3 in 50 it) -- 1e8 times the molecular value. 0.1 / 0.01 are the species at
+    // re = 1e4 / 1e5; 0 switches the laminar part off.
+    static double species_diff_scale(){
+        static const double v = [](){ const char* e = getenv("ATJUP_SPECIES_DIFF_SCALE"); return e ? atof(e) : 0.01; }();
+        return v; }
     double sc_h2o = 0.61;                                               // Schmidt numbert of h2o, Sc = nue/D
     double sc_h2s = 0.94;                                               // Schmidt number of h2s, Sc = nue/D 
     double sc_nh3 = 0.61;                                               // Schmidt number of nh3, Sc = nue/D 
