@@ -313,7 +313,32 @@ inline void BC_Jup::bcSeaMount()
     // i_topography is still filled below, all zeros, so every consumer stays valid.
     const bool no_mount = BCJupKnobs::env_int("ATJUP_NO_SEAMOUNT", 0) != 0;
 
-    for(int i = 0; !no_mount && i < i_0; i++){
+    // ATJUP_CONE_GEOM (2026-10-19, DEFAULT 1 on the user's word, 0 restores the cone below): the top
+    // of the obstacle at i = 26, the level of the model's NH3-ice cloud peak (~0.69 bar, the "visible
+    // surface"), with the cross-section of the Great Red Spot as seen from the Earth there: an oval
+    // of 13 x 9 cells (1 deg each) = ~15 000 km E-W x ~11 200 km N-S at 22 S (today's GRS is
+    // ~16 000 x 12 000 km; the 1-degree grid allows odd widths only). The footprint at the bottom is
+    // the old one (radius 40 cells for i <= 10, user: "keep base, steeper flanks"); between i = 10
+    // and 26 both half-axes shrink linearly to 6 (E-W) and 4 (N-S) cells. The old cone reached
+    // i = 34 (0.14 bar) with radius 41 - i cells, 15 x 15 cells at its top. Filled as a true ellipse
+    // in grid cells.
+    static const int cone_geom = BCJupKnobs::env_int("ATJUP_CONE_GEOM", 1);
+    if(cone_geom == 1 && !no_mount){
+        const int i_top = 26, i_base = 10;
+        const double r_base = 40.0, a_top = 6.0, b_top = 4.0;
+        for(int i = 0; i <= i_top; i++){
+            const double f = (i <= i_base) ? 0.0 : (double)(i - i_base) / (double)(i_top - i_base);
+            const double ai = std::round(r_base + (a_top - r_base) * f);     // half-axis in k (E-W)
+            const double bi = std::round(r_base + (b_top - r_base) * f);     // half-axis in j (N-S)
+            for(int k = k_0 - (int)ai; k <= k_0 + (int)ai; k++)
+                for(int j = j_0 - (int)bi; j <= j_0 + (int)bi; j++){
+                    const double x = (k - k_0) / ai, y = (j - j_0) / bi;
+                    if(x * x + y * y <= 1.0 + 1.0e-9) m.SeaMount.x[i][j][k] = 1.0;
+                }
+        }
+    }
+
+    for(int i = 0; cone_geom == 0 && !no_mount && i < i_0; i++){
         if(i <= 10) a = b = im-1;
         for(int k = k_0-a; k <= k_0+a; k++){
             for(int j = j_0-b; j <= j_0+b; j++){

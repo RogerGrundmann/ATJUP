@@ -25,7 +25,9 @@ void cJupiterModel::writeData(){
 
     writeMeridionalStreamfunction(iter_n);       // fills Psi, which the slices below write
 
-    int i_radial = 20;
+    // the radial slice at i = 28 (~0.49 bar, two levels above the top of the obstacle and in the
+    // upper NH3-ice cloud) since 2026-10-19 on the user's word; it was i = 20 (~1.6 bar) before
+    int i_radial = 28;
     paraview_vtk_radial(iter_n, i_radial);
 
     int j_longal = 112;
