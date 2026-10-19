@@ -744,10 +744,10 @@ public:
         static const int v = [](){ const char* e = getenv("ATJUP_U_INIT_CONT"); return e ? atoi(e) : 2; }();
         return v; }
     void initUFromContinuity();
-    // ATJUP_CONE_PROJ=<n> (default 0): the initial horizontal wind made to flow AROUND the obstacle,
+    // ATJUP_CONE_PROJ=<n> (DEFAULT 1 since 2026-10-19 on the user's word, 0 restores): the initial horizontal wind made to flow AROUND the obstacle,
     // a per-level potential-flow correction with no flow through its walls; InitValues_Jup.cpp.
     static int cone_proj(){
-        static const int v = [](){ const char* e = getenv("ATJUP_CONE_PROJ"); return e ? atoi(e) : 0; }();
+        static const int v = [](){ const char* e = getenv("ATJUP_CONE_PROJ"); return e ? atoi(e) : 1; }();
         return v; }
     void projectAroundObstacle(bool in_loop = false, bool verbose = false);
     // ATJUP_CONE_PROJ_STRIDE=<N> (2026-10-19, DEFAULT 10 on the user's word, 0 = off restores): the projection around

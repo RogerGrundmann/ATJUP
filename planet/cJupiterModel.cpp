@@ -618,7 +618,7 @@ void cJupiterModel::Run(){
 
     // ATJUP_U_INIT_CONT (default 2 since 2026-10-18, 0 restores): u from continuity against the final initial v and w, so
     // after the boundary passes that still write them
-    // ATJUP_CONE_PROJ (default 0): the horizontal wind around the obstacle first, so that u is
+    // ATJUP_CONE_PROJ (DEFAULT 1 since 2026-10-19, 0 restores): the horizontal wind around the obstacle first, so that u is
     // built from the deflected flow
     if(cone_proj() != 0) projectAroundObstacle();
     if(u_init_cont() != 0) initUFromContinuity();
