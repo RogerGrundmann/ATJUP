@@ -18,6 +18,7 @@
 #include "CwbJup.h"          // ATJUP_CWB_DIAG, print-only
 #include "UbJup.h"           // ATJUP_UB_DIAG, print-only
 #include "TbJup.h"           // ATJUP_TB_DIAG, print-only
+#include "QbJup.h"           // ATJUP_QB_DIAG, print-only
 #include "BC_Jup.h"
 #include "VelocityInitializerJup.h"
 #include "RadiationJup.h"
@@ -815,6 +816,48 @@ void cJupiterModel::Run(){
         tb_last = tb_first = tb_lev(t);
     }
 
+    // ATJUP_QB_DIAG=<n> (print-only, see QbJup.h): the level mean of one species group after every
+    // stage of the loop, charged to that stage, in g/m3; printed every n iterations. Same stages and
+    // scheme as ATJUP_TB_DIAG. ATJUP_QB_SPECIES = nh3 (vapour + cloud + ice, default) | h2s | nh4sh.
+    static const int qb_every = [](){ const char* e = getenv("ATJUP_QB_DIAG"); return e ? atoi(e) : 0; }();
+    const bool qb_on = qb_every > 0 && im <= JupQb::MAXLEV;
+    JupQb::st().on = qb_on;
+    JupQb::st().group = JupQb::group_from_env();
+    static const char* qb_gname[] = { "NH3 vapour+cloud+ice", "H2S", "NH4SH" };
+    static const char* qb_term[JupQb::NTERM] = { "RK transp r", "RK transp the", "RK transp phi", "RK diff mol.",
+        "RK diff turb.", "RK chemistry", "RK precip", "RK settling" };
+    std::vector<std::vector<double>> qb_sum(CW_N, std::vector<double>(im, 0.0)), qb_tsum(JupQb::NTERM, std::vector<double>(im, 0.0));
+    std::vector<double> qb_last(im, 0.0), qb_first(im, 0.0);
+    double qb_norm = 0.0;
+    auto qb_lev = [&](bool nlev) -> std::vector<double> {
+        Array* f_[3] = { nullptr, nullptr, nullptr };
+        switch(JupQb::st().group){
+        case JupQb::G_NH3:
+            f_[0] = nlev ? &nh3n : &nh3; f_[1] = nlev ? &nh3_cloudn : &nh3_cloud; f_[2] = nlev ? &nh3_icen : &nh3_ice; break;
+        case JupQb::G_H2S:   f_[0] = nlev ? &h2sn : &h2s; break;
+        default:             f_[0] = nlev ? &nh4shn : &nh4sh; break;
+        }
+        std::vector<double> m_(im, 0.0);
+        #pragma omp parallel for schedule(static)
+        for(int i = 0; i < im; i++){
+            double s_ = 0.0;
+            for(int j = 0; j < jm; j++){
+                const double sj = std::sin(the.z[j]);
+                for(int k = 0; k < km; k++)
+                    for(int f = 0; f < 3; f++) if(f_[f]) s_ += sj * f_[f]->x[i][j][k];
+            }
+            m_[i] = s_ * 1.0e3 / qb_norm;
+        }
+        return m_; };
+    auto qb_mark = [&](int stage){
+        if(!qb_on) return;
+        const std::vector<double> w_ = qb_lev(false);
+        for(int i = 0; i < im; i++){ qb_sum[stage][i] += w_[i] - qb_last[i]; qb_last[i] = w_[i]; } };
+    if(qb_on){
+        for(int j = 0; j < jm; j++) qb_norm += std::sin(the.z[j]) * km;
+        qb_last = qb_first = qb_lev(false);
+    }
+
     for(iter_n = iter_start; iter_n <= nm; iter_n++){
 
         auto begin = std::chrono::high_resolution_clock::now();
@@ -860,7 +903,7 @@ void cJupiterModel::Run(){
         computeMixtureDensity();
 
         if(radiation_enabled()) RadiationJup(*this).run();
-        cwb_mark(CW_PRE); tb_mark(CW_PRE);
+        cwb_mark(CW_PRE); tb_mark(CW_PRE); qb_mark(CW_PRE);
 
         SaturationAdjustmentJup(*this).run("H2O",
             t_0_h2o, t_00_h2o,
@@ -868,7 +911,7 @@ void cJupiterModel::Run(){
             C_h2o, L0_h2o, R_h2o, del_alf_h2o, del_bet_h2o,
             C_h2o_ice, L0_h2o_ice, del_alf_h2o_ice, del_bet_h2o_ice,
             h2o, h2o_cloud, h2o_ice);
-        cwb_mark(CW_SATADJ); tb_mark(CW_SATADJ);
+        cwb_mark(CW_SATADJ); tb_mark(CW_SATADJ); qb_mark(CW_SATADJ);
 
         SaturationAdjustmentJup(*this).run("NH3",
             t_0_nh3, t_00_nh3,
@@ -886,9 +929,9 @@ void cJupiterModel::Run(){
 
         // Must stay AFTER the SaturationAdjustmentJup calls: its condensate depletion is applied
         // in place, and running it before them would let the adjustment simply undo the removal.
-        cwb_mark(CW_SATADJ_OTHER); tb_mark(CW_SATADJ_OTHER);
+        cwb_mark(CW_SATADJ_OTHER); tb_mark(CW_SATADJ_OTHER); qb_mark(CW_SATADJ_OTHER);
         if(precip_enabled()) PrecipitationJup(*this).run();   // H2O+NH3 3-cat + NH4SH settling
-        cwb_mark(CW_PRECIP); tb_mark(CW_PRECIP);
+        cwb_mark(CW_PRECIP); tb_mark(CW_PRECIP); qb_mark(CW_PRECIP);
 
         // ATJUP_RK_SCALAR_SYNC=<0|1|2> (2026-10-08). DEFAULT 2 SINCE 2026-10-08 (was 0), at the user's
         // instruction and on the 224-iteration measurement at the end of this note; 0 restores the
@@ -962,7 +1005,7 @@ void cJupiterModel::Run(){
 
         }  // if loop
 
-        cwb_mark(CW_PHYS_REST); tb_mark(CW_PHYS_REST);
+        cwb_mark(CW_PHYS_REST); tb_mark(CW_PHYS_REST); qb_mark(CW_PHYS_REST);
         double cw_n = 0.0;
         if(cwb_on){
             cw_n = cwb_col(h2on, h2o_cloudn, h2o_icen);                 // what the step starts from
@@ -974,6 +1017,13 @@ void cJupiterModel::Run(){
             tb_n = tb_lev(tn);                                          // what the step starts from
             for(int t_ = 0; t_ < JupTb::MAXTHR; t_++) for(int q_ = 0; q_ < JupTb::NTERM; q_++)
                 for(int i = 0; i < im; i++) JupTb::st().acc[t_][q_][i] = 0.0;
+        }
+
+        std::vector<double> qb_n;
+        if(qb_on){
+            qb_n = qb_lev(true);                                        // what the step starts from
+            for(int t_ = 0; t_ < JupQb::MAXTHR; t_++) for(int q_ = 0; q_ < JupQb::NTERM; q_++)
+                for(int i = 0; i < im; i++) JupQb::st().acc[t_][q_][i] = 0.0;
         }
 
         ub_tab ub_n;
@@ -1018,6 +1068,22 @@ void cJupiterModel::Run(){
             }
         }
 
+        if(qb_on){
+            const std::vector<double> w_ = qb_lev(false);
+            for(int i = 0; i < im; i++){
+                double step_terms = 0.0;
+                for(int q_ = 0; q_ < JupQb::NTERM; q_++){
+                    double a_ = 0.0;
+                    for(int t_ = 0; t_ < JupQb::MAXTHR; t_++) a_ += JupQb::st().acc[t_][q_][i];
+                    a_ *= dt / 6.0 * 1.0e3 / qb_norm;
+                    qb_tsum[q_][i] += a_; step_terms += a_;
+                }
+                qb_sum[CW_RK_RESET][i] += qb_n[i] - qb_last[i];
+                qb_sum[CW_RK_REST][i]  += w_[i] - qb_n[i] - step_terms;
+                qb_last[i] = w_[i];
+            }
+        }
+
         if(cwb_on){
             const double w_ = cwb_col(h2o, h2o_cloud, h2o_ice);
             double step_terms = 0.0;
@@ -1034,16 +1100,16 @@ void cJupiterModel::Run(){
         }
 
         BC_Jup(*this).bcRadius();                                       // extrapolation in i-direction alomg grid boundaries
-        cwb_mark(CW_BC_RADIUS); tb_mark(CW_BC_RADIUS);
+        cwb_mark(CW_BC_RADIUS); tb_mark(CW_BC_RADIUS); qb_mark(CW_BC_RADIUS);
         BC_Jup(*this).bcTheta();                                        // extrapolation in j-direction alomg grid boundaries
-        cwb_mark(CW_BC_THETA); tb_mark(CW_BC_THETA);
+        cwb_mark(CW_BC_THETA); tb_mark(CW_BC_THETA); qb_mark(CW_BC_THETA);
         BC_Jup(*this).bcPhi();                                          // extrapolation in k-direction alomg grid boundaries
-        cwb_mark(CW_BC_PHI); tb_mark(CW_BC_PHI);
+        cwb_mark(CW_BC_PHI); tb_mark(CW_BC_PHI); qb_mark(CW_BC_PHI);
         ub_mark(UB_BC);
 
 //        BC_Jup(*this).bcScalarSurfSur();                                // scalar variable at surfaces extrapolated by von Neumann
         BC_Jup(*this).bcSolidGround();                                  // values inside mountains
-        cwb_mark(CW_BC_SOLID); tb_mark(CW_BC_SOLID);
+        cwb_mark(CW_BC_SOLID); tb_mark(CW_BC_SOLID); qb_mark(CW_BC_SOLID);
 
         // ATJUP_TURB_WALL_HOLD (2026-10-09; DEFAULT 1 on the user's word, 0 restores): reassert the closure's wall
         // condition after the Runge-Kutta step and the boundary conditions, every iteration, as
@@ -1117,9 +1183,9 @@ void cJupiterModel::Run(){
         // values are what the next Runge-Kutta step starts from. Runs after the Shapiro pass,
         // which can itself undershoot at a sharp cloud edge. See FileIO_Jup.cpp for the
         // measurement that says a plain floor is enough here.
-        cwb_mark(CW_CONVADJ_SHAPIRO); tb_mark(CW_CONVADJ_SHAPIRO);
+        cwb_mark(CW_CONVADJ_SHAPIRO); tb_mark(CW_CONVADJ_SHAPIRO); qb_mark(CW_CONVADJ_SHAPIRO);
         clampNegativeSpecies();
-        cwb_mark(CW_FLOOR); tb_mark(CW_FLOOR);
+        cwb_mark(CW_FLOOR); tb_mark(CW_FLOOR); qb_mark(CW_FLOOR);
 
         // Steady-state query: max|f - f_n| per field with its location, plus the continuity
         // residual. BEFORE restoreVar, which is what makes the differences non-zero — see the
@@ -1147,6 +1213,27 @@ void cJupiterModel::Run(){
                 if(q_ == CW_RK_RESET) for(int r_ = 0; r_ < JupTb::NTERM; r_++){
                     printf("\n      ATJUP: [TB] %-15s", tb_term[r_]);
                     for(int l = 0; l < nl_; l++) if(lv_[l] < im) printf(" %+8.3f", tb_tsum[r_][lv_[l]]);
+                }
+            }
+            printf("\n");
+        }
+
+        if(qb_on && iter_n % qb_every == 0){
+            static const int lv_[] = { 0, 1, 2, 3, 5, 8, 12, 16, 20, 22, 24, 26, 27, 28, 30, 32, 35, 38, 40 };
+            const int nl_ = (int)(sizeof(lv_) / sizeof(lv_[0]));
+            printf("\n      ATJUP: [QB] level-mean %s, cumulative over iterations %d..%d, g/m3\n      ATJUP: [QB] %-15s",
+                   qb_gname[JupQb::st().group], iter_start, iter_n, "level");
+            for(int l = 0; l < nl_; l++) if(lv_[l] < im) printf(" %10d", lv_[l]);
+            printf("\n      ATJUP: [QB] %-15s", "q now");
+            for(int l = 0; l < nl_; l++) if(lv_[l] < im) printf(" %10.4e", qb_last[lv_[l]]);
+            printf("\n      ATJUP: [QB] %-15s", "change");
+            for(int l = 0; l < nl_; l++) if(lv_[l] < im) printf(" %+10.3e", qb_last[lv_[l]] - qb_first[lv_[l]]);
+            for(int q_ = 0; q_ < CW_N; q_++){
+                printf("\n      ATJUP: [QB] %-15s", tb_name[q_]);
+                for(int l = 0; l < nl_; l++) if(lv_[l] < im) printf(" %+10.3e", qb_sum[q_][lv_[l]]);
+                if(q_ == CW_RK_RESET) for(int r_ = 0; r_ < JupQb::NTERM; r_++){
+                    printf("\n      ATJUP: [QB] %-15s", qb_term[r_]);
+                    for(int l = 0; l < nl_; l++) if(lv_[l] < im) printf(" %+10.3e", qb_tsum[r_][lv_[l]]);
                 }
             }
             printf("\n");

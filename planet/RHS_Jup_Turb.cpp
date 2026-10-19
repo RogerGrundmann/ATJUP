@@ -19,6 +19,7 @@
 #include "CwbJup.h"          // ATJUP_CWB_DIAG, print-only
 #include "UbJup.h"           // ATJUP_UB_DIAG, print-only
 #include "TbJup.h"           // ATJUP_TB_DIAG, print-only
+#include "QbJup.h"           // ATJUP_QB_DIAG, print-only
 
 #include <cstdlib>   // getenv/atof for the radiative-coupling knob
 #include <string>
@@ -1259,6 +1260,45 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
         + diffusion_nh4sh * (1.0 / (sc_nh4sh * re) + nue_t_s)
         + chemical_reaction * massflux_nh4sh.x[i][j][k]
         + (v_stokes_nh4sh / u_0) * dnh4shdr;
+
+    // ATJUP_QB_DIAG (print-only, see QbJup.h): RK4-weighted level sums of each term of the chosen
+    // species group's right-hand sides, per thread. Nothing here is read by the model.
+    if(JupQb::st().on && i < JupQb::MAXLEV){
+        const double cw = JupQb::st().stage_wgt * std::sin(the.z[j]);
+        double (*a_)[JupQb::MAXLEV] = JupQb::st().acc[omp_get_thread_num()];
+        double tr_r = 0.0, tr_t = 0.0, tr_p = 0.0, dmol = 0.0, dturb = 0.0, chem = 0.0, prec = 0.0, sett = 0.0;
+        switch(JupQb::st().group){
+        case JupQb::G_NH3: {
+            const double s_ = 1.0 / (sc_nh3 * re);
+            tr_r = u_ijk * (dnh3dr + dnh3cdr + dnh3idr);
+            tr_t = v_invrm * (dnh3dthe + dnh3cdthe + dnh3idthe);
+            tr_p = w_invrs * (dnh3dphi + dnh3cdphi + dnh3idphi);
+            const double d_ = diffusion_nh3 + diffusion_nh3_cloud + diffusion_nh3_ice;
+            dmol = d_ * s_; dturb = d_ * nue_t_s;
+            chem = chemical_reaction * massflux_nh3.x[i][j][k];
+            prec = precip_coupling * (S_precip_nh3.x[i][j][k] + S_precip_nh3_cloud.x[i][j][k] + S_precip_nh3_ice.x[i][j][k]);
+            break; }
+        case JupQb::G_H2S:
+            tr_r = u_ijk * dh2sdr; tr_t = v_invrm * dh2sdthe; tr_p = w_invrs * dh2sdphi;
+            dmol = diffusion_h2s / (sc_h2s * re); dturb = diffusion_h2s * nue_t_s;
+            chem = chemical_reaction * massflux_h2s.x[i][j][k];
+            break;
+        default:
+            tr_r = u_ijk * dnh4shdr; tr_t = v_invrm * dnh4shdthe; tr_p = w_invrs * dnh4shdphi;
+            dmol = diffusion_nh4sh / (sc_nh4sh * re); dturb = diffusion_nh4sh * nue_t_s;
+            chem = chemical_reaction * massflux_nh4sh.x[i][j][k];
+            sett = fluxlim_nh4sh.x[i][j][k] + (v_stokes_nh4sh / u_0) * dnh4shdr;
+            break;
+        }
+        a_[JupQb::T_TR_RAD][i]    -= cw * tr_r;
+        a_[JupQb::T_TR_THE][i]    -= cw * tr_t;
+        a_[JupQb::T_TR_PHI][i]    -= cw * tr_p;
+        a_[JupQb::T_DIFF_MOL][i]  += cw * dmol;
+        a_[JupQb::T_DIFF_TURB][i] += cw * dturb;
+        a_[JupQb::T_CHEM][i]      += cw * chem;
+        a_[JupQb::T_PRECIP][i]    += cw * prec;
+        a_[JupQb::T_SETTLE][i]    += cw * sett;
+    }
 
     // ATJUP_SPECIES_DIVU=<s> (2026-10-08), DEFAULT 0 = OFF (block skipped, byte-identical): the flux form of the
     // species transport. Every species here is a DENSITY [kg/m3], so its conservation law is
