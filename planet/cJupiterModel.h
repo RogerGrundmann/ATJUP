@@ -11,6 +11,7 @@
 #include <ctime>    
 #include <cmath>
 #include <map>
+#include <cstdlib>
 #include <set>
 #include <limits>
 #include <csignal>
@@ -629,6 +630,11 @@ private:
     void paraview_vtk_radial(int n, int i_radial);
     void paraview_vtk_zonal(int n, int k_zonal);
     void paraview_panorama_vts(int n);
+    // ATJUP_PANORAMA_STRIDE=<n>: iterations between panorama .vts writes in the loop (default 100).
+    static int panorama_stride(){
+        static const int s = [](){ const char* e = getenv("ATJUP_PANORAMA_STRIDE");
+                                   return (e && atoi(e) > 0) ? atoi(e) : 100; }();
+        return s; }
     void paraview_sphere_vts(int n);
 
     void searchMinMax_3D(string, string, 

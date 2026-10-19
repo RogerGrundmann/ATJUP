@@ -35,7 +35,7 @@ void cJupiterModel::writeData(){
     paraview_vtk_zonal(iter_n, k_zonal);
 
 
-    if (paraview_panorama_vts_flag && panorama_cnt == panorama_print) {
+    if (paraview_panorama_vts_flag && panorama_cnt == panorama_print && !getenv("ATJUP_PANORAMA_STRIDE")) {
         paraview_panorama_vts(iter_n);
 //        paraview_sphere_vts(iter_n);
     }

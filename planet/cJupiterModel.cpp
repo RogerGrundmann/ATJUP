@@ -1204,8 +1204,10 @@ void cJupiterModel::Run(){
         if(vtk_stride > 0 ? (iter_n % vtk_stride == 0) : (iter_n % checkpoint == 0)) writeData();
 
         // Full 3D panorama .vts every 100 iterations (carries the radiation fields), independent
-        // of the checkpoint/panorama_print cadence.
-        if(paraview_panorama_vts_flag && iter_n % 100 == 0){
+        // of the checkpoint/panorama_print cadence. ATJUP_PANORAMA_STRIDE=<n> (2026-10-19): every
+        // n iterations instead, and then writeData's panorama_print path is off, so a run gets
+        // exactly one panorama per stride. Unset = 100 and both paths, as before.
+        if(paraview_panorama_vts_flag && iter_n % panorama_stride() == 0){
             paraview_panorama_vts(iter_n);
         }
 
