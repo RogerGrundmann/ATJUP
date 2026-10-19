@@ -1068,13 +1068,23 @@ double cJupiterModel::balanceColumnV(long* nskip_out){
 // values of the corrected velocity, so a cell next to the wall carries half of its other face.
 // Then U_INIT_CONT builds u from the deflected field.
 //
+// IN THE LOOP (ATJUP_CONE_PROJ_STRIDE=<N>, 2026-10-19, default 10, 0 = off; in_loop = true): the same solve every N
+// iterations, because nothing in the loop keeps the side walls closed (CP_200 / CP_1000: normal/speed
+// back to the default 0.56 by iteration 200). Two differences from the start: phi starts from the
+// previous in-loop phi of that level (warm start; the first call from zero), and the velocity is
+// INCREMENTED, v += average of the two face corrections, a wall face's correction being -v (its
+// face value set to zero) -- the start's form replaces the cell value by the average of its face
+// values, a 1-2-1 smoothing that would act on the whole box at every call. Printed at checkpoints.
+//
 // WHAT IT DOES NOT DO: it turns the flow AROUND the body at each level; it does not lift any of it
 // over the top (2-D per level, no radial part), and the prescribed slow-down next to the surfaces
 // (bcSeaMount / bcVelSurfSur) stays. Printed: mean |U toward the wall| over the wall faces before
 // and after, the rms horizontal divergence in the boxes before and after, SOR iterations.
 // ============================================================================
-void cJupiterModel::projectAroundObstacle(){
-    std::cout << "\n      ATJUP: projectAroundObstacle, ATJUP_CONE_PROJ = " << cone_proj() << std::endl;
+void cJupiterModel::projectAroundObstacle(bool in_loop, bool verbose){
+    if(!in_loop)
+        std::cout << "\n      ATJUP: projectAroundObstacle, ATJUP_CONE_PROJ = " << cone_proj() << std::endl;
+    static std::vector<std::vector<double>> phi_prev(im);              // in-loop warm start, per level
     const double smin = sinthe_min();
     std::vector<double> s(jm);
     for(int j = 0; j < jm; j++) s[j] = std::max(smin, std::abs(std::sin(the.z[j])));
@@ -1113,6 +1123,7 @@ void cJupiterModel::projectAroundObstacle(){
         const int nj = jhi - jlo + 3, nk = khi - klo + 3;                // with a halo of phi = 0
         auto at = [&](int j, int k){ return (size_t)(j - jlo + 1) * nk + (k - klo + 1); };
         std::vector<double> phi((size_t)nj * nk, 0.0);
+        if(in_loop && phi_prev[i].size() == phi.size()) phi = phi_prev[i];
 
         Stat st0; stats(i, jlo, jhi, klo, khi, st0);
 
@@ -1155,10 +1166,20 @@ void cJupiterModel::projectAroundObstacle(){
                 const double fS = solid(i,j+1,k) ? 0.0 : 0.5 * (vp + v.x[i][j+1][k]) + (phi[at(j+1,k)] - pp) / dthe;
                 const double fW = solid(i,j,k-1) ? 0.0 : 0.5 * (wp + w.x[i][j][k-1]) + (pp - phi[at(j,k-1)]) / (s[j] * dphi);
                 const double fE = solid(i,j,k+1) ? 0.0 : 0.5 * (wp + w.x[i][j][k+1]) + (phi[at(j,k+1)] - pp) / (s[j] * dphi);
-                vn[at(j,k)] = 0.5 * (fN + fS);
-                wn[at(j,k)] = 0.5 * (fW + fE);
+                if(!in_loop){
+                    vn[at(j,k)] = 0.5 * (fN + fS);
+                    wn[at(j,k)] = 0.5 * (fW + fE);
+                } else {
+                    const double dN = solid(i,j-1,k) ? -vp : (pp - phi[at(j-1,k)]) / dthe;
+                    const double dS = solid(i,j+1,k) ? -vp : (phi[at(j+1,k)] - pp) / dthe;
+                    const double dW = solid(i,j,k-1) ? -wp : (pp - phi[at(j,k-1)]) / (s[j] * dphi);
+                    const double dE = solid(i,j,k+1) ? -wp : (phi[at(j,k+1)] - pp) / (s[j] * dphi);
+                    vn[at(j,k)] = vp + 0.5 * (dN + dS);
+                    wn[at(j,k)] = wp + 0.5 * (dW + dE);
+                }
             }
         }
+        if(in_loop) phi_prev[i] = phi;
         for(int j = jlo; j <= jhi; j++) for(int k = klo; k <= khi; k++){
             if(solid(i,j,k)) continue;
             v.x[i][j][k] = vn[at(j,k)]; w.x[i][j][k] = wn[at(j,k)];
@@ -1173,9 +1194,10 @@ void cJupiterModel::projectAroundObstacle(){
     if(ATPhys::phi_periodic<cJupiterModel>())
         for(int i = 0; i < im; i++) for(int j = 0; j < jm; j++){ v.x[i][j][km-1] = v.x[i][j][0]; w.x[i][j][km-1] = w.x[i][j][0]; }
 
-    printf("      ATJUP: [CONE_PROJ] %ld levels, SOR iterations up to %ld, max |phi| %.4e;"
+    if(!in_loop || verbose)
+    printf("      ATJUP: [CONE_PROJ%s] %ld levels, SOR iterations up to %ld, max |phi| %.4e;"
            "  mean |U toward the wall| over %ld wall faces %.4f -> %.4f m/s;"
            "  rms horizontal divergence in the boxes (nondim) %.4e -> %.4e\n",
-           n_lev, it_max, phimax, n_wall, n_wall ? t_wall0 / n_wall * u_0 : 0.0, n_wall ? t_wall1 / n_wall * u_0 : 0.0,
+           in_loop ? "_STRIDE" : "", n_lev, it_max, phimax, n_wall, n_wall ? t_wall0 / n_wall * u_0 : 0.0, n_wall ? t_wall1 / n_wall * u_0 : 0.0,
            n_div ? std::sqrt(t_div0 / n_div) : 0.0, n_div ? std::sqrt(t_div1 / n_div) : 0.0);
 }

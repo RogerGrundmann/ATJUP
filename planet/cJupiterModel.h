@@ -749,7 +749,12 @@ public:
     static int cone_proj(){
         static const int v = [](){ const char* e = getenv("ATJUP_CONE_PROJ"); return e ? atoi(e) : 0; }();
         return v; }
-    void projectAroundObstacle();
+    void projectAroundObstacle(bool in_loop = false, bool verbose = false);
+    // ATJUP_CONE_PROJ_STRIDE=<N> (2026-10-19, DEFAULT 10 on the user's word, 0 = off restores): the projection around
+    // the obstacle every N iterations inside the loop, warm-started, in increment form; cJupiterModel.cpp.
+    static int cone_proj_stride(){
+        static const int v = [](){ const char* e = getenv("ATJUP_CONE_PROJ_STRIDE"); return e ? atoi(e) : 10; }();
+        return v; }
     double balanceColumnV(long* nskip_out);     // InitValues_Jup.cpp; =2 above and the loop's V_MASSBAL_STRIDE
     // ATJUP_V_MASSBAL_STRIDE=<N> (DEFAULT 1 since 2026-10-18 on the user's word, 0 = off): the column balance of v re-imposed every N
     // iterations in the loop, as ATOM's ATM_V_MASSBAL_STRIDE; see cJupiterModel.cpp.

@@ -1104,6 +1104,15 @@ void cJupiterModel::Run(){
                        v_massbal_stride(), iter_n, vb * u_0, vb_max * u_0);
         }
 
+        // ATJUP_CONE_PROJ_STRIDE=<N> (2026-10-19, DEFAULT 10 on the user's word, 0 = off restores): the flow around the obstacle
+        // re-imposed every N iterations (projectAroundObstacle in increment form, InitValues_Jup.cpp).
+        // WHY: the loop has no no-penetration condition at the obstacle's side walls (bcRadius acts
+        // at the bottom and the lid only), so the flow that ATJUP_CONE_PROJ turns around the body at
+        // the start blows into it again (ring normal/speed 0.50 -> 0.56 by 200 it, CP_1000). After
+        // the column balance of v, so the wall flux is the last thing set before restoreVar.
+        if(cone_proj_stride() > 0 && iter_n % cone_proj_stride() == 0)
+            projectAroundObstacle(true, iter_n % checkpoint == 0);
+
         // Floor the species at zero before the n-level copies are refreshed, so the clamped
         // values are what the next Runge-Kutta step starts from. Runs after the Shapiro pass,
         // which can itself undershoot at a sharp cloud edge. See FileIO_Jup.cpp for the
