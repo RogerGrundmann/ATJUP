@@ -892,6 +892,16 @@ void cJupiterModel::init_nh4sh(std::string gas, double &c_tropopause,
 //       sign flips in that slice were over the cone, shifts up to 23 m/s; seen by the user in the
 //       zonal VTK, satchk/ucont_2026-10-18/UC2_200). Those columns keep the prescribed v and get
 //       the =1 treatment.
+// ATJUP_U_INIT_CONE=<m/s> (2026-10-19, DEFAULT 0.7 on the user's word, 0 restores): the one-signed columns STANDING ON THE
+//       OBSTACLE (i_topography > 0) are not zeroed but closed by taking the remainder out evenly over
+//       the column, src -= R / L (L its fluid height), and |u| is then clipped at the given speed.
+//       WHY: =2 leaves the 5025 obstacle columns out of the v balance (it reversed v there), so
+//       their source is one-signed and 3726 of them were zeroed: over the whole base footprint the
+//       meridional cells had no vertical branch (i = 28, GRS2_1000: mean |u| 0.008 against 0.18 m/s
+//       beside it), which the NH3 ice drew as a ring around the base. The bounded correction above
+//       cannot close such a column (it removes a one-signed source entirely); the even removal can,
+//       at the price of a column-uniform convergence term, and the clip keeps it from the 84 m/s
+//       ATOM's unbounded first attempt made next to terrain. Clipped cells are counted.
 // VOLUME, NOT MASS: ATJUP's continuity carries no density (incompressible on r_mix), where
 // ATOM's is anelastic and weights with r_humid.
 //
@@ -939,9 +949,10 @@ void cJupiterModel::initUFromContinuity(){
 
     // u from continuity
     double umax = 0.0;
-    long ncol = 0, nzero = 0;
+    long ncol = 0, nzero = 0, ncone = 0, nclip = 0;
+    static const double cone_lim = [](){ const char* e = getenv("ATJUP_U_INIT_CONE"); return e ? atof(e) : 0.7; }();
     std::vector<double> resid, imbal;
-    #pragma omp parallel for collapse(2) schedule(static) reduction(max:umax) reduction(+:ncol,nzero)
+    #pragma omp parallel for collapse(2) schedule(static) reduction(max:umax) reduction(+:ncol,nzero,ncone,nclip)
     for(int j = 1; j < jm-1; j++){
         for(int k = k_first; k < km-1; k++){
             const int i0 = i_topography[j][k];
@@ -969,13 +980,24 @@ void cJupiterModel::initUFromContinuity(){
             const double imb = std::fabs(R) / S;
             #pragma omp critical(ucont_stats)
             imbal.push_back(imb);
-            if(imb > 0.9){ nzero++; continue; }                          // one-signed: no closed cell
-            const double corr = R / S;
-            for(int i = i0; i < im; i++) src[i] -= corr * std::fabs(src[i]);
+            const bool cone_col = cone_lim > 0.0 && i0 > 0 && imb > 0.9;
+            if(imb > 0.9 && !cone_col){ nzero++; continue; }             // one-signed: no closed cell
+            if(cone_col){                                                // ATJUP_U_INIT_CONE: even removal
+                const double L = (im - 1 - i0) * dr;
+                for(int i = i0; i < im; i++) src[i] -= R / L;
+                ncone++;
+            } else {
+                const double corr = R / S;
+                for(int i = i0; i < im; i++) src[i] -= corr * std::fabs(src[i]);
+            }
             double r2u = 0.0, peak = 0.0;
             for(int i = i0; i < im-1; i++){
                 r2u -= 0.5 * (src[i] + src[i+1]) * dr;
-                if(i + 1 < im - 1) u.x[i+1][j][k] = r2u / (rad.z[i+1] * rad.z[i+1]);
+                if(i + 1 < im - 1){
+                    u.x[i+1][j][k] = r2u / (rad.z[i+1] * rad.z[i+1]);
+                    if(cone_col && std::fabs(u.x[i+1][j][k]) * u_0 > cone_lim){
+                        u.x[i+1][j][k] = std::copysign(cone_lim / u_0, u.x[i+1][j][k]); nclip++; }
+                }
                 peak = std::max(peak, std::fabs(r2u));
                 if(i + 1 < im - 1) umax = std::max(umax, std::fabs(u.x[i+1][j][k]));
             }
@@ -1000,6 +1022,9 @@ void cJupiterModel::initUFromContinuity(){
     printf("      ATJUP: [U_INIT_CONT] u from continuity over %ld columns (%ld zeroed as one-signed),"
            " max |u| = %.4f m/s; v column balance %s, largest shift %.4f m/s (%ld columns on the obstacle left out)\n",
            ncol, nzero, umax * u_0, mode == 2 ? "ON" : "off", vshift * u_0, nskip);
+    if(cone_lim > 0.0)
+        printf("      ATJUP: [U_INIT_CONE] %ld one-signed obstacle columns closed by even removal, %ld cells clipped at %.3f m/s\n",
+               ncone, nclip, cone_lim);
     printf("      ATJUP: [U_INIT_CONT] column remainder removed |R|/INT|S|: median %.4f  p95 %.4f  worst %.4f;"
            "  lid closure |r2u(lid)|/peak: median %.2e  p95 %.2e  worst %.2e\n",
            q(imbal, 0.5), q(imbal, 0.95), q(imbal, 1.0), q(resid, 0.5), q(resid, 0.95), q(resid, 1.0));
