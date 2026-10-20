@@ -1084,8 +1084,16 @@ double cJupiterModel::balanceColumnV(long* nskip_out){
 // WHAT, per level i that cuts the obstacle. A potential-flow correction grad(phi) with
 //     (1/s) d/dthe(s dphi/dthe) + (1/s^2) d2phi/dlam2 = 0      in the fluid (s floored, the RK geometry)
 //     dphi/dn = -U.n                                           at every face to a solid cell
-//     phi = 0                                                  at the edge of a box 40 cells wider than
+//     phi = 0                                                  at the edge of a box M cells wider than
 //                                                              the obstacle's cross-section
+// (M = ATJUP_CONE_PROJ_MARGIN, DEFAULT 10 since 2026-10-20 on the user's word, 40 restores; user: "shrink the
+// cone projection box": with the GEOM 2 base the 40-cell box reaches 7 N at 180 E, where the in-loop calls
+// held the prescribed +40 m/s surface branch of the first Hadley cell 2-7 m/s above the same latitude
+// elsewhere -- 42.5 against 35.0 at it 1000, G2_1000; 40.2 with the in-loop projection off. 200 it,
+// satchk/vmax_2026-10-20: 7 N 180 E bottom 43.6 / 46.4 / 36.9 m/s for M = 40 / 20 / 10 (20 puts the box edge
+// at j = 80, next to it); w off the far field in the 22 S cut beyond 14 cells from the wall 0.4-0.9 / 0.1-1.1
+// / 0; wall inflow, residuum and w extrema unchanged; SOR sweeps per call ~930 -> ~220. Cost of M = 10: the
+// correction is concentrated next to the body, 6-10 cells out 2.5 against 1.9 m/s, step at the box edge ~0.5.)
 // on the staircase in finite-volume form: a fluid cell's faces to solid neighbours carry the
 // prescribed flux and are left out of the operator, so the wall flux of the corrected field is
 // zero. The correction is horizontally divergence-free and decays away from the body; it does not
@@ -1108,12 +1116,12 @@ double cJupiterModel::balanceColumnV(long* nskip_out){
 // ============================================================================
 void cJupiterModel::projectAroundObstacle(bool in_loop, bool verbose){
     if(!in_loop)
-        std::cout << "\n      ATJUP: projectAroundObstacle, ATJUP_CONE_PROJ = " << cone_proj() << std::endl;
+        std::cout << "\n      ATJUP: projectAroundObstacle, ATJUP_CONE_PROJ = " << cone_proj() << ", box margin " << cone_proj_margin() << " cells (ATJUP_CONE_PROJ_MARGIN)" << std::endl;
     static std::vector<std::vector<double>> phi_prev(im);              // in-loop warm start, per level
     const double smin = sinthe_min();
     std::vector<double> s(jm);
     for(int j = 0; j < jm; j++) s[j] = std::max(smin, std::abs(std::sin(the.z[j])));
-    const int M = 40;
+    const int M = cone_proj_margin();
     auto solid = [&](int i, int j, int k){ return SeaMount.x[i][j][k] == 1.0; };
 
     // wall-face statistics and box divergence, before and after
