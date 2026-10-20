@@ -313,7 +313,7 @@ inline void BC_Jup::bcSeaMount()
     // i_topography is still filled below, all zeros, so every consumer stays valid.
     const bool no_mount = BCJupKnobs::env_int("ATJUP_NO_SEAMOUNT", 0) != 0;
 
-    // ATJUP_CONE_GEOM (2026-10-19, DEFAULT 1 on the user's word, 0 restores the cone below): the top
+    // ATJUP_CONE_GEOM=1 (2026-10-19, the default until 2026-10-20; 0 restores the cone below): the top
     // of the obstacle at i = 26, the level of the model's NH3-ice cloud peak (~0.69 bar, the "visible
     // surface"), with the cross-section of the Great Red Spot as seen from the Earth there: an oval
     // of 13 x 9 cells (1 deg each) = ~15 000 km E-W x ~11 200 km N-S at 22 S (today's GRS is
@@ -322,7 +322,34 @@ inline void BC_Jup::bcSeaMount()
     // and 26 both half-axes shrink linearly to 6 (E-W) and 4 (N-S) cells. The old cone reached
     // i = 34 (0.14 bar) with radius 41 - i cells, 15 x 15 cells at its top. Filled as a true ellipse
     // in grid cells.
-    static const int cone_geom = BCJupKnobs::env_int("ATJUP_CONE_GEOM", 1);
+    static const int cone_geom = BCJupKnobs::env_int("ATJUP_CONE_GEOM", 2);
+    // ATJUP_CONE_GEOM=2 (2026-10-20, DEFAULT on the user's word "make GEOM 2 default"; 1 restores the radius-40
+    // base): the same top, but NO CYLINDER: the half-axes shrink linearly from the base at i = 0,
+    // ATJUP_CONE_BASE_A x ATJUP_CONE_BASE_B cells
+    // (default 18 x 12, E-W x N-S, i.e. 37 x 25 cells), to 6 x 4 at i = 26. WHY: the radius-40 cylinder up to
+    // i = 10 put an 11-level wall at the edge of an 81-cell footprint, and the column balance of v (which leaves
+    // the obstacle columns out) stepped there: the ring at i = 28 drew that edge (GRS3_1000: |u - far field|
+    // 0.11 m/s out to r = 40, NH3-ice change 0.017-0.021 g/m3). G2_1000 (1000 it): both at far-field level
+    // beyond r = 20 (0.007 m/s, 0.001 g/m3), v at the old edge 0.42 against 3.5 m/s, residuum 0.0157 against
+    // 0.0216, w extrema unchanged, no reversed flow at the flanks.
+    static const int    base_a = BCJupKnobs::env_int("ATJUP_CONE_BASE_A", 18);
+    static const int    base_b = BCJupKnobs::env_int("ATJUP_CONE_BASE_B", 12);
+    if(cone_geom == 2 && !no_mount){
+        const int i_top = 26;
+        const double a_top = 6.0, b_top = 4.0;
+        printf("      ATJUP: ATJUP_CONE_GEOM = 2 - cone from a %d x %d half-axis base at i = 0 to %.0f x %.0f at i = %d, no cylinder\n",
+               base_a, base_b, a_top, b_top, i_top);
+        for(int i = 0; i <= i_top; i++){
+            const double f = (double)i / (double)i_top;
+            const double ai = std::round(base_a + (a_top - base_a) * f);
+            const double bi = std::round(base_b + (b_top - base_b) * f);
+            for(int k = k_0 - (int)ai; k <= k_0 + (int)ai; k++)
+                for(int j = j_0 - (int)bi; j <= j_0 + (int)bi; j++){
+                    const double x = (k - k_0) / ai, y = (j - j_0) / bi;
+                    if(x * x + y * y <= 1.0 + 1.0e-9) m.SeaMount.x[i][j][k] = 1.0;
+                }
+        }
+    }
     if(cone_geom == 1 && !no_mount){
         const int i_top = 26, i_base = 10;
         const double r_base = 40.0, a_top = 6.0, b_top = 4.0;
