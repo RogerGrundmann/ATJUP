@@ -92,7 +92,16 @@ static int    precip_enabled()     { static const int    v = [](){ const char* e
 // The caveat is that the numerical modes that ended the earlier runs grow in PHYSICAL time
 // (1.16 %/iteration at dt=0.001 is an e-folding in 2 minutes), so a larger dt reaches them in
 // proportionally fewer iterations rather than avoiding them.
-static double timestep()           { static const double v = [](){ const char* e = getenv("ATJUP_DT");                   return e ? atof(e) : 0.001; }(); return v; }
+//
+// DEFAULT 0.005 (7 s per iteration) SINCE 2026-10-20 on the user's word ("make dt 0.005 default"; ATJUP_DT=0.001
+// restores). Measured (satchk/dt_2026-10-20, 63460e9 defaults): a ladder 0.002 .. 0.05 at equal
+// physical time (280 s) ran stable throughout; the error in the change grows LINEARLY with dt (not as dt^4 --
+// most likely the iteration-counted filters, physics parity and strides): 22 S cut v rms 0.011 / 0.043 / 0.093
+// / 0.17 / 0.38 m/s for 0.002 / 0.005 / 0.01 / 0.02 / 0.05 against a change of rms 0.50. DT005_280 against
+// G2_1000 at 1344 s: T / u / v / w / NH3-ice extrema equal to 3-4 digits in the same cells, residuum 0.01550
+// against 0.01570, tke -14 %. Strides counted in iterations (VTK, restart, cone projection, physics on even
+// iterations) cover 5x the physical time they did before.
+static double timestep()           { static const double v = [](){ const char* e = getenv("ATJUP_DT");                   return e ? atof(e) : 0.005; }(); return v; }
 
 // Dry convective adjustment (ConvectiveAdjustmentJup). It DEFAULTS TO ATJUP_NONDIM rather than to
 // off, because the two belong together: switching the buoyancy on without it gives a model that
