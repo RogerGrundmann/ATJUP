@@ -1086,8 +1086,13 @@ double cJupiterModel::balanceColumnV(long* nskip_out){
 //     dphi/dn = -U.n                                           at every face to a solid cell
 //     phi = 0                                                  at the edge of a box M cells wider than
 //                                                              the obstacle's cross-section
-// (M = ATJUP_CONE_PROJ_MARGIN, DEFAULT 10 since 2026-10-20 on the user's word, 40 restores; user: "shrink the
-// cone projection box": with the GEOM 2 base the 40-cell box reaches 7 N at 180 E, where the in-loop calls
+// (M = ATJUP_CONE_PROJ_MARGIN, default 40. 10 WAS THE DEFAULT FOR ONE COMMIT (9661ce9 .. 77df90a) AND WAS TAKEN
+// BACK on the user's word ("(A) back to margin 40"): at dt 0.005 over 7000 s (D5_1000) the narrow box cut the
+// slowed flow next to the top -- at i = 26 a step of 17 m/s in w over one cell at the lee (west) edge, 13-23 at
+// the north and south edges, while margin 40 slows w smoothly over ~20 cells -- and the continuity residuum at
+// that edge rose from 0.0145 (2500 s) to 0.0181 (6700 s). The 200-it test below (280 s) was too short to show it.
+// The margin test, user: "shrink the cone projection box": with the GEOM 2 base the 40-cell box reaches 7 N at
+// 180 E, where the in-loop calls
 // held the prescribed +40 m/s surface branch of the first Hadley cell 2-7 m/s above the same latitude
 // elsewhere -- 42.5 against 35.0 at it 1000, G2_1000; 40.2 with the in-loop projection off. 200 it,
 // satchk/vmax_2026-10-20: 7 N 180 E bottom 43.6 / 46.4 / 36.9 m/s for M = 40 / 20 / 10 (20 puts the box edge

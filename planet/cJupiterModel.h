@@ -770,10 +770,11 @@ public:
     static int cone_proj_stride(){
         static const int v = [](){ const char* e = getenv("ATJUP_CONE_PROJ_STRIDE"); return e ? atoi(e) : 10; }();
         return v; }
-    // ATJUP_CONE_PROJ_MARGIN=<cells> (2026-10-20, DEFAULT 10 on the user's word, 40 restores): how far the projection's
-    // box reaches beyond the obstacle's cross-section at each level (phi = 0 on its edge); InitValues_Jup.cpp.
+    // ATJUP_CONE_PROJ_MARGIN=<cells> (2026-10-20, default 40; 10 was the default for a day, then back to 40 on the user's
+    // word): how far the projection's box reaches beyond the obstacle's cross-section at each level (phi = 0 on its
+    // edge); InitValues_Jup.cpp.
     static int cone_proj_margin(){
-        static const int v = [](){ const char* e = getenv("ATJUP_CONE_PROJ_MARGIN"); return e ? atoi(e) : 10; }();
+        static const int v = [](){ const char* e = getenv("ATJUP_CONE_PROJ_MARGIN"); return e ? atoi(e) : 40; }();
         return v; }
     double balanceColumnV(long* nskip_out);     // InitValues_Jup.cpp; =2 above and the loop's V_MASSBAL_STRIDE
     // ATJUP_V_MASSBAL_STRIDE=<N> (DEFAULT 1 since 2026-10-18 on the user's word, 0 = off): the column balance of v re-imposed every N
