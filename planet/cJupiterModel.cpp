@@ -1237,6 +1237,7 @@ void cJupiterModel::Run(){
         static const int steady_on = [](){
             const char* e = getenv("ATJUP_STEADY"); return e ? atoi(e) : 1; }();
         if(steady_on && iter_n % checkpoint == 0) steadyQuery();
+        if(res_fv() && iter_n % checkpoint == 0) resFaceDiagnostic();   // ATJUP_RES_FV, print-only
 
         restoreVar(1.0);
 

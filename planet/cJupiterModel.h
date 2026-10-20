@@ -760,6 +760,13 @@ public:
         static const int v = [](){ const char* e = getenv("ATJUP_CONE_PROJ"); return e ? atoi(e) : 1; }();
         return v; }
     void projectAroundObstacle(bool in_loop = false, bool verbose = false);
+    // ATJUP_RES_FV=1 (2026-10-20, print-only, default off): at every checkpoint the continuity residuum in FACE form
+    // (face value = average of the two cells, zero through a face to a solid cell) next to the centred form the
+    // steady query reports, at the centred maximum and over wall-adjacent / interior cells; InitValues_Jup.cpp.
+    static int res_fv(){
+        static const int v = [](){ const char* e = getenv("ATJUP_RES_FV"); return e ? atoi(e) : 0; }();
+        return v; }
+    void resFaceDiagnostic();
     // ATJUP_INIT_SPECIES_FULL=<n> (2026-10-19, DEFAULT 1 on the user's word, 0 restores): the species are initialised, smoothed and
     // saturation-adjusted as if there were no obstacle, then zeroed inside it; cJupiterModel.cpp.
     static int init_species_full(){

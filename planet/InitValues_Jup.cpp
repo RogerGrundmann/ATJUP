@@ -1239,3 +1239,74 @@ void cJupiterModel::projectAroundObstacle(bool in_loop, bool verbose){
            in_loop ? "_STRIDE" : "", n_lev, it_max, phimax, n_wall, n_wall ? t_wall0 / n_wall * u_0 : 0.0, n_wall ? t_wall1 / n_wall * u_0 : 0.0,
            n_div ? std::sqrt(t_div0 / n_div) : 0.0, n_div ? std::sqrt(t_div1 / n_div) : 0.0);
 }
+
+
+// ============================================================================
+// ATJUP_RES_FV=1 (2026-10-20, print-only; user: test the reading of the residuum rise at the base corner):
+// THE CONTINUITY RESIDUUM IN FACE FORM next to the centred form.
+//
+// WHY. Over 7000 s (M40D5_1000) the reported residuum rose at the bottom cells next to the west corner of
+// the obstacle base (i = 1, k = 171, j = 101 / 123), all of it in dw/dphi: the flow along the flank stops in
+// front of a staircase step within one cell. The reading to test: the centred differences of the steady
+// query (Reporting.h) see that turn as a source although the flow, counted through the cell's faces with
+// no flux into the wall, balances.
+//
+// WHAT. For every fluid cell i 1..im-2, j 1..jm-2, k 1..km-2: the centred residuum exactly as the steady
+// query's floored line (ATJUP_RES_FLOOR; true sine if unset), and the face form
+//     (r+^2 u+ - r-^2 u-) / (r^2 dr) + (s+ v+ - s- v-) / (r s dthe) + (w+ - w-) / (r s dphi)
+// with each face value the average of its two cells, zero through a face to a solid cell, s+- the face
+// sines as in projectAroundObstacle, r the metric radius. Printed: both at the centred maximum with the
+// three directional parts, the maximum of each and where, and the rms of each over cells with a solid
+// neighbour and over the rest. Changes nothing.
+// ============================================================================
+void cJupiterModel::resFaceDiagnostic(){
+    static const double fl = [](){ const char* e = getenv("ATJUP_RES_FLOOR"); const double x = e ? atof(e) : -1.0;
+                                   return (x >= 0.0 && x < 1.0) ? x : 0.0; }();
+    auto solid = [&](int i, int j, int k){ return SeaMount.x[i][j][k] == 1.0; };
+    auto sn = [&](int j){ return std::max(fl, std::fabs(std::sin(the.z[j]))); };
+    auto cs = [&](int j){ double c = std::cos(the.z[j]); if(costhe_abs() && j > 90) c = -c; return c; };
+    // the three parts of each form at (i, j, k): radial, meridional, zonal
+    auto centred = [&](int i, int j, int k, double* p){
+        const double r = metricRadius(rad.z[i]), s = sn(j);
+        p[0] = (u.x[i+1][j][k] - u.x[i-1][j][k]) / (2.0 * dr) + 2.0 * u.x[i][j][k] / r;
+        p[1] = (v.x[i][j+1][k] - v.x[i][j-1][k]) / (2.0 * dthe) / r + cs(j) / (r * s) * v.x[i][j][k];
+        p[2] = (w.x[i][j][k+1] - w.x[i][j][k-1]) / (2.0 * dphi) / (r * s);
+    };
+    auto face = [&](int i, int j, int k, double* p){
+        const double r = metricRadius(rad.z[i]), s = sn(j);
+        const double rp = r + 0.5 * dr, rm = r - 0.5 * dr;
+        const double up = solid(i+1,j,k) ? 0.0 : 0.5 * (u.x[i][j][k] + u.x[i+1][j][k]);
+        const double um = solid(i-1,j,k) ? 0.0 : 0.5 * (u.x[i][j][k] + u.x[i-1][j][k]);
+        const double vp = solid(i,j+1,k) ? 0.0 : 0.5 * (v.x[i][j][k] + v.x[i][j+1][k]);
+        const double vm = solid(i,j-1,k) ? 0.0 : 0.5 * (v.x[i][j][k] + v.x[i][j-1][k]);
+        const double wp = solid(i,j,k+1) ? 0.0 : 0.5 * (w.x[i][j][k] + w.x[i][j][k+1]);
+        const double wm = solid(i,j,k-1) ? 0.0 : 0.5 * (w.x[i][j][k] + w.x[i][j][k-1]);
+        const double sp = 0.5 * (s + sn(j+1)), sm = 0.5 * (s + sn(j-1));
+        p[0] = (rp * rp * up - rm * rm * um) / (r * r * dr);
+        p[1] = (sp * vp - sm * vm) / (r * s * dthe);
+        p[2] = (wp - wm) / (r * s * dphi);
+    };
+    double cmax = 0.0, fmax = 0.0, c2w = 0.0, f2w = 0.0, c2i = 0.0, f2i = 0.0;
+    long nw = 0, ni = 0;
+    int ci = 0, cj = 0, ck = 0, fi = 0, fj = 0, fk = 0;
+    for(int i = 1; i < im-1; i++) for(int j = 1; j < jm-1; j++) for(int k = 1; k < km-1; k++){
+        if(solid(i,j,k)) continue;
+        double pc[3], pf[3];
+        centred(i, j, k, pc); face(i, j, k, pf);
+        const double c = pc[0] + pc[1] + pc[2], f = pf[0] + pf[1] + pf[2];
+        if(std::fabs(c) > cmax){ cmax = std::fabs(c); ci = i; cj = j; ck = k; }
+        if(std::fabs(f) > fmax){ fmax = std::fabs(f); fi = i; fj = j; fk = k; }
+        const bool wall = solid(i-1,j,k) || solid(i+1,j,k) || solid(i,j-1,k) || solid(i,j+1,k) || solid(i,j,k-1) || solid(i,j,k+1);
+        if(wall){ c2w += c * c; f2w += f * f; nw++; } else { c2i += c * c; f2i += f * f; ni++; }
+    }
+    double pc[3], pf[3];
+    centred(ci, cj, ck, pc); face(ci, cj, ck, pf);
+    printf("      ATJUP: [RES_FV] centred max %.4e at i %d j %d k %d: parts radial %+.3e merid %+.3e zonal %+.3e;"
+           "  face form there %+.4e: radial %+.3e merid %+.3e zonal %+.3e\n",
+           cmax, ci, cj, ck, pc[0], pc[1], pc[2], pf[0] + pf[1] + pf[2], pf[0], pf[1], pf[2]);
+    face(fi, fj, fk, pf); centred(fi, fj, fk, pc);
+    printf("      ATJUP: [RES_FV] face-form max %.4e at i %d j %d k %d (parts %+.3e %+.3e %+.3e; centred there %+.4e);"
+           "  rms centred / face: wall-adjacent cells (%ld) %.3e / %.3e, interior (%ld) %.3e / %.3e\n",
+           fmax, fi, fj, fk, pf[0], pf[1], pf[2], pc[0] + pc[1] + pc[2],
+           nw, nw ? std::sqrt(c2w / nw) : 0.0, nw ? std::sqrt(f2w / nw) : 0.0, ni, ni ? std::sqrt(c2i / ni) : 0.0, ni ? std::sqrt(f2i / ni) : 0.0);
+}
