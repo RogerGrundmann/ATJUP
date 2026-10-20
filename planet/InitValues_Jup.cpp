@@ -1123,10 +1123,66 @@ void cJupiterModel::projectAroundObstacle(bool in_loop, bool verbose){
     if(!in_loop)
         std::cout << "\n      ATJUP: projectAroundObstacle, ATJUP_CONE_PROJ = " << cone_proj() << ", box margin " << cone_proj_margin() << " cells (ATJUP_CONE_PROJ_MARGIN)" << std::endl;
     static std::vector<std::vector<double>> phi_prev(im);              // in-loop warm start, per level
+    static std::vector<std::vector<double>> phi_prev_div(im);          // the same for the ATJUP_CONE_PROJ_DIV solve
     const double smin = sinthe_min();
     std::vector<double> s(jm);
     for(int j = 0; j < jm; j++) s[j] = std::max(smin, std::abs(std::sin(the.z[j])));
     const int M = cone_proj_margin();
+    // ATJUP_CONE_PROJ_DIV=<H> (2026-10-20, user: "build the local projection"; DEFAULT 3 since the same day on the
+    // user's word "commit it with default 3", 0 restores): IN THE LOOP the
+    // equation gets the 3D face divergence of the current flow as a source in the cells within H cells
+    // (Chebyshev, 3-D) of the obstacle, so that after the correction the flux through each such cell's faces
+    // balances -- with u's radial part as it is (the correction is horizontal) and zero through faces to solid
+    // cells. WHY: the projection above only removes flow INTO the wall; nothing in the loop keeps continuity, and
+    // over 7000 s (M40D5_1000) the flow along the base flank slowed into a staircase step with nothing taking the
+    // mass: residuum at the base corner 0.0150 -> 0.0169, the same in face form (ATJUP_RES_FV, eb72849);
+    // wall-adjacent rms 4.8e-3 against 1.4e-3 inside. HOW: with f = face value (average of the two cells, + the
+    // correction; 0 at a wall face), s r D = sum over faces = 0 gives A phi = sum a phi_nb + s r D0, D0 the face
+    // divergence of the flow before the correction (RES_FV's face form); the wall-face terms of the wall-flux
+    // mode are inside D0 and drop out. Only within H cells of the body, so the correction stays harmonic and
+    // decays further out (taking out the interior divergence too would put a step at the box edge). The
+    // collocated grid returns the face correction to the cells as an average (the increment form below), so the
+    // balance is approximate; printed: rms face divergence over those cells before and after.
+    const int H = in_loop ? cone_proj_div() : 0;
+    // ATJUP_CONE_PROJ_DIV: TWO SOLVES per level and call (user, 2026-10-20: "take 2."): first the divergence solve
+    // above, then the wall-flux solve of the plain projection on its result (warm-started from its own previous
+    // phi), both in the increment form. WHY: in face terms "cancel the wall flux" and "take out the divergence" are
+    // one equation, so a single solve cannot do both on the collocated grid: the divergence solve alone left
+    // 0.41 -> 0.26 m/s of wall inflow per call against 0.19 -> 0.09 without it (restart of M40D5_1000, it
+    // 500 -> 600), and writing it back as the mean of the face fluxes in the near cells was worse (0.65 -> 0.58).
+    // With two solves (H = 3, same restart): inflow 0.24 -> 0.063, wall-adjacent rms face divergence 1.57e-3
+    // against 4.79e-3 without. Over 7000 s (PDS3_1000 against M40D5_1000, dt 0.005): residuum 0.0134 against
+    // 0.0168 at 6944 s, no longer at the obstacle (the base-corner rise is gone; the max moves to 41 N 135 W,
+    // 133 km); wall-adjacent rms 0.65e-3 / 0.93e-3 (centred / face) against 1.69e-3 inside; extrema equal to
+    // 3-4 digits except max v at 7 N 180 E 34.9 against 38.2; ~5 % more run time.
+    static std::vector<char> near_;                                     // within H cells of the body, built once
+    if(H > 0 && near_.empty()){
+        near_.assign((size_t)im * jm * km, 0);
+        #pragma omp parallel for collapse(2) schedule(static)
+        for(int i = 0; i < im; i++) for(int j = 0; j < jm; j++) for(int k = 0; k < km; k++){
+            if(SeaMount.x[i][j][k] == 1.0) continue;
+            bool nr = false;
+            for(int di = -H; di <= H && !nr; di++){ const int ii = i + di; if(ii < 0 || ii >= im) continue;
+                for(int dj = -H; dj <= H && !nr; dj++){ const int jj = j + dj; if(jj < 0 || jj >= jm) continue;
+                    for(int dk = -H; dk <= H; dk++){ const int kk = k + dk; if(kk < 0 || kk >= km) continue;
+                        if(SeaMount.x[ii][jj][kk] == 1.0){ nr = true; break; } } } }
+            near_[((size_t)i * jm + j) * km + k] = nr ? 1 : 0;
+        }
+    }
+    auto is_near = [&](int i, int j, int k){ return H > 0 && near_[((size_t)i * jm + j) * km + k] != 0; };
+    // the 3D face divergence (RES_FV's face form) times s r, in the projection's units
+    auto srD = [&](int i, int j, int k){
+        auto sol = [&](int a, int b, int c){ return SeaMount.x[a][b][c] == 1.0; };
+        const double r = metricRadius(rad.z[i]), rp = r + 0.5 * dr, rm = r - 0.5 * dr;
+        const double sj = s[j], sp = 0.5 * (sj + s[j+1]), sm = 0.5 * (sj + s[j-1]);
+        const double up = sol(i+1,j,k) ? 0.0 : 0.5 * (u.x[i][j][k] + u.x[i+1][j][k]);
+        const double um = sol(i-1,j,k) ? 0.0 : 0.5 * (u.x[i][j][k] + u.x[i-1][j][k]);
+        const double vp = sol(i,j+1,k) ? 0.0 : 0.5 * (v.x[i][j][k] + v.x[i][j+1][k]);
+        const double vm = sol(i,j-1,k) ? 0.0 : 0.5 * (v.x[i][j][k] + v.x[i][j-1][k]);
+        const double wp = sol(i,j,k+1) ? 0.0 : 0.5 * (w.x[i][j][k] + w.x[i][j][k+1]);
+        const double wm = sol(i,j,k-1) ? 0.0 : 0.5 * (w.x[i][j][k] + w.x[i][j][k-1]);
+        return sj * r * (rp * rp * up - rm * rm * um) / (r * r * dr) + (sp * vp - sm * vm) / dthe + (wp - wm) / dphi;
+    };
     auto solid = [&](int i, int j, int k){ return SeaMount.x[i][j][k] == 1.0; };
 
     // wall-face statistics and box divergence, before and after
@@ -1147,10 +1203,10 @@ void cJupiterModel::projectAroundObstacle(bool in_loop, bool verbose){
         }
     };
 
-    double t_wall0 = 0.0, t_wall1 = 0.0, t_div0 = 0.0, t_div1 = 0.0, phimax = 0.0;
-    long n_wall = 0, n_div = 0, n_lev = 0, it_max = 0;
+    double t_wall0 = 0.0, t_wall1 = 0.0, t_div0 = 0.0, t_div1 = 0.0, phimax = 0.0, t_fd0 = 0.0, t_fd1 = 0.0, t_fdm = 0.0;
+    long n_wall = 0, n_div = 0, n_lev = 0, it_max = 0, n_fd = 0;
 
-    #pragma omp parallel for schedule(dynamic) reduction(+:t_wall0,t_wall1,t_div0,t_div1,n_wall,n_div,n_lev) reduction(max:it_max,phimax)
+    #pragma omp parallel for schedule(dynamic) reduction(+:t_wall0,t_wall1,t_div0,t_div1,n_wall,n_div,n_lev,t_fd0,t_fd1,t_fdm,n_fd) reduction(max:it_max,phimax)
     for(int i = 1; i < im-1; i++){
         int jmin = jm, jmax = -1, kmin = km, kmax = -1;
         for(int j = 0; j < jm; j++) for(int k = 0; k < km; k++) if(solid(i,j,k)){
@@ -1160,10 +1216,24 @@ void cJupiterModel::projectAroundObstacle(bool in_loop, bool verbose){
         const int klo = std::max(1, kmin - M), khi = std::min(km - 2, kmax + M);
         const int nj = jhi - jlo + 3, nk = khi - klo + 3;                // with a halo of phi = 0
         auto at = [&](int j, int k){ return (size_t)(j - jlo + 1) * nk + (k - klo + 1); };
-        std::vector<double> phi((size_t)nj * nk, 0.0);
-        if(in_loop && phi_prev[i].size() == phi.size()) phi = phi_prev[i];
-
         Stat st0; stats(i, jlo, jhi, klo, khi, st0);
+
+        // ATJUP_CONE_PROJ_DIV: the source, from the flow before the correction
+        std::vector<double> G;
+        if(H > 0){
+            G.assign((size_t)nj * nk, 0.0);
+            for(int j = jlo; j <= jhi; j++) for(int k = klo; k <= khi; k++){
+                if(solid(i,j,k) || !is_near(i,j,k)) continue;
+                const double g = srD(i, j, k);
+                G[at(j,k)] = g; t_fd0 += g * g / (s[j] * s[j]); n_fd++;
+            }
+        }
+
+        for(int pass = 0; pass < (H > 0 ? 2 : 1); pass++){
+        const bool div_pass = H > 0 && pass == 0;                        // ATJUP_CONE_PROJ_DIV: 0 = divergence, 1 = wall flux
+        std::vector<std::vector<double>>& prev = (H > 0 && pass == 0) ? phi_prev_div : phi_prev;
+        std::vector<double> phi((size_t)nj * nk, 0.0);
+        if(in_loop && prev[i].size() == phi.size()) phi = prev[i];
 
         // SOR, lexicographic within the level
         const double omega = 1.9;
@@ -1179,10 +1249,19 @@ void cJupiterModel::projectAroundObstacle(bool in_loop, bool verbose){
                     const double vp = v.x[i][j][k], wp = w.x[i][j][k];
                     double A = 0.0, B = 0.0;
                     // a fluid face enters the operator; a wall face carries the prescribed flux
+                    if(div_pass && is_near(i,j,k)){
+                        // ATJUP_CONE_PROJ_DIV: the wall faces are closed inside the source
+                        if(!solid(i,j-1,k)){ A += aN; B += aN * phi[at(j-1,k)]; }
+                        if(!solid(i,j+1,k)){ A += aS; B += aS * phi[at(j+1,k)]; }
+                        if(!solid(i,j,k-1)){ A += aL; B += aL * phi[at(j,k-1)]; }
+                        if(!solid(i,j,k+1)){ A += aL; B += aL * phi[at(j,k+1)]; }
+                        B += G[at(j,k)];
+                    } else {
                     if(solid(i,j-1,k)) B -= aN * dthe * (-vp); else { A += aN; B += aN * phi[at(j-1,k)]; }
                     if(solid(i,j+1,k)) B -= aS * dthe * ( vp); else { A += aS; B += aS * phi[at(j+1,k)]; }
                     if(solid(i,j,k-1)) B -= aL * s[j] * dphi * (-wp); else { A += aL; B += aL * phi[at(j,k-1)]; }
                     if(solid(i,j,k+1)) B -= aL * s[j] * dphi * ( wp); else { A += aL; B += aL * phi[at(j,k+1)]; }
+                    }
                     if(!(A > 0.0)) continue;
                     double& p = phi[at(j,k)];
                     const double pn = p + omega * (B / A - p);
@@ -1217,16 +1296,28 @@ void cJupiterModel::projectAroundObstacle(bool in_loop, bool verbose){
                 }
             }
         }
-        if(in_loop) phi_prev[i] = phi;
+        if(in_loop) prev[i] = phi;
         for(int j = jlo; j <= jhi; j++) for(int k = klo; k <= khi; k++){
             if(solid(i,j,k)) continue;
             v.x[i][j][k] = vn[at(j,k)]; w.x[i][j][k] = wn[at(j,k)];
         }
+        if(div_pass)                                                     // after the divergence solve alone
+            for(int j = jlo; j <= jhi; j++) for(int k = klo; k <= khi; k++){
+                if(solid(i,j,k) || !is_near(i,j,k)) continue;
+                const double g = srD(i, j, k); t_fdm += g * g / (s[j] * s[j]);
+            }
+        it_max = std::max<long>(it_max, it); phimax = std::max(phimax, pmax);
+        }   // pass
 
         Stat st1; stats(i, jlo, jhi, klo, khi, st1);
+        if(H > 0)
+            for(int j = jlo; j <= jhi; j++) for(int k = klo; k <= khi; k++){
+                if(solid(i,j,k) || !is_near(i,j,k)) continue;
+                const double g = srD(i, j, k); t_fd1 += g * g / (s[j] * s[j]);
+            }
         t_wall0 += st0.wall_sum; t_wall1 += st1.wall_sum; n_wall += st0.wall_n;
         t_div0 += st0.div2; t_div1 += st1.div2; n_div += st0.div_n;
-        n_lev++; it_max = std::max<long>(it_max, it); phimax = std::max(phimax, pmax);
+        n_lev++;
     }
     // the seam copy
     if(ATPhys::phi_periodic<cJupiterModel>())
@@ -1238,6 +1329,10 @@ void cJupiterModel::projectAroundObstacle(bool in_loop, bool verbose){
            "  rms horizontal divergence in the boxes (nondim) %.4e -> %.4e\n",
            in_loop ? "_STRIDE" : "", n_lev, it_max, phimax, n_wall, n_wall ? t_wall0 / n_wall * u_0 : 0.0, n_wall ? t_wall1 / n_wall * u_0 : 0.0,
            n_div ? std::sqrt(t_div0 / n_div) : 0.0, n_div ? std::sqrt(t_div1 / n_div) : 0.0);
+    if(H > 0 && (!in_loop || verbose))
+        printf("      ATJUP: [CONE_PROJ_DIV] H = %d: rms 3D face divergence x r over %ld cells next to the body %.4e"
+               " -> %.4e after the divergence solve -> %.4e after the wall-flux solve\n",
+               H, n_fd, n_fd ? std::sqrt(t_fd0 / n_fd) : 0.0, n_fd ? std::sqrt(t_fdm / n_fd) : 0.0, n_fd ? std::sqrt(t_fd1 / n_fd) : 0.0);
 }
 
 

@@ -780,6 +780,12 @@ public:
     // ATJUP_CONE_PROJ_MARGIN=<cells> (2026-10-20, default 40; 10 was the default for a day, then back to 40 on the user's
     // word): how far the projection's box reaches beyond the obstacle's cross-section at each level (phi = 0 on its
     // edge); InitValues_Jup.cpp.
+    // ATJUP_CONE_PROJ_DIV=<H> (2026-10-20, DEFAULT 3 on the user's word, 0 restores): the in-loop projection also takes
+    // out the 3D face divergence of the cells within H cells of the obstacle (a local projection, then the wall-flux
+    // solve again); InitValues_Jup.cpp.
+    static int cone_proj_div(){
+        static const int v = [](){ const char* e = getenv("ATJUP_CONE_PROJ_DIV"); return e ? atoi(e) : 3; }();
+        return v; }
     static int cone_proj_margin(){
         static const int v = [](){ const char* e = getenv("ATJUP_CONE_PROJ_MARGIN"); return e ? atoi(e) : 40; }();
         return v; }
