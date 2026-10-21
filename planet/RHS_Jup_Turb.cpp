@@ -452,10 +452,20 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
         const char* n = getenv("ATJUP_NONDIM");
         return n && atoi(n) != 0; }();
 
+    // ATJUP_ADIABATIC_RHO (2026-10-21; DEFAULT 1 on the user's word, 0 restores): divide by the
+    // LOCAL density. p_dyn_to_bar() carries the constant r_mix = 1.2844 kg/m3 of the deepest level, so the term gave
+    // -(g/cp) * rho_local/r_mix: MEASURED (ADI_2240 vs REF_2240, far field, 1680 s, corr -1.00 at
+    // every level) -1.21 K/km at i=2, -0.22 at i=26 (0.7 bar, the NH3 cloud deck), -0.03 at i=38,
+    // against -2.07 K/km at every height. With it (ADR_2240): -1.67 K/km at i=2, -2.03 at i=20,
+    // -2.14 at i=26, -2.40 at i=38, stable. Acts only where ATJUP_ADIABATIC is on (default off).
+    static const bool adiabatic_rho = [](){
+        const char* e = getenv("ATJUP_ADIABATIC_RHO"); return e ? atoi(e) != 0 : true; }();
     double dpstatdr = 0.0;
     if(adiabatic){
         const double to_nd = 1.0 / p_dyn_to_bar();      // bar -> nondimensional kinematic
         dpstatdr = (p_stat.x[i+1][j][k] - p_stat.x[i-1][j][k]) * inv_2dr * exp_rm * to_nd;
+        const double rho_l = rho_mix.x[i][j][k];
+        if(adiabatic_rho && rho_l > 0.0 && std::isfinite(rho_l)) dpstatdr *= r_mix / rho_l;
     }
 
     double pressure_t = coeff_energy_p

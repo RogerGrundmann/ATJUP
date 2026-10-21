@@ -272,6 +272,7 @@ value. `ATJUP_TURB=1` set explicitly gave then what the default gives now, byte 
 | `ATJUP_NONDIM` | 0 | put the body forces into the units `rhs_u` is written in — see *Scaling* |
 | `ATJUP_ND_BUOY` `_COR` `_CENT` | *follow `ATJUP_NONDIM`* | the three factors individually, for attribution |
 | `ATJUP_ADIABATIC` | *follows `ATJUP_NONDIM`* | compression work against p_stat, i.e. the dry adiabatic lapse rate |
+| `ATJUP_ADIABATIC_RHO` | 1 | that term divided by the local density instead of the constant r_mix (0 = old: -(g/cp) rho/r_mix, 0.22 instead of 2.07 K/km at the NH3 deck) |
 | `ATJUP_CONV_ADJ` | *follows `ATJUP_NONDIM`* | dry convective adjustment of superadiabatic columns |
 | `ATJUP_CONV_ADJ_LAPSE` | 1 | scale its critical lapse rate (1 = the dry adiabat) |
 | `ATJUP_CONV_ADJ_PASSES` | 64 | cap on sweeps per column; a warning is printed if it is reached |
