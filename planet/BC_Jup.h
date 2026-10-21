@@ -118,6 +118,22 @@ namespace BCJupKnobs {
     // the physical fix is one-sided differencing at the obstacle face, so that nothing is
     // differenced through the boundary at all.
     inline int mount_copy() { static const int v = env_int("ATJUP_BC_MOUNT_COPY", 0); return v; }
+
+    // (9) ATJUP_MOUNT_T_AMBIENT (2026-10-21; DEFAULT 1 on the user's word, 0 restores): every SeaMount cell, surface and interior,
+    // takes the temperature of the AIR around it -- the zonal mean of the fluid cells in its own row
+    // (same level i, same latitude j) -- so there is no temperature jump between body and air.
+    // WHY (user: "the temperature field inside and outside should not cause a jump, increasing with
+    // height"): the body has no temperature equation; its ghost values are extrapolated from the
+    // fluid side, so it passes no heat upward. With the strong vertical diffusion (laminar
+    // u_0 L/(re pr) ~ 2e4 m2/s plus nue_t up to 1.4e4 at the wall) every open column carries heat
+    // up, while the air on the staircase steps loses heat upward and gets none from below: the cold
+    // sheath, 17 K at i=5 growing to 24-29 K at i 20-26 (PDS3_2000; ATJUP_TB_MASK=1: diffusion is
+    // the only term there). An ambient-temperature body supplies that heat as open air would.
+    // MEASURED (MTA_3000 vs REF_3000, PDS3_2000 restart, 7000 s): jump wall - 20 cells out at
+    // i 3/12/20/25: -3.7/-34.0/-28.0/-32.5 K (REF, growing) against -0.1/-4.7/-5.5/-0.9 (closing);
+    // far field max |dT| 0.004 K; the 63.7 degC hot spot next to the cone base (also a product of
+    // the extrapolated body values) gone, max T 22.6 degC.
+    inline int mount_t_ambient() { static const int v = env_int("ATJUP_MOUNT_T_AMBIENT", 1); return v; }
 }
 
 
@@ -524,6 +540,24 @@ inline void BC_Jup::bcSolidGround()
                     for(int f = n_state; f < ns; f++)
                         scalars[f]->x[i][j][k] = 0.0;
                 }
+            }
+        }
+    }
+
+    // ATJUP_MOUNT_T_AMBIENT=1 (see the knob): the body at the temperature of the air in its row.
+    if(BCJupKnobs::mount_t_ambient() != 0){
+        #pragma omp parallel for collapse(2) schedule(static)
+        for(int i = 0; i < im; i++){
+            for(int j = 0; j < jm; j++){
+                double s_ = 0.0; int n_ = 0; bool any_ = false;
+                for(int k = 0; k < km; k++){
+                    if(m.SeaMount.x[i][j][k] == 1.0){ any_ = true; continue; }
+                    s_ += m.t.x[i][j][k]; n_++;
+                }
+                if(!any_ || n_ == 0) continue;
+                const double t_amb = s_ / n_;
+                for(int k = 0; k < km; k++)
+                    if(m.SeaMount.x[i][j][k] == 1.0) m.t.x[i][j][k] = t_amb;
             }
         }
     }
