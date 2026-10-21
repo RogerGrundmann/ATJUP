@@ -17,11 +17,20 @@
  *   rk_rest    what the step changed beyond reset + terms: the limiter, and the rows and planes
  *              the step does not integrate (they keep t while the mean is over all of them).
  *
+ * ATJUP_TB_MASK=1 (2026-10-21, print-only, default 0) restricts every sum to the OBSTACLE RING: the
+ * fluid cells with at least one solid face neighbour (SeaMount), each level normalised by its own
+ * ring cells. Written to trace the cold air on the cone flanks (NH3-ice crown, PDS3_2000); a level
+ * with no ring cell prints 0. The terms and stages are the same as without the mask.
+ * ATJUP_TB_MASK=2: the far field for comparison -- fluid cells in the obstacle's rows, at least 40
+ * cells in phi from it.
+ *
  * The state lives in a function-local static so that the three translation units share one
  * instance without a model member (C++11 has no inline variables).
  */
 
 #pragma once
+
+#include <vector>
 
 namespace JupTb {
 
@@ -33,6 +42,8 @@ namespace JupTb {
         bool   on;                               // ATJUP_TB_DIAG
         double stage_wgt;                        // RK4 weight of the stage being evaluated (1, 2, 2, 1)
         double acc[MAXTHR][NTERM][MAXLEV];       // [thread][term][level], weighted sums of the tendencies
+        int    mask;                             // ATJUP_TB_MASK: 1 = obstacle ring only
+        std::vector<char> ring;                  // [(i*jm + j)*km + k], 1 = counted (all 1 without the mask)
     };
 
     inline State& st(){

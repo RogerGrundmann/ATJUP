@@ -838,7 +838,8 @@ void cJupiterModel::Run(){
         "RK diffusion", "RK radiation", "RK precip" };
     std::vector<std::vector<double>> tb_sum(CW_N, std::vector<double>(im, 0.0)), tb_tsum(JupTb::NTERM, std::vector<double>(im, 0.0));
     std::vector<double> tb_last(im, 0.0), tb_first(im, 0.0);
-    double tb_norm = 0.0;
+    std::vector<double> tb_norm(im, 0.0);
+    const std::vector<char>& tb_ring = JupTb::st().ring;
     auto tb_lev = [&](Array& a) -> std::vector<double> {
         std::vector<double> m_(im, 0.0);
         #pragma omp parallel for schedule(static)
@@ -846,9 +847,9 @@ void cJupiterModel::Run(){
             double s_ = 0.0;
             for(int j = 0; j < jm; j++){
                 const double sj = std::sin(the.z[j]);
-                for(int k = 0; k < km; k++) s_ += sj * a.x[i][j][k];
+                for(int k = 0; k < km; k++) if(tb_ring[((size_t)i*jm + j)*km + k]) s_ += sj * a.x[i][j][k];
             }
-            m_[i] = s_ * t_ref / tb_norm;
+            m_[i] = tb_norm[i] > 0.0 ? s_ * t_ref / tb_norm[i] : 0.0;
         }
         return m_; };
     auto tb_mark = [&](int stage){
@@ -856,7 +857,35 @@ void cJupiterModel::Run(){
         const std::vector<double> w_ = tb_lev(t);
         for(int i = 0; i < im; i++){ tb_sum[stage][i] += w_[i] - tb_last[i]; tb_last[i] = w_[i]; } };
     if(tb_on){
-        for(int j = 0; j < jm; j++) tb_norm += std::sin(the.z[j]) * km;
+        // ATJUP_TB_MASK=1 (see TbJup.h): only the fluid cells with a solid face neighbour.
+        static const int tb_mask = [](){ const char* e = getenv("ATJUP_TB_MASK"); return e ? atoi(e) : 0; }();
+        JupTb::st().mask = tb_mask;
+        JupTb::st().ring.assign((size_t)im * jm * km, tb_mask ? 0 : 1);
+        if(tb_mask == 2){
+            // the far field in the obstacle's latitude band: fluid cells in every row that holds a
+            // SeaMount cell, at least 40 cells in phi from any of them (around the seam ring)
+            std::vector<char> row_(jm, 0), col_(km, 0);
+            for(int i = 0; i < im; i++) for(int j = 0; j < jm; j++) for(int k = 0; k < km; k++)
+                if(SeaMount.x[i][j][k] == 1.0){ row_[j] = 1; col_[k] = 1; }
+            for(int k = 0; k < km; k++){
+                bool near_ = false;
+                for(int d = -40; d <= 40 && !near_; d++) near_ = col_[((k + d) % km + km) % km];
+                if(near_) continue;
+                for(int i = 0; i < im; i++) for(int j = 0; j < jm; j++)
+                    if(row_[j] && SeaMount.x[i][j][k] != 1.0) JupTb::st().ring[((size_t)i*jm + j)*km + k] = 1;
+            }
+        } else if(tb_mask){
+            const bool per_ = ATPhys::phi_periodic<cJupiterModel>();
+            auto solid_ = [&](int ii, int jj, int kk){
+                if(ii < 0 || ii >= im || jj < 0 || jj >= jm) return false;
+                return SeaMount.x[ii][jj][ATPhys::phi_wrap(per_, kk, km)] == 1.0; };
+            for(int i = 0; i < im; i++) for(int j = 0; j < jm; j++) for(int k = 0; k < km; k++)
+                if(SeaMount.x[i][j][k] != 1.0 && (solid_(i-1,j,k) || solid_(i+1,j,k) || solid_(i,j-1,k)
+                   || solid_(i,j+1,k) || solid_(i,j,k-1) || solid_(i,j,k+1)))
+                    JupTb::st().ring[((size_t)i*jm + j)*km + k] = 1;
+        }
+        for(int i = 0; i < im; i++) for(int j = 0; j < jm; j++) for(int k = 0; k < km; k++)
+            if(JupTb::st().ring[((size_t)i*jm + j)*km + k]) tb_norm[i] += std::sin(the.z[j]);
         tb_last = tb_first = tb_lev(t);
     }
 
@@ -1103,7 +1132,7 @@ void cJupiterModel::Run(){
                 for(int q_ = 0; q_ < JupTb::NTERM; q_++){
                     double a_ = 0.0;
                     for(int t_ = 0; t_ < JupTb::MAXTHR; t_++) a_ += JupTb::st().acc[t_][q_][i];
-                    a_ *= dt / 6.0 * t_ref / tb_norm;
+                    a_ *= tb_norm[i] > 0.0 ? dt / 6.0 * t_ref / tb_norm[i] : 0.0;
                     tb_tsum[q_][i] += a_; step_terms += a_;
                 }
                 tb_sum[CW_RK_RESET][i] += tb_n[i] - tb_last[i];
@@ -1244,9 +1273,13 @@ void cJupiterModel::Run(){
         panorama_cnt++;
 
         if(tb_on && iter_n % tb_every == 0){
-            static const int lv_[] = { 0, 1, 2, 3, 5, 8, 12, 16, 20, 24, 28, 32, 35, 37, 38, 39, 40 };
-            const int nl_ = (int)(sizeof(lv_) / sizeof(lv_[0]));
-            printf("\n      ATJUP: [TB] level-mean temperature, cumulative over iterations %d..%d, K\n      ATJUP: [TB] %-15s", iter_start, iter_n, "level");
+            static const int lv_all_[] = { 0, 1, 2, 3, 5, 8, 12, 16, 20, 24, 28, 32, 35, 37, 38, 39, 40 };
+            static const int lv_ring_[] = { 0, 1, 3, 5, 8, 12, 16, 18, 20, 21, 22, 23, 24, 25, 26, 27 };
+            const bool ring_ = JupTb::st().mask != 0;
+            const int* lv_ = ring_ ? lv_ring_ : lv_all_;
+            const int nl_ = ring_ ? (int)(sizeof(lv_ring_) / sizeof(lv_ring_[0])) : (int)(sizeof(lv_all_) / sizeof(lv_all_[0]));
+            printf("\n      ATJUP: [TB] %s temperature, cumulative over iterations %d..%d, K\n      ATJUP: [TB] %-15s",
+                   !ring_ ? "level-mean" : JupTb::st().mask == 2 ? "FAR-FIELD (obstacle rows) mean" : "OBSTACLE-RING mean", iter_start, iter_n, "level");
             for(int l = 0; l < nl_; l++) if(lv_[l] < im) printf(" %8d", lv_[l]);
             printf("\n      ATJUP: [TB] %-15s", "T now");
             for(int l = 0; l < nl_; l++) if(lv_[l] < im) printf(" %8.2f", tb_last[lv_[l]]);

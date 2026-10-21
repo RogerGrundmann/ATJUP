@@ -940,7 +940,7 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
 
     // ATJUP_TB_DIAG (print-only, see TbJup.h): RK4-weighted level sums of each term of rhs_t, per
     // thread. Nothing here is read by the model.
-    if(JupTb::st().on && i < JupTb::MAXLEV){
+    if(JupTb::st().on && i < JupTb::MAXLEV && JupTb::st().ring[((size_t)i*jm + j)*km + k]){
         const double cw = JupTb::st().stage_wgt * std::sin(the.z[j]);
         double (*a_)[JupTb::MAXLEV] = JupTb::st().acc[omp_get_thread_num()];
         a_[JupTb::T_PRESS][i]  += cw * pressure_t;
