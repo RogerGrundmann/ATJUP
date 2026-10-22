@@ -271,7 +271,7 @@ value. `ATJUP_TURB=1` set explicitly gave then what the default gives now, byte 
 | `ATJUP_LOCAL_RHO` | 0 | use the local density instead of the constant r_mix in q_sat, latent heat and the Lewis groups |
 | `ATJUP_NONDIM` | 0 | put the body forces into the units `rhs_u` is written in — see *Scaling* |
 | `ATJUP_ND_BUOY` `_COR` `_CENT` | *follow `ATJUP_NONDIM`* | the three factors individually, for attribution |
-| `ATJUP_ADIABATIC` | *follows `ATJUP_NONDIM`* | compression work against p_stat, i.e. the dry adiabatic lapse rate |
+| `ATJUP_ADIABATIC` | 1 (since 2026-10-22; was: follows `ATJUP_NONDIM`, i.e. off) | compression work against p_stat, i.e. the dry adiabatic lapse rate; 0 restores |
 | `ATJUP_ADIABATIC_RHO` | 1 | that term divided by the local density instead of the constant r_mix (0 = old: -(g/cp) rho/r_mix, 0.22 instead of 2.07 K/km at the NH3 deck) |
 | `ATJUP_MOUNT_T_AMBIENT` | 1 | every obstacle cell at the zonal-mean air temperature of its row (level, latitude): no temperature jump at the cone wall (0 = old: values extrapolated from the fluid side, cold sheath on the flanks) |
 | `ATJUP_CONV_ADJ` | *follows `ATJUP_NONDIM`* | dry convective adjustment of superadiabatic columns |

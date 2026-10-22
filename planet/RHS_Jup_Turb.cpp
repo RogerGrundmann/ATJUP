@@ -441,23 +441,25 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     // pressure. Only the radial derivative is taken: p_stat is a function of height alone here,
     // and its horizontal derivatives are zero by construction.
     //
-    // It DEFAULTS TO ATJUP_NONDIM rather than to off, because a model that feels buoyancy without
-    // it is not stably stratified and there is no configuration in which that is what you want.
-    // ATJUP_ADIABATIC=0 forces it off even with the body forces on, which is how its contribution
-    // was measured; =1 forces it on without them. With ATJUP_NONDIM unset it is off and the run is
-    // bit-identical to before.
+    // DEFAULT 1 since 2026-10-22 (user; ATJUP_ADIABATIC=0 restores the old default-off). Before it
+    // followed ATJUP_NONDIM and was off in every default run, and that run BUILT a warm-updraft
+    // contrast by vertical advection of T alone: PDS3_1000 / PDS3_2000 from scratch, k=180 slice,
+    // slope dT/du at the cloud deck (i=24) +0.9 at it 0 -> +13.7 at 1000 -> +24.8 K per m/s at 2000,
+    // so the NH3 ice sat in the DOWNDRAFTS (corr(ice column, u) -0.92 in LE_3000, cone longitudes
+    // excluded). With the term (AD_3000 vs LE_3000, 7000 s): T difference corr -1.00 with u, slope
+    // -14.0 K/(m/s) = -2.0 K/km * 7000 s; level means move only -0.29..+0.14 K; the ice follows
+    // (difference of the ice column corr +0.94 with u). From scratch (FS_AD_1000) the contrast does
+    // not form (slope +1.1 at it 300) and the ice goes over the updrafts (corr +0.33).
     static const bool adiabatic = [](){
         const char* e = getenv("ATJUP_ADIABATIC");
-        if(e) return atoi(e) != 0;
-        const char* n = getenv("ATJUP_NONDIM");
-        return n && atoi(n) != 0; }();
+        return e ? atoi(e) != 0 : true; }();
 
     // ATJUP_ADIABATIC_RHO (2026-10-21; DEFAULT 1 on the user's word, 0 restores): divide by the
     // LOCAL density. p_dyn_to_bar() carries the constant r_mix = 1.2844 kg/m3 of the deepest level, so the term gave
     // -(g/cp) * rho_local/r_mix: MEASURED (ADI_2240 vs REF_2240, far field, 1680 s, corr -1.00 at
     // every level) -1.21 K/km at i=2, -0.22 at i=26 (0.7 bar, the NH3 cloud deck), -0.03 at i=38,
     // against -2.07 K/km at every height. With it (ADR_2240): -1.67 K/km at i=2, -2.03 at i=20,
-    // -2.14 at i=26, -2.40 at i=38, stable. Acts only where ATJUP_ADIABATIC is on (default off).
+    // -2.14 at i=26, -2.40 at i=38, stable. Acts only where ATJUP_ADIABATIC is on (default 1 since 2026-10-22).
     static const bool adiabatic_rho = [](){
         const char* e = getenv("ATJUP_ADIABATIC_RHO"); return e ? atoi(e) != 0 : true; }();
     double dpstatdr = 0.0;
