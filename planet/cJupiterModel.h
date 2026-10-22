@@ -678,7 +678,9 @@ private:
     // ATJUP_LOCAL_RHO=1 — use the LOCAL mixture density rho_mix in place of the constant
     // reference density r_mix wherever a density genuinely belongs to the cell: the saturation
     // vapour density in SaturationAdjustmentJup and PrecipitationJup, and the Lewis groups in
-    // ChemistryJup. Default 0 keeps r_mix everywhere and is bit-identical.
+    // ChemistryJup. DEFAULT 1 since 2026-10-22 (user; LE_3000 / NC_20 / dx_2026-10-22 with
+    // ATJUP_SATADJ_EVAP=1: the NH3 deck forms over ice saturation, stable to 7000 s, mass conserved).
+    // ATJUP_LOCAL_RHO=0 restores r_mix everywhere.
     //
     // Why it is a knob and not simply a fix: r_mix = 1.2844 kg/m3 is the density of the DEEPEST
     // layer, and the shell spans 0.006 to 1.09 kg/m3 — nearly three orders of magnitude. So this
@@ -890,6 +892,10 @@ private:
     // Ice above the melting point melts instead of being deleted, by default (2026-10-09): see
     // <TAG>_SATADJ_CONSERVE in the shared SaturationAdjustment.h. ATJUP_SATADJ_CONSERVE=0 restores.
     static bool satadj_default_conserve(){ return true; }
+    // Condensate evaporates in subsaturated air, by default (2026-10-22, user): see
+    // <TAG>_SATADJ_EVAP in the shared SaturationAdjustment.h; needs ATJUP_LOCAL_RHO (default 1
+    // since the same day). ATJUP_SATADJ_EVAP=0 restores.
+    static bool satadj_default_evap(){ return true; }
     // Shared Precipitation.h: the factor on its five rate coefficients. They were set for this
     // planet, so 1. ATJUP_PRECIP_SCALE overrides.
     static double precip_rate_scale(){ return 1.0; }
@@ -982,7 +988,7 @@ private:
     }
 
     static bool local_rho(){
-        static const bool v = [](){ const char* e = getenv("ATJUP_LOCAL_RHO"); return e && atoi(e) != 0; }();
+        static const bool v = [](){ const char* e = getenv("ATJUP_LOCAL_RHO"); return e ? atoi(e) != 0 : true; }();
         return v;
     }
 
