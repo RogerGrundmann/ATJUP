@@ -672,6 +672,7 @@ void cJupiterModel::Run(){
     // solver half is the shared PressureSolver's ATJUP_PRESS_INCR, whose default is 0 there; the
     // balanced start sets it unless the knob is given.
     if(geo_balance()) setenv("ATJUP_PRESS_INCR", "1", 0);
+    initCellHold();                                                     // ATJUP_CELL_HOLD, cJupiterModel.h
     initGeoBalance();
 
     // Seed the turbulence fields from the ABL profile and prime the source terms once,

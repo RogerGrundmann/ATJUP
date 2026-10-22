@@ -384,7 +384,14 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
 
     double Coriolis_rad  = nd_cor * -2.0 * omega * sinthe_true * w_ijk;
     double Coriolis_the  = nd_cor * -2.0 * omega * costhe * w_ijk;
-    double Coriolis_phi  = nd_cor * +2.0 * omega * (+costhe * v_ijk + sinthe_true * u_ijk);
+    // ATJUP_CELL_HOLD (cJupiterModel.h): the zonal component acts on the departure from the frozen
+    // initial zonal-mean cells, so the prescribed mean circulation is held in rotating balance.
+    double v_cor = v_ijk, u_cor = u_ijk;
+    if(cell_hold() && !cell_vbar0.empty()){
+        v_cor -= cell_vbar0[(size_t)i * jm + j];
+        u_cor -= cell_ubar0[(size_t)i * jm + j];
+    }
+    double Coriolis_phi  = nd_cor * +2.0 * omega * (+costhe * v_cor + sinthe_true * u_cor);
 
     // Centrifugal acceleration = Omega^2 * s * s_hat, with s = r*sin(theta) the distance from
     // the rotation axis and s_hat = sin(theta)*e_r + cos(theta)*e_theta the unit vector pointing

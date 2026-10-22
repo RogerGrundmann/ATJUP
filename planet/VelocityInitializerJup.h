@@ -415,6 +415,23 @@ public:
             }
         }
 
+        // ATJUP_V_INIT_SCALE=<factor> (2026-10-22, default 1 = every run before): multiplies the
+        // prescribed meridional cells (v seeded at +-40 m/s between the bottom and the tropopause).
+        // With the Coriolis force at its full scale (ATJUP_ND_COR / ATJUP_GEO_BALANCE) nothing
+        // balances this v -- the balanced start covers the zonal jets only -- and 2 Omega cos(theta) v
+        // turns it into w at ~3.5e-3 m/s2 at 30 deg; Jupiter's observed meridional flow is far
+        // weaker. ATNEPT's ATNEPT_V_INIT_SCALE (0 with its GEO_BALANCE) is the precedent. Everything
+        // derived from v later (u from continuity, the cone projection, the balanced p_dyn) follows.
+        static const double v_init_scale = [](){
+            const char* e = getenv("ATJUP_V_INIT_SCALE"); return e ? atof(e) : 1.0; }();
+        if(v_init_scale != 1.0){
+            printf("      ATJUP: ATJUP_V_INIT_SCALE = %.4g (prescribed meridional cells scaled)\n", v_init_scale);
+            #pragma omp parallel for collapse(2) schedule(static)
+            for (int i = 0; i < m.im; i++)
+                for (int j = 0; j < m.jm; j++)
+                    for (int k = 0; k < m.km; k++) m.v.x[i][j][k] *= v_init_scale;
+        }
+
         auto end     = std::chrono::high_resolution_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
         printf(" Time measured: %.3f seconds for VelocityInitializerJup\n",

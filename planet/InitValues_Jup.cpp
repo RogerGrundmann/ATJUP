@@ -329,6 +329,23 @@ void cJupiterModel::init_PressureDynamic(){
 // level's own wind needs on top: p_baro = Q_i - p_dyn - p_hydro(start). One global constant is
 // removed so that p_dyn has zero area mean.
 // ============================================================================
+// ATJUP_CELL_HOLD (cJupiterModel.h): the zonal means of the initial v and u over the fluid cells
+// of each (i, j), frozen; the zonal Coriolis term in RHSJup acts on the departure from them.
+void cJupiterModel::initCellHold(){
+    if(!cell_hold()) return;
+    cell_vbar0.assign((size_t)im * jm, 0.0);
+    cell_ubar0.assign((size_t)im * jm, 0.0);
+    double vmax = 0.0;
+    for(int i = 0; i < im; i++) for(int j = 0; j < jm; j++){
+        double sv = 0.0, su = 0.0; int n_ = 0;
+        for(int k = 0; k < km - 1; k++) if(SeaMount.x[i][j][k] != 1.0){ sv += v.x[i][j][k]; su += u.x[i][j][k]; n_++; }
+        if(n_){ cell_vbar0[(size_t)i * jm + j] = sv / n_; cell_ubar0[(size_t)i * jm + j] = su / n_; }
+        vmax = std::max(vmax, std::abs(cell_vbar0[(size_t)i * jm + j]));
+    }
+    printf("      ATJUP: initCellHold: zonal-mean initial cells frozen, max |vbar0| %.3f m/s\n", vmax * u_0);
+}
+
+
 void cJupiterModel::initGeoBalance(){
     if(!pdyn_geo()) return;
     if(!metric_split()){

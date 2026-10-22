@@ -743,13 +743,36 @@ public:
     //   ATJUP_PRESS_INCR 1      the shared solver's defect-correction source (PressureSolver.h):
     //                           a balanced p_dyn is a fixed point of it
     //   ATJUP_DAMP_PDYN 0       no Shapiro pass on p_dyn after the solver (it flattens the balance)
+    // DEFAULT 1 since 2026-10-22 (user: "commit, push, default"; ATJUP_GEO_BALANCE=0 restores f857a9c byte for
+    // byte, ATJUP_CELL_HOLD following it). Measured at f857a9c from scratch (satchk/cor_2026-10-22, 1000 it):
+    // the jets held with ATJUP_CELL_HOLD (CR4), see there; the continuity residuum rises 0.017 -> 0.062 with
+    // the cone (max at 39 S 121 E/W 133 km), the obstacle-free test CR5 was still running at the flip.
     static bool geo_balance(){
-        static const bool v = [](){ const char* e = getenv("ATJUP_GEO_BALANCE"); return e ? atoi(e) != 0 : false; }();
+        static const bool v = [](){ const char* e = getenv("ATJUP_GEO_BALANCE"); return e ? atoi(e) != 0 : true; }();
         return v; }
     static bool knob_or_geo(const char* name){ const char* e = getenv(name); return e ? atoi(e) != 0 : geo_balance(); }
     static bool pdyn_geo(){ static const bool v = knob_or_geo("ATJUP_PDYN_GEO"); return v; }
     std::vector<double> p_baro;          // [(i*jm + j)*km + k], empty unless ATJUP_PDYN_GEO
     void initGeoBalance();
+    // ATJUP_CELL_HOLD=1 (2026-10-22, default: follows ATJUP_GEO_BALANCE): the prescribed meridional cells held in rotating
+    // balance. With the Coriolis force at full scale (ATJUP_ND_COR / ATJUP_GEO_BALANCE) the zonal
+    // component 2 Omega (cos(theta) v + sin(theta) u) turns the cells (v +-40 m/s) into w -- CR2
+    // (satchk/cor_2026-10-22, GEO_BALANCE, 1000 it): zonal-mean w off by up to 27 m/s, residuum
+    // 0.017 -> 0.054; without the cells (CR3, ATJUP_V_INIT_SCALE=0) the jets hold (rms 0.57 m/s)
+    // but the vertical motion is gone (zonal-mean |u| 0.010 vs 0.227 m/s) and the NH3 ice no
+    // longer follows any updraft (corr +0.01 vs +0.86). With the knob the zonal Coriolis term acts
+    // on the DEPARTURE from the initial zonal-mean cells, (v - vbar0, u - ubar0): a frozen zonal
+    // force that maintains the mean circulation, as the eddy momentum flux does on the planet. It
+    // depends on (i, j) only, so it pins nothing in longitude -- a vortex keeps the full Coriolis
+    // force on whatever v it makes. A PRESCRIBED maintenance, not circulation the model produces.
+    // Built from the final initial fields (after the cone projection and u from continuity), so a
+    // restart rebuilds the same arrays.
+    // Default: follows ATJUP_GEO_BALANCE (so DEFAULT 1 since 2026-10-22); the knob overrides either way.
+    static bool cell_hold(){
+        static const bool v = [](){ const char* e = getenv("ATJUP_CELL_HOLD"); return e ? atoi(e) != 0 : geo_balance(); }();
+        return v; }
+    std::vector<double> cell_vbar0, cell_ubar0;   // [i*jm + j], empty unless ATJUP_CELL_HOLD
+    void initCellHold();
     // ATJUP_U_INIT_CONT=<n> (DEFAULT 2 since 2026-10-18 on the user's word, 0 restores): the initial radial velocity from the model's own discrete
     // continuity, ported from ATOM_Precipitation's install_u_from_cells; see InitValues_Jup.cpp.
     static int u_init_cont(){
