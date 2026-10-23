@@ -175,6 +175,10 @@ void cJupiterModel::paraview_vtk_radial(int n, int i_radial){
 
 
     dump_radial("PressureDyn", p_dyn, p_dyn_to_bar() * 1.0e3, i_radial, Jupiter_vtk_radial_File);
+    // PressureHydro (2026-10-23): p_hydro in the same unit -- the radial column integral of the metric /
+    // Coriolis force (+ the buoyancy with ATJUP_HYDRO_SPLIT) plus the frozen p_baro; p_dyn + p_hydro is the
+    // pressure rhs_v / rhs_w see. Written so the moving baroclinic part of ATJUP_VORTEX_THERMAL can be seen.
+    dump_radial("PressureHydro", p_hydro, p_dyn_to_bar() * 1.0e3, i_radial, Jupiter_vtk_radial_File);
     dump_radial("PressureStat", p_stat, 1.0, i_radial, Jupiter_vtk_radial_File);
     dump_radial("rho_mix", rho_mix, 1.0, i_radial, Jupiter_vtk_radial_File);
     // PsiMerid: the zonal-mean meridional streamfunction in 1e9 kg/s (writeMeridionalStreamfunction,
@@ -308,6 +312,7 @@ void cJupiterModel::paraview_vtk_zonal(int n, int k_zonal){
     dump_zonal("difflux_nh4sh", difflux_nh4sh, 1e9, k_zonal, Jupiter_vtk_zonal_File);
 
     dump_zonal("PressureDyn", p_dyn, p_dyn_to_bar() * 1.0e3, k_zonal, Jupiter_vtk_zonal_File);
+    dump_zonal("PressureHydro", p_hydro, p_dyn_to_bar() * 1.0e3, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("PressureStat", p_stat, 1.0, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("rho_mix", rho_mix, 1.0, k_zonal, Jupiter_vtk_zonal_File);
     // PsiMerid: the zonal-mean meridional streamfunction in 1e9 kg/s (writeMeridionalStreamfunction,
@@ -454,6 +459,7 @@ void cJupiterModel::paraview_vtk_longal(int n, int j_longal){
 
 
     dump_longal("PressureDyn", p_dyn, p_dyn_to_bar() * 1.0e3, j_longal, Jupiter_vtk_longal_File);
+    dump_longal("PressureHydro", p_hydro, p_dyn_to_bar() * 1.0e3, j_longal, Jupiter_vtk_longal_File);
     dump_longal("PressureStat", p_stat, 1.0, j_longal, Jupiter_vtk_longal_File);
     dump_longal("rho_mix", rho_mix, 1.0, j_longal, Jupiter_vtk_longal_File);
     // PsiMerid: the zonal-mean meridional streamfunction in 1e9 kg/s (writeMeridionalStreamfunction,
