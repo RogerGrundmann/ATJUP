@@ -346,6 +346,120 @@ void cJupiterModel::initCellHold(){
 }
 
 
+// ============================================================================
+// ATJUP_VORTEX=1 (2026-10-22, default 0): the free Great Red Spot as an initial condition -- a
+// geostrophically balanced elliptical anticyclone added to the balanced background (after
+// initGeoBalance, so the jets' p_dyn / p_baro and the frozen cells of ATJUP_CELL_HOLD are built
+// without it; the vortex's own v therefore feels the full Coriolis force). No solid body: run it with
+// ATJUP_NO_SEAMOUNT=1.
+//
+// Pressure anomaly (barotropic up to the tropopause, then tapered to the lid -- ATJUP_VORTEX_PROFILE below)
+//     p'(j, k) = P0 exp(-((k - k0)/a)^2 - ((j - j0)/b)^2)          a, b in grid cells (1 deg)
+// and the wind from the model's OWN balance, term for term as RHSJup integrates it (rhs_v = rhs_w = 0
+// with transport and diffusion left out), using pgrad()'s centred differences, so the start is in
+// discrete balance:
+//     rhs_v:  -pg (1/rm) dp/dthe + C n 2 Omega cos(the) w = 0  ->  w' = pg dp'/dthe / (rm C n 2 Omega cos)
+//     rhs_w:  -pg (1/(rm s)) dp/dphi - C n 2 Omega cos(the) v = 0  ->  v' = -pg dp'/dphi / (rm s C n 2 Omega cos)
+// (C = Coriolis, n = nd_cor, pg = ATJUP_PGRAD_SCALE, s and cos as the RK tables take them). Geostrophic,
+// not gradient-wind: at the GRS the Rossby number is ~0.3, so the start is close to, not exactly in,
+// balance. P0 is scaled so that the largest |V'| is ATJUP_VORTEX_VMAX, and its SIGN is chosen so the
+// vortex is ANTICYCLONIC: in the southern hemisphere the flow on the equatorward edge goes west.
+// Knobs: ATJUP_VORTEX_J (112 = 22 S), _K (180), _A (7 cells E-W half-axis ~ 8000 km at 22 S),
+// _B (5 cells N-S ~ 6200 km), _VMAX (100 m/s).
+// ============================================================================
+void cJupiterModel::initVortex(){
+    if(!vortex()) return;
+    auto envd = [](const char* n, double d){ const char* e = getenv(n); return e ? atof(e) : d; };
+    const int    j0 = (int)envd("ATJUP_VORTEX_J", 112), k0 = (int)envd("ATJUP_VORTEX_K", 180);
+    const double a  = envd("ATJUP_VORTEX_A", 7.0), b = envd("ATJUP_VORTEX_B", 5.0);
+    const double vmax = envd("ATJUP_VORTEX_VMAX", 100.0) / u_0;          // nondimensional
+    const double pg = envd("ATJUP_PGRAD_SCALE", 1.0);
+    static const int nd_all_ = [](){ const char* n = getenv("ATJUP_NONDIM"); return n ? atoi(n) : 0; }();
+    static const int nd_cor_on_ = [](){
+        const char* e = getenv("ATJUP_ND_COR"); return e ? atoi(e) : (geo_balance() ? 1 : -1); }();
+    const double nd_cor = ((nd_cor_on_ >= 0 ? nd_cor_on_ : nd_all_) != 0) ? L_atm * 1.0e3 / u_0 : 1.0;
+    if(nd_cor == 1.0)
+        std::cout << "      ATJUP: initVortex: WARNING the Coriolis force is not at full scale (ATJUP_GEO_BALANCE=0?) -- a balanced vortex needs it" << std::endl;
+    const double smin = sinthe_min();
+    const double i2dthe = 1.0 / (2.0 * dthe), i2dphi = 1.0 / (2.0 * dphi);
+
+    // shape, P0 = 1
+    std::vector<double> P((size_t)jm * km, 0.0);
+    for(int j = 0; j < jm; j++) for(int k = 0; k < km; k++){
+        double dk = k - k0; if(dk > km / 2) dk -= (km - 1); if(dk < -km / 2) dk += (km - 1);
+        const double x = dk / a, y = (j - j0) / b;
+        P[(size_t)j * km + k] = std::exp(-(x * x + y * y));
+    }
+    auto Pat = [&](int j, int k){ if(k < 0) k += km - 1; if(k >= km - 1) k -= km - 1; return P[(size_t)j * km + k]; };
+    // wind per unit P0 at the jet level i = 0 .. im-1 (rm varies with i)
+    std::vector<double> W((size_t)im * jm * km, 0.0), V((size_t)im * jm * km, 0.0);
+    double sp_max = 0.0;
+    for(int i = 0; i < im; i++) for(int j = 1; j < jm - 1; j++){
+        const double rm = rad.z[i];
+        const double s  = std::max(smin, std::abs(sin(the.z[j])));
+        double c = cos(the.z[j]); if(costhe_abs() && j > 90) c = -c;
+        const double f = Coriolis * nd_cor * 2.0 * omega * c;
+        if(std::abs(f) < 1e-12) continue;                                 // no geostrophy on the equator
+        for(int k = 0; k < km - 1; k++){
+            const double dpdthe = (Pat(j + 1, k) - Pat(j - 1, k)) * i2dthe;
+            const double dpdphi = (Pat(j, k + 1) - Pat(j, k - 1)) * i2dphi;
+            const size_t n_ = ((size_t)i * jm + j) * km + k;
+            W[n_] =  pg * dpdthe / (rm * f);
+            V[n_] = -pg * dpdphi / (rm * s * f);
+            sp_max = std::max(sp_max, std::sqrt(W[n_] * W[n_] + V[n_] * V[n_]));
+        }
+    }
+    if(!(sp_max > 0.0)){ std::cout << "      ATJUP: initVortex: no wind from the pressure anomaly, skipped" << std::endl; return; }
+    double P0 = vmax / sp_max;
+    // anticyclonic: in BOTH hemispheres the equatorward edge flows west (w < 0) -- counterclockwise in the
+    // south (the GRS), clockwise in the north; probed at the edge's steepest point, a mid level
+    const int im2 = im / 2, jn = std::max(1, std::min(jm - 2, j0 - (int)std::lround(b / std::sqrt(2.0))));
+    const int js = std::max(1, std::min(jm - 2, j0 + (int)std::lround(b / std::sqrt(2.0))));
+    const int jeq = (j0 > 90) ? jn : js;                                  // the equatorward edge
+    if(W[((size_t)im2 * jm + jeq) * km + k0] * P0 > 0.0) P0 = -P0;
+    // vertical profile sz(i) of wind and p' (ATJUP_VORTEX_PROFILE, default 1; 0 = barotropic up to the lid as
+    // VX2_1000): 1 up to the tropopause of the vortex row, linear to 0 at i = ATJUP_VORTEX_TOP_I (default im-3,
+    // where ATJUP_BC_TOP_TAPER starts), 0 above -- the background jets' own shape above the tropopause. The
+    // barotropic vortex kept its full p' in the three top layers the taper drives to rest; that unopposed
+    // gradient made du/dr at i = 38 the residuum at the vortex centre (VX2_1000: 0.0135 -> 0.129 linear,
+    // RES_PARTS du/dr -0.131 of the -0.131 sum). The full p' goes into p_dyn, the per-level rest
+    // (sz - 1) p' into the frozen p_baro, as initGeoBalance does for the jets' per-level rest.
+    // ATJUP_VORTEX_PROFILE=2: the ramp as 0.5 (1 + cos(pi x)), smooth at both ends; ATJUP_VORTEX_BASE_I moves its
+    // foot below the tropopause (VTlow_300: a step 1 -> 0 made its own vertical velocity at the step -- vertical
+    // viscosity on the vortex shear, the slowed wind drifting outward, Ekman pumping).
+    static const int prof = [](){ const char* e = getenv("ATJUP_VORTEX_PROFILE"); return e ? atoi(e) : 1; }();
+    const int itop = (int)envd("ATJUP_VORTEX_TOP_I", im - 3);
+    const int tl = std::min((int)envd("ATJUP_VORTEX_BASE_I", im_tropopause[j0]), itop - 1);
+    std::vector<double> sz(im, 1.0);
+    if(prof) for(int i = tl + 1; i < im; i++){
+        const double x = double(i - tl) / double(itop - tl);
+        sz[i] = (i >= itop) ? 0.0 : (prof == 2 ? 0.5 * (1.0 + std::cos(M_PI * x)) : 1.0 - x);
+    }
+    if(prof && p_baro.empty()) p_baro.assign((size_t)im * jm * km, 0.0);
+    for(int i = 0; i < im; i++) for(int j = 1; j < jm - 1; j++) for(int k = 0; k < km; k++){
+        if(SeaMount.x[i][j][k] == 1.0) continue;
+        const int kk = (k == km - 1) ? 0 : k;                             // km-1 is the seam copy of k = 0
+        const size_t n_ = ((size_t)i * jm + j) * km + kk;
+        w.x[i][j][k] += sz[i] * P0 * W[n_];
+        v.x[i][j][k] += sz[i] * P0 * V[n_];
+        p_dyn.x[i][j][k] += P0 * Pat(j, kk);
+        if(prof) p_baro[((size_t)i * jm + j) * km + k] += (sz[i] - 1.0) * P0 * Pat(j, kk);
+    }
+    if(prof){
+        computeHydrostaticPressure();                                     // p_hydro with the vortex's p_baro
+        printf("      ATJUP: initVortex: vertical profile -- full to i %d (tropopause of the row: %d), %s ramp to 0 at i %d (sz at i %d..%d:",
+               tl, im_tropopause[j0], prof == 2 ? "cosine" : "linear", itop, tl, im - 1);
+        for(int i = tl; i < im; i++) printf(" %.2f", sz[i]);
+        printf(")\n");
+    }
+    const size_t nn = ((size_t)im2 * jm + jn) * km + k0, ns = ((size_t)im2 * jm + js) * km + k0;
+    printf("      ATJUP: initVortex: anticyclone at j %d k %d (%.1f deg lat, %d E), half-axes %.1f x %.1f cells, max |V'| %.1f m/s, "
+           "P0 %+.4e (%+.4f bar); w' at i %d: equatorward edge j %d %+.1f, poleward edge j %d %+.1f m/s\n",
+           j0, k0, 90.0 - j0 * dthe / (M_PI / 180.0), k0, a, b, vmax * u_0, P0, P0 * p_dyn_to_bar(),
+           im2, jn, P0 * W[nn] * u_0, js, P0 * W[ns] * u_0);
+}
+
+
 void cJupiterModel::initGeoBalance(){
     if(!pdyn_geo()) return;
     if(!metric_split()){
@@ -1059,9 +1173,20 @@ void cJupiterModel::initUFromContinuity(){
 //
 // Used twice: by ATJUP_U_INIT_CONT=2 at the start, and by ATJUP_V_MASSBAL_STRIDE in the loop.
 // ============================================================================
+//
+// ATJUP_V_MASSBAL_ZONAL=1 (2026-10-22, default: follows ATJUP_VORTEX): take out only the ZONAL MEAN of
+// the column means per latitude, the same shift for every column of a row. The mass constraint is
+// on the latitude circle (no net meridional flux across it); a single column may carry net v,
+// balanced by the zonal divergence of w -- which is all a barotropic vortex has: with the per-column
+// balance VX_100 lost the whole v of its ATJUP_VORTEX anticyclone in the first 20 iterations (west /
+// east edge +65 / -65 -> 0 m/s) while w kept 99.8 of 99.9 m/s. Columns on the obstacle stay out of
+// the mean and unshifted, as above.
 double cJupiterModel::balanceColumnV(long* nskip_out){
+    static const bool zonal = [](){
+        const char* e = getenv("ATJUP_V_MASSBAL_ZONAL"); return e ? atoi(e) != 0 : vortex(); }();
     double vshift = 0.0;
     long nskip = 0;
+    std::vector<double> dvc(zonal ? (size_t)jm * km : 0, 0.0);
     #pragma omp parallel for collapse(2) schedule(static) reduction(max:vshift) reduction(+:nskip)
     for(int j = 1; j < jm-1; j++){
         for(int k = 0; k < km; k++){
@@ -1073,7 +1198,22 @@ double cJupiterModel::balanceColumnV(long* nskip_out){
                 I0 += 0.5 * (rad.z[i] + rad.z[i+1]) * dr;
             }
             const double dv = I1 / I0;
+            if(zonal){ dvc[(size_t)j * km + k] = dv; continue; }
             for(int i = i0; i < im; i++) v.x[i][j][k] -= dv;
+            vshift = std::max(vshift, std::fabs(dv));
+        }
+    }
+    if(zonal){
+        #pragma omp parallel for schedule(static) reduction(max:vshift)
+        for(int j = 1; j < jm-1; j++){
+            double s = 0.0; int n_ = 0;
+            for(int k = 0; k < km - 1; k++) if(i_topography[j][k] == 0){ s += dvc[(size_t)j * km + k]; n_++; }
+            if(!n_) continue;
+            const double dv = s / n_;
+            for(int k = 0; k < km; k++){
+                if(i_topography[j][k] > 0) continue;
+                for(int i = 0; i < im; i++) v.x[i][j][k] -= dv;
+            }
             vshift = std::max(vshift, std::fabs(dv));
         }
     }

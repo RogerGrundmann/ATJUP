@@ -674,6 +674,7 @@ void cJupiterModel::Run(){
     if(geo_balance()) setenv("ATJUP_PRESS_INCR", "1", 0);
     initCellHold();                                                     // ATJUP_CELL_HOLD, cJupiterModel.h
     initGeoBalance();
+    initVortex();                                                       // ATJUP_VORTEX, after the balanced background
 
     // Seed the turbulence fields from the ABL profile and prime the source terms once,
     // mirroring ATOM's TurbulenceAtm::init(). Needs the velocity field, so it comes after

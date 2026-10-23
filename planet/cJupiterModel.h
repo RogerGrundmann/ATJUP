@@ -773,6 +773,13 @@ public:
         return v; }
     std::vector<double> cell_vbar0, cell_ubar0;   // [i*jm + j], empty unless ATJUP_CELL_HOLD
     void initCellHold();
+    // ATJUP_VORTEX=1 (2026-10-22, default 0): a geostrophically balanced elliptical anticyclone on top of
+    // the balanced background -- the free Great Red Spot, no solid body (use with ATJUP_NO_SEAMOUNT=1).
+    // See initVortex() in InitValues_Jup.cpp for the knobs and the balance.
+    static bool vortex(){
+        static const bool v = [](){ const char* e = getenv("ATJUP_VORTEX"); return e && atoi(e) != 0; }();
+        return v; }
+    void initVortex();
     // ATJUP_U_INIT_CONT=<n> (DEFAULT 2 since 2026-10-18 on the user's word, 0 restores): the initial radial velocity from the model's own discrete
     // continuity, ported from ATOM_Precipitation's install_u_from_cells; see InitValues_Jup.cpp.
     static int u_init_cont(){
