@@ -116,7 +116,7 @@ void cJupiterModel::computeBuoyancyRefLevel(){
 //
 // Computed once per Runge-Kutta step, like buoy_ref_level, so it is the state at the start of the
 // step and is held fixed through the four stages.
-void cJupiterModel::computeHydrostaticPressure(){
+void cJupiterModel::computeHydrostaticPressure(bool advance_follow){
     static const bool ref_top = [](){
         const char* e = getenv("ATJUP_HYDRO_REF"); return e && atoi(e) != 0; }();
 
@@ -130,6 +130,19 @@ void cJupiterModel::computeHydrostaticPressure(){
         const char* e = getenv("ATJUP_BUOY_SCALE"); return e ? atof(e) : 1.0; }();
 
     const double nd = (nd_buoy_local != 0.0) ? 1.0e5 * (L_atm * 1.0e3) / (u_0 * u_0) : 1.0;
+    // ATJUP_BUOY_RHO_LEVEL (cJupiterModel.h): the relative anomaly against the level mean, at the
+    // physical factor g L / u_0^2. b and buoy_ref_level are both g rho / r_mix in the same units.
+    const bool rho_level = buoy_rho_level();
+    const double nd_rel = g * (L_atm * 1.0e3) / (u_0 * u_0);
+    const bool hs_ = hydro_split_on();
+
+    // ATJUP_PBARO_FOLLOW (cJupiterModel.h): the buoyancy integral is kept apart from the metric /
+    // Coriolis one (p_bnow) so that its change since the start can be handed to p_baro.
+    const double follow_tau = pbaro_follow();
+    const bool follow_on = follow_tau > 0.0 && hs_ && metric_split() && !p_baro.empty();
+    const size_t n3_ = (size_t)im * jm * km;
+    const bool follow_capture = follow_on && p_b0.size() != n3_;
+    if(follow_on && p_bnow.size() != n3_) p_bnow.assign(n3_, std::nan(""));   // all-solid columns stay NaN
 
     #pragma omp parallel for collapse(2) schedule(static)
     for(int j = 0; j < jm; j++){
@@ -149,7 +162,9 @@ void cJupiterModel::computeHydrostaticPressure(){
                 if(!(T > 0.0)) return 0.0;
                 const double b = g * buoy_pressure(i, j, k) / (r_mix * R_mix * T * t_ref)
                                - buoy_ref_level[i];
-                const double f = -nd * buoy_scale_local * buoyancy * b;
+                const double f = rho_level
+                    ? -nd_rel * buoy_scale_local * buoyancy * b / buoy_ref_level[i]
+                    : -nd * buoy_scale_local * buoyancy * b;
                 return std::isfinite(f) ? f : 0.0;
             };
 
@@ -161,11 +176,6 @@ void cJupiterModel::computeHydrostaticPressure(){
             // -dp_hydro/dr cancel by construction -- and rhs_v / rhs_w take the horizontal
             // gradient of p_hydro. Over the fluid part of the column only, from zero at its foot.
             if(metric_split()){
-                static const bool hs_ = [](){
-                    const char* e = getenv("ATJUP_HYDRO_SPLIT");
-                    if(e) return atoi(e) != 0;
-                    const char* n = getenv("ATJUP_NONDIM");
-                    return n ? atoi(n) != 0 : false; }();
                 // ATJUP_CORIOLIS_SPLIT: plus the radial Coriolis force as rhs_u forms it,
                 // -Coriolis * nd_cor * (-2 omega sin(theta) w), true sine, nd_cor read as the RHS reads it.
                 static const bool nd_cor_on_ = [](){
@@ -179,6 +189,25 @@ void cJupiterModel::computeHydrostaticPressure(){
                     return (hs_ ? buoy(i) : 0.0)
                          + ((v.x[i][j][k] * v.x[i][j][k] + w.x[i][j][k] * w.x[i][j][k]) / rad.z[i]
                             + cor_ * w.x[i][j][k]) / exp_rm_; };
+                if(follow_on){
+                    // the metric / Coriolis integral into p_hydro, the buoyancy one into p_bnow;
+                    // the two are put together after the loop
+                    auto fm_ = [&](int i)->double{
+                        const double exp_rm_ = coord_stretching ? 1.0 / (rad.z[i] + 1.0) : 1.0;
+                        return ((v.x[i][j][k] * v.x[i][j][k] + w.x[i][j][k] * w.x[i][j][k]) / rad.z[i]
+                                + cor_ * w.x[i][j][k]) / exp_rm_; };
+                    for(int i = 0; i < im; i++) p_bnow[((size_t)i * jm + j) * km + k] = std::nan("");
+                    double Pb = 0.0;
+                    p_hydro.x[i0][j][k] = 0.0;
+                    p_bnow[((size_t)i0 * jm + j) * km + k] = 0.0;
+                    for(int i = i0 + 1; i <= i1; i++){
+                        p_hydro.x[i][j][k] = p_hydro.x[i-1][j][k] + 0.5 * (fm_(i-1) + fm_(i)) * dr;
+                        Pb += 0.5 * (buoy(i-1) + buoy(i)) * dr;
+                        p_bnow[((size_t)i * jm + j) * km + k] = Pb;
+                    }
+                    for(int i = i0; i <= i1; i++) p_hydro.x[i][j][k] += p_baro[((size_t)i * jm + j) * km + k];
+                    continue;
+                }
                 p_hydro.x[i0][j][k] = 0.0;
                 for(int i = i0 + 1; i <= i1; i++)
                     p_hydro.x[i][j][k] = p_hydro.x[i-1][j][k] + 0.5 * (f_(i-1) + f_(i)) * dr;
@@ -201,6 +230,32 @@ void cJupiterModel::computeHydrostaticPressure(){
             }
         }
     }
+
+    if(follow_on){
+        if(follow_capture){ p_b0 = p_bnow; p_bfollow.assign(n3_, 0.0); }
+        if(advance_follow){
+            const bool zonal = pbaro_follow_zonal();
+            #pragma omp parallel for collapse(2) schedule(static)
+            for(int i = 0; i < im; i++) for(int j = 0; j < jm; j++){
+                const size_t q0 = ((size_t)i * jm + j) * km;
+                if(zonal){
+                    double s = 0.0; int n_ = 0;
+                    for(int k = 0; k < km - 1; k++)                  // km-1 is the seam copy of k = 0
+                        if(std::isfinite(p_bnow[q0 + k]) && std::isfinite(p_b0[q0 + k])){ s += p_bnow[q0 + k] - p_b0[q0 + k]; n_++; }
+                    if(!n_) continue;
+                    const double m = s / n_;
+                    for(int k = 0; k < km; k++) p_bfollow[q0 + k] += (m - p_bfollow[q0 + k]) / follow_tau;
+                } else {
+                    for(int k = 0; k < km; k++)
+                        if(std::isfinite(p_bnow[q0 + k]) && std::isfinite(p_b0[q0 + k]))
+                            p_bfollow[q0 + k] += (p_bnow[q0 + k] - p_b0[q0 + k] - p_bfollow[q0 + k]) / follow_tau;
+                }
+            }
+        }
+        #pragma omp parallel for schedule(static)
+        for(size_t q = 0; q < n3_; q++)
+            if(std::isfinite(p_bnow[q])) p_hydro.x[q / ((size_t)jm * km)][(q / km) % jm][q % km] += p_bnow[q] - p_bfollow[q];
+    }
 }
 
 void cJupiterModel::RungeKuttaJup(){
@@ -209,7 +264,7 @@ void cJupiterModel::RungeKuttaJup(){
     auto begin = std::chrono::high_resolution_clock::now();
 
     computeBuoyancyRefLevel();     // refresh the buoyancy base state for this RK4 step
-    computeHydrostaticPressure();  // and the hydrostatic pressure built from it
+    computeHydrostaticPressure(true);  // and the hydrostatic pressure built from it; true: one step of ATJUP_PBARO_FOLLOW
 
     // ---- k* ceiling, as in ATOM's turbulent RK4 ----
     // The k production term is linear in k while its sink beta*.k.omega is linear too, so an

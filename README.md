@@ -283,6 +283,10 @@ value. `ATJUP_TURB=1` set explicitly gave then what the default gives now, byte 
 | `ATJUP_TW_LAT_TAPER` | 10 | latitude band about the equator where the balance is not imposed |
 | `ATJUP_TW_MERIDIONAL` | 0 | also adjust v, from the zonal density gradient |
 | `ATJUP_HYDRO_SPLIT` | *follows `ATJUP_NONDIM`* | carry the radial buoyancy in p_hydro, leaving p_dyn the rest |
+| `ATJUP_BUOY_RHO_LEVEL` | *follows `ATJUP_HYDRO_SPLIT`* | in p_hydro, the density anomaly relative to its level's mean density at the physical factor g L/u_0² (ATNEPT / ATURAN form); 0 = the old r_mix form with the factor of `ATJUP_ND_BUOY` |
+| `ATJUP_PBARO_FOLLOW` | 0 | with `ATJUP_HYDRO_SPLIT`: p_baro takes up the change of the buoyancy integral since the start with a time constant of n RK steps; 0 = frozen |
+| `ATJUP_PBARO_FOLLOW_ZONAL` | 1 | only the zonal mean of that change, so a local anomaly (a vortex's cold top) keeps its pressure; 0 = cell by cell |
+| `ATJUP_VORTEX_THERMAL` | 0 | with `ATJUP_VORTEX`, a profile and `ATJUP_HYDRO_SPLIT`: the vortex's decay with height as a cold top (T′) instead of frozen p_baro, so it is advected with the vortex; `ATJUP_VORTEX_BASE_I=26` keeps T′ near −9 K |
 | `ATJUP_HYDRO_REF` | 0 | 0 = integrate up from the base (intended), 1 = down from the top |
 | `ATJUP_BUOY_SCALE` | 1 | multiplier on top of the buoyancy's physical value |
 | `ATJUP_BUOY_RAMP_ITERS` | 0 | ramp the buoyancy in linearly over n iterations |

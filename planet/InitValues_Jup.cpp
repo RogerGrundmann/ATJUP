@@ -435,6 +435,18 @@ void cJupiterModel::initVortex(){
         const double x = double(i - tl) / double(itop - tl);
         sz[i] = (i >= itop) ? 0.0 : (prof == 2 ? 0.5 * (1.0 + std::cos(M_PI * x)) : 1.0 - x);
     }
+    // ATJUP_VORTEX_THERMAL=1 (2026-10-23, default 0; needs ATJUP_HYDRO_SPLIT and a profile): the per-level
+    // rest (sz - 1) p' is carried by a TEMPERATURE anomaly instead of the frozen p_baro -- the cold top of
+    // a warm-core-free anticyclone, the thermal wind of its decay with height. With the buoyancy in
+    // p_hydro (ATJUP_HYDRO_SPLIT, ATJUP_BUOY_RHO_LEVEL) that pressure is the column integral of T', so it
+    // is advected with the vortex instead of staying where it was put (the taper moves with it). T' from
+    // the centred radial derivative of the target, (g L / u_0^2) T' / (T + T') = d((sz - 1) p')/dr per
+    // cell; what the trapezoidal column integral then misses of the target goes into p_baro, so the start
+    // is balanced exactly.
+    static const int thermal = [](){ const char* e = getenv("ATJUP_VORTEX_THERMAL"); return e ? atoi(e) : 0; }();
+    const bool th = thermal && prof && hydro_split_on() && metric_split();
+    if(thermal && !th)
+        std::cout << "      ATJUP: initVortex: WARNING ATJUP_VORTEX_THERMAL needs ATJUP_HYDRO_SPLIT=1, ATJUP_METRIC_SPLIT and a profile -- the rest goes into p_baro" << std::endl;
     if(prof && p_baro.empty()) p_baro.assign((size_t)im * jm * km, 0.0);
     for(int i = 0; i < im; i++) for(int j = 1; j < jm - 1; j++) for(int k = 0; k < km; k++){
         if(SeaMount.x[i][j][k] == 1.0) continue;
@@ -443,7 +455,46 @@ void cJupiterModel::initVortex(){
         w.x[i][j][k] += sz[i] * P0 * W[n_];
         v.x[i][j][k] += sz[i] * P0 * V[n_];
         p_dyn.x[i][j][k] += P0 * Pat(j, kk);
-        if(prof) p_baro[((size_t)i * jm + j) * km + k] += (sz[i] - 1.0) * P0 * Pat(j, kk);
+        if(prof && !th) p_baro[((size_t)i * jm + j) * km + k] += (sz[i] - 1.0) * P0 * Pat(j, kk);
+    }
+    if(th){
+        const size_t n3 = (size_t)im * jm * km;
+        computeBuoyancyRefLevel();
+        computeHydrostaticPressure();                                     // with the vortex's wind
+        std::vector<double> ph_a(n3);
+        for(int i = 0; i < im; i++) for(int j = 0; j < jm; j++) for(int k = 0; k < km; k++)
+            ph_a[((size_t)i * jm + j) * km + k] = p_hydro.x[i][j][k];
+        const double nd_rel = g * (L_atm * 1.0e3) / (u_0 * u_0) * envd("ATJUP_BUOY_SCALE", 1.0) * buoyancy;
+        auto D = [&](int i, int j, int kk){ return (sz[std::max(0, std::min(im - 1, i))] - 1.0) * P0 * Pat(j, kk); };
+        double tmin = 0.0, tmax = 0.0;
+        for(int i = 0; i < im; i++) for(int j = 1; j < jm - 1; j++) for(int k = 0; k < km; k++){
+            if(SeaMount.x[i][j][k] == 1.0) continue;
+            const int kk = (k == km - 1) ? 0 : k;
+            if(Pat(j, kk) < 1e-8) continue;
+            const int ia = std::max(0, i - 1), ib = std::min(im - 1, i + 1);
+            const double fd = (D(ib, j, kk) - D(ia, j, kk)) / ((ib - ia) * dr);
+            if(fd == 0.0) continue;
+            const double T = t.x[i][j][k];
+            if(!(T > 0.0) || !(buoy_ref_level[i] != 0.0)) continue;
+            const double bq = g * buoy_pressure(i, j, k) / (r_mix * R_mix * T * t_ref);
+            const double c = nd_rel * bq / buoy_ref_level[i];               // f' = c T' / (T + T')
+            if(!(c - fd > 0.0)) continue;
+            const double dT = fd * T / (c - fd);
+            t.x[i][j][k] += dT;
+            tmin = std::min(tmin, dT * t_ref); tmax = std::max(tmax, dT * t_ref);
+        }
+        computeBuoyancyRefLevel();
+        computeHydrostaticPressure();
+        double rmax = 0.0;
+        for(int i = 0; i < im; i++) for(int j = 1; j < jm - 1; j++) for(int k = 0; k < km; k++){
+            if(SeaMount.x[i][j][k] == 1.0) continue;
+            const size_t q = ((size_t)i * jm + j) * km + k;
+            const double r_ = D(i, j, (k == km - 1) ? 0 : k) - (p_hydro.x[i][j][k] - ph_a[q]);
+            p_baro[q] += r_;
+            rmax = std::max(rmax, std::abs(r_));
+        }
+        printf("      ATJUP: initVortex: thermal taper -- T' %+.3f .. %+.3f K, the rest the column integral misses (into p_baro) max %.3e = %.2f %% of |P0|\n",
+               tmin, tmax, rmax, 100.0 * rmax / std::abs(P0));
     }
     if(prof){
         computeHydrostaticPressure();                                     // p_hydro with the vortex's p_baro

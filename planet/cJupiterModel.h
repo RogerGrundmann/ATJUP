@@ -667,7 +667,39 @@ private:
     // once per RK4 step. See RungeKutta_Jup_Turb.cpp for why this exists.
     std::vector<double> buoy_ref_level;
     void computeBuoyancyRefLevel();
-    void computeHydrostaticPressure();
+    void computeHydrostaticPressure(bool advance_follow = false);   // advance_follow: one step of ATJUP_PBARO_FOLLOW
+
+    // ATJUP_HYDRO_SPLIT (default: follows ATJUP_NONDIM, i.e. 0): the buoyancy is carried by p_hydro, and
+    // rhs_v / rhs_w feel its horizontal gradient -- the temperature reaches the horizontal pressure
+    // gradient (thermal wind). Read here as rhs_u reads it. See computeHydrostaticPressure().
+    static bool hydro_split_on(){
+        static const bool v = [](){
+            const char* e = getenv("ATJUP_HYDRO_SPLIT"); if(e) return atoi(e) != 0;
+            const char* n = getenv("ATJUP_NONDIM"); return n ? atoi(n) != 0 : false; }();
+        return v; }
+    // ATJUP_BUOY_RHO_LEVEL (2026-10-23, ported from ATNEPT / ATURAN e12e88d; default: follows
+    // ATJUP_HYDRO_SPLIT): in p_hydro the density anomaly is divided by its LEVEL's mean density,
+    // (g L / u_0^2) (rho - rho_level) / rho_level, instead of by the constant r_mix with the factor
+    // 1e5 L / u_0^2 of ATJUP_ND_BUOY -- without ATJUP_ND_BUOY that factor was 1, the buoyancy 1.4e6
+    // too weak, and with it the pressure that follows T faded with the density (1/65 near the lid).
+    static bool buoy_rho_level(){
+        static const bool v = [](){ const char* e = getenv("ATJUP_BUOY_RHO_LEVEL"); return e ? atoi(e) != 0 : hydro_split_on(); }();
+        return v; }
+    // ATJUP_PBARO_FOLLOW=<tau RK steps> (2026-10-23, ported from ATNEPT f840e4d; default 0 = p_baro
+    // frozen): with ATJUP_HYDRO_SPLIT and the balanced start, p_baro takes up the change of the
+    // buoyancy integral since the start, B(t) - B0, with a time constant of tau steps.
+    // ATJUP_PBARO_FOLLOW_ZONAL (default 1): only its ZONAL MEAN over the fluid cells of each (i, j), so
+    // a drift of the background bands is taken up while a local anomaly (a vortex's cold core) keeps
+    // its pressure; 0 = cell by cell, as ATNEPT.
+    static double pbaro_follow(){
+        static const double v = [](){ const char* e = getenv("ATJUP_PBARO_FOLLOW"); return e ? atof(e) : 0.0; }();
+        return v; }
+    static bool pbaro_follow_zonal(){
+        static const bool v = [](){ const char* e = getenv("ATJUP_PBARO_FOLLOW_ZONAL"); return e ? atoi(e) != 0 : true; }();
+        return v; }
+    std::vector<double> p_b0;            // [(i*jm + j)*km + k] the buoyancy integral at the start, with ATJUP_PBARO_FOLLOW
+    std::vector<double> p_bfollow;       // [(i*jm + j)*km + k] what p_baro has taken up of B(t) - B0 so far
+    std::vector<double> p_bnow;          // [(i*jm + j)*km + k] the buoyancy integral of this step (NaN outside the fluid column)
 
     // Fills wall_nue from the SeaMount contour. Call once, after bcSeaMount().
     void computeWallViscosity();
