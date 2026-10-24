@@ -26,13 +26,15 @@ void cJupiterModel::paraview_panorama_vts(int n){
     // shared Reporting.h prints, so an array name means one thing in the .vtk and in the log.
     // See the note above the species block in Reporting.h for why NH4SH needs its own.
     ParaViewWriter<cJupiterModel> pv(*this);
-    ofstream Jupiter_panorama_vts_File = pv.open_panorama(n,
+    // ATJUP_CHROM (ChromJup.h): the chromophore array only when the tracer is on, so a default panorama is unchanged.
+    const std::string pano_scalars = std::string(
         "Temperature PressureDynamic PressureStatic CH4 CH4Cloud CH4Ice NH3 NH3Cloud "
         "NH3Ice H2O H2OCloud H2OIce Q_Latent Q_Sensible Q_rad_mW_m3 Radiation Emissivity "
         "P_rain_mmd P_snow_mmd P_graupel_mmd P_nh3_rain_mmd P_nh3_snow_mmd "
         "P_nh3_graupel_mmd P_ch4_rain_mmd P_ch4_snow_mmd P_ch4_graupel_mmd "
         "P_nh4sh_mmd Q_precip_mW_m3 tke_m2s2 dis_nd nue_t_m2s prod_nd "
-        "tke_source_nd dis_source_nd BuoyancyForce ");
+        "tke_source_nd dis_source_nd BuoyancyForce ") + (chrom_on() ? "Chromophore_mgm3 " : "");
+    ofstream Jupiter_panorama_vts_File = pv.open_panorama(n, pano_scalars.c_str());
     pv.panorama_velocity(Jupiter_panorama_vts_File);
     pv.panorama_temperature(Jupiter_panorama_vts_File);
     dump_array("Seamount", SeaMount, 1.0, Jupiter_panorama_vts_File);
@@ -71,6 +73,7 @@ void cJupiterModel::paraview_panorama_vts(int n){
 //    dump_array("jT_nh3", jT_nh3, 1e3, Jupiter_panorama_vts_File);
 
     dump_array("NH4SH", nh4sh, 1e9, Jupiter_panorama_vts_File);
+    if(chrom_on()) dump_array("Chromophore_mgm3", chrom, 1e6, Jupiter_panorama_vts_File);
 //    dump_array("w_nh4sh", w_nh4sh, 1e9, Jupiter_panorama_vts_File);
 
     dump_array("Q_Latent", Q_Latent, 1.0, Jupiter_panorama_vts_File);
@@ -129,7 +132,8 @@ void cJupiterModel::paraview_panorama_vts(int n){
  * of SATADJ-DIAG and CWB). NH3Ice is the white deck of the zones and of the GRS oval; NH4SH is the
  * deeper layer that shows through where the NH3 deck is thin (the belts). Grid: the radial slices'
  * (lat, lon) layout (x = 0.1 per latitude row, y = 0.1 per longitude), the layers stacked in z at
- * 0.1 each, so a ParaView slice normal to z picks one layer.
+ * 0.1 each, so a ParaView slice normal to z picks one layer. With ATJUP_CHROM the chromophore column
+ * Chrom_above_mgm2 (mg/m2) is added: the colouring agent above each layer.
  */
 void cJupiterModel::paraview_cloudview(int n){
     const std::string name = output_path + "/" + planet_name() + "_cloudview_" + std::to_string(n) + ".vtk";
@@ -153,12 +157,12 @@ void cJupiterModel::paraview_cloudview(int n){
             for(int k = 0; k < km; k++)
                 f << j * 0.1 << " " << k * 0.1 << " " << i * 0.1 << std::endl;
     f << "POINT_DATA " << npt << std::endl;
-    auto above = [&](const char* desc, Array& a){
+    auto above = [&](const char* desc, Array& a, double unit = 1.0e3){
         std::vector<double> c((size_t)im * jm * km, 0.0);          // c[i][j][k], layer im-1 stays 0
         for(int j = 0; j < jm; j++) for(int k = 0; k < km; k++){
             double s = 0.0;
             for(int i = im - 2; i >= 0; i--){
-                s += a.x[i][j][k] * layer_thickness_m(i) * 1.0e3;    // kg/m3 * m -> g/m2
+                s += a.x[i][j][k] * layer_thickness_m(i) * unit;     // kg/m3 * m -> g/m2 (unit 1e3)
                 c[((size_t)i * jm + j) * km + k] = s;
             }
         }
@@ -168,6 +172,7 @@ void cJupiterModel::paraview_cloudview(int n){
     };
     above("NH3Ice_above_gm2", nh3_ice);
     above("NH4SH_above_gm2", nh4sh);
+    if(chrom_on()) above("Chrom_above_mgm2", chrom, 1.0e6);     // ATJUP_CHROM, ChromJup.h: the colour
     f.close();
     std::cout << "   File:  " << planet_name() << "_cloudview_" << n << ".vtk"
               << "  has been written to Directory:  " << output_path << std::endl;
@@ -222,6 +227,8 @@ void cJupiterModel::paraview_vtk_radial(int n, int i_radial){
     dump_radial("difflux_nh3", difflux_nh3, 1e3, i_radial, Jupiter_vtk_radial_File);
 
     dump_radial("NH4SH", nh4sh, 1e9, i_radial, Jupiter_vtk_radial_File);
+    if(chrom_on()){ dump_radial("Chromophore_mgm3", chrom, 1e6, i_radial, Jupiter_vtk_radial_File);
+                    dump_radial("ChromUV", chrom_uv, 1.0, i_radial, Jupiter_vtk_radial_File); }
     dump_radial("w_nh4sh", w_nh4sh, 1e9, i_radial, Jupiter_vtk_radial_File);
     dump_radial("massflux_nh4sh", massflux_nh4sh, 1e9, i_radial, Jupiter_vtk_radial_File);
     dump_radial("j_nh4sh", j_nh4sh, 1e9, i_radial, Jupiter_vtk_radial_File);
@@ -360,6 +367,8 @@ void cJupiterModel::paraview_vtk_zonal(int n, int k_zonal){
     dump_zonal("difflux_nh3", difflux_nh3, 1e3, k_zonal, Jupiter_vtk_zonal_File);
 
     dump_zonal("NH4SH", nh4sh, 1e9, k_zonal, Jupiter_vtk_zonal_File);
+    if(chrom_on()){ dump_zonal("Chromophore_mgm3", chrom, 1e6, k_zonal, Jupiter_vtk_zonal_File);
+                    dump_zonal("ChromUV", chrom_uv, 1.0, k_zonal, Jupiter_vtk_zonal_File); }
     dump_zonal("w_nh4sh", w_nh4sh, 1e9, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("massflux_nh4sh", massflux_nh4sh, 1e9, k_zonal, Jupiter_vtk_zonal_File);
     dump_zonal("j_nh4sh", j_nh4sh, 1e9, k_zonal, Jupiter_vtk_zonal_File);
@@ -506,6 +515,8 @@ void cJupiterModel::paraview_vtk_longal(int n, int j_longal){
     dump_longal("difflux_nh3", difflux_nh3, 1e3, j_longal, Jupiter_vtk_longal_File);
 
     dump_longal("NH4SH", nh4sh, 1e9, j_longal, Jupiter_vtk_longal_File);
+    if(chrom_on()){ dump_longal("Chromophore_mgm3", chrom, 1e6, j_longal, Jupiter_vtk_longal_File);
+                    dump_longal("ChromUV", chrom_uv, 1.0, j_longal, Jupiter_vtk_longal_File); }
     dump_longal("w_nh4sh", w_nh4sh, 1e9, j_longal, Jupiter_vtk_longal_File);
     dump_longal("massflux_nh4sh", massflux_nh4sh, 1e9, j_longal, Jupiter_vtk_longal_File);
     dump_longal("j_nh4sh", j_nh4sh, 1e9, j_longal, Jupiter_vtk_longal_File);

@@ -452,6 +452,9 @@ void cJupiterModel::RungeKuttaJup(){
                                       : acc_ch4_ice.x[i][j][k] + wgt * rhs_ch4_ice.x[i][j][k];
                     acc_nh4sh.x[i][j][k] = (stage == 0) ? wgt * rhs_nh4sh.x[i][j][k]
                                       : acc_nh4sh.x[i][j][k] + wgt * rhs_nh4sh.x[i][j][k];
+                    if(chrom_on())
+                        acc_chrom.x[i][j][k] = (stage == 0) ? wgt * rhs_chrom.x[i][j][k]
+                                          : acc_chrom.x[i][j][k] + wgt * rhs_chrom.x[i][j][k];
                     acc_tke.x[i][j][k] = (stage == 0) ? wgt * rhs_tke.x[i][j][k]
                                       : acc_tke.x[i][j][k] + wgt * rhs_tke.x[i][j][k];
                     acc_dis.x[i][j][k] = (stage == 0) ? wgt * rhs_dis.x[i][j][k]
@@ -473,6 +476,7 @@ void cJupiterModel::RungeKuttaJup(){
                         ch4_cloud.x[i][j][k] = ch4_cloudn.x[i][j][k] + c_in * rhs_ch4_cloud.x[i][j][k];
                         ch4_ice.x[i][j][k] = ch4_icen.x[i][j][k] + c_in * rhs_ch4_ice.x[i][j][k];
                         nh4sh.x[i][j][k] = nh4shn.x[i][j][k] + c_in * rhs_nh4sh.x[i][j][k];
+                        if(chrom_on()) chrom.x[i][j][k] = chromn.x[i][j][k] + c_in * rhs_chrom.x[i][j][k];
                         // k* is positive-definite and dis* strictly positive; clamp at every stage
                         // so a stiff intermediate can never feed a negative k or a zero omega back
                         // into the next RHS evaluation (nue* = k/omega would then be non-finite).
@@ -527,6 +531,8 @@ void cJupiterModel::RungeKuttaJup(){
                     ch4.x[i][j][k] = std::max(0.0, ch4n.x[i][j][k] + dt * acc_ch4.x[i][j][k] * one_sixth);
                     ch4_cloud.x[i][j][k] = std::max(0.0, ch4_cloudn.x[i][j][k] + dt * acc_ch4_cloud.x[i][j][k] * one_sixth);
                     ch4_ice.x[i][j][k] = std::max(0.0, ch4_icen.x[i][j][k] + dt * acc_ch4_ice.x[i][j][k] * one_sixth);
+                    if(chrom_on())
+                        chrom.x[i][j][k] = std::max(0.0, chromn.x[i][j][k] + dt * acc_chrom.x[i][j][k] * one_sixth);
                     // NH4SH ceiling (ATJUP_NH4SH_CAP, DEFAULT 0 = off). A dressing, not a cure; it
                     // belongs after the two rate-law repairs in ChemistryJup.h.
                     //

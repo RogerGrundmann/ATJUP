@@ -577,6 +577,9 @@ void cJupiterModel::save_state(int iter){
     f.write(reinterpret_cast<const char*>(hdr), sizeof(hdr));
 
     std::vector<Array*> arrs = restart_arrays();
+    // ATJUP_CHROM (ChromJup.h): chrom and chromn after the fixed list, only when the tracer is on, so a
+    // default restart file keeps its size and bytes.
+    if(chrom_on()){ arrs.push_back(&chrom); arrs.push_back(&chromn); }
     for(size_t a = 0; a < arrs.size(); a++)
         for(int i = 0; i < im; i++)
             for(int j = 0; j < jm; j++)
@@ -621,6 +624,20 @@ bool cJupiterModel::load_state(int iter){
                 }
             }
 
+    // ATJUP_CHROM: the two tracer arrays, if the file carries them; a file written without the tracer
+    // starts it from 0.
+    if(chrom_on()){
+        Array* ca[] = { &chrom, &chromn };
+        bool got = true;
+        for(Array* a_ : ca) for(int i = 0; i < im && got; i++) for(int j = 0; j < jm && got; j++){
+            f.read(reinterpret_cast<char*>(a_->x[i][j]), km * sizeof(double));
+            if(!f) got = false;
+        }
+        if(!got){
+            for(Array* a_ : ca) for(int i = 0; i < im; i++) for(int j = 0; j < jm; j++) for(int k = 0; k < km; k++) a_->x[i][j][k] = 0.0;
+            cout << "      ATJUP: load_state: no chromophore arrays in " << fn << " - ATJUP_CHROM starts from 0" << endl;
+        } else cout << "      ATJUP: load_state: chromophore arrays restored" << endl;
+    }
     cout << "      ATJUP: load_state restored " << arrs.size() << " arrays from "
          << fn << " (resuming after iteration " << hdr[4] << ")" << endl;
     return true;

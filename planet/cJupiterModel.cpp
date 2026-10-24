@@ -19,6 +19,7 @@
 #include "UbJup.h"           // ATJUP_UB_DIAG, print-only
 #include "TbJup.h"           // ATJUP_TB_DIAG, print-only
 #include "QbJup.h"           // ATJUP_QB_DIAG, print-only
+#include "ChromJup.h"         // ATJUP_CHROM, the chromophore tracer
 #include "BC_Jup.h"
 #include "VelocityInitializerJup.h"
 #include "RadiationJup.h"
@@ -675,6 +676,7 @@ void cJupiterModel::Run(){
     initCellHold();                                                     // ATJUP_CELL_HOLD, cJupiterModel.h
     initGeoBalance();
     initVortex();                                                       // ATJUP_VORTEX, after the balanced background
+    chromInfo();                                                        // ATJUP_CHROM: one line when the tracer is on
 
     // Seed the turbulence fields from the ABL profile and prime the source terms once,
     // mirroring ATOM's TurbulenceAtm::init(). Needs the velocity field, so it comes after
@@ -1108,6 +1110,7 @@ void cJupiterModel::Run(){
                 for(int q_ = 0; q_ < JupUb::NTERM; q_++) for(int i = 0; i < im; i++) JupUb::st().acc[t_][r_][q_][i] = 0.0;
         }
 
+        chromUV();                                        // ATJUP_CHROM: the UV field the source reads
         RungeKuttaJup();
 
         if(ub_on){
@@ -1498,6 +1501,8 @@ void cJupiterModel::resetArrays(){
     ch4_ice.initArray(im, jm, km, 0.0);             // ch4-ice
 
     nh4sh.initArray(im, jm, km, 0.0);                 // nh4sh-vapour
+    chrom.initArray(im, jm, km, 0.0);                 // chromophore (ATJUP_CHROM)
+    chrom_uv.initArray(im, jm, km, 0.0);              // its UV fraction
 
     tn.initArray(im, jm, km, ta);                    // temperature new
     un.initArray(im, jm, km, ua);                    // u-velocity component in r-direction new
@@ -1515,6 +1520,7 @@ void cJupiterModel::resetArrays(){
     ch4_cloudn.initArray(im, jm, km, 0.0);          // ch4_cloud new
     ch4_icen.initArray(im, jm, km, 0.0);            // ch4_ice new
     nh4shn.initArray(im, jm, km, 0.0);                // nh4sh new
+    chromn.initArray(im, jm, km, 0.0);                // chromophore new
 
     fluxlim_nh4sh.initArray(im, jm, km, 0.0);  // TVD flux-limiter correction
 
@@ -1553,6 +1559,7 @@ void cJupiterModel::resetArrays(){
     rhs_ch4_cloud.initArray(im, jm, km, 0.0);        // auxilliar field RHS ch4_cloud
     rhs_ch4_ice.initArray(im, jm, km, 0.0);            // auxilliar field RHS ch4_ice
     rhs_nh4sh.initArray(im, jm, km, 0.0);                // auxilliar field RHS nh4sh
+    rhs_chrom.initArray(im, jm, km, 0.0);                // auxilliar field RHS chromophore
     rhs_tke.initArray(im, jm, km, 0.0);                // auxilliar field RHS turbulent kinetic energy
     rhs_dis.initArray(im, jm, km, 0.0);                // auxilliar field RHS dissipation
     acc_t.initArray(im, jm, km, 0.0);   // RK4 stage accumulator
@@ -1570,6 +1577,7 @@ void cJupiterModel::resetArrays(){
     acc_ch4_cloud.initArray(im, jm, km, 0.0);   // RK4 stage accumulator
     acc_ch4_ice.initArray(im, jm, km, 0.0);   // RK4 stage accumulator
     acc_nh4sh.initArray(im, jm, km, 0.0);   // RK4 stage accumulator
+    acc_chrom.initArray(im, jm, km, 0.0);   // RK4 stage accumulator
     acc_tke.initArray(im, jm, km, 0.0);   // RK4 stage accumulator
     acc_dis.initArray(im, jm, km, 0.0);   // RK4 stage accumulator
 
@@ -1667,6 +1675,7 @@ void cJupiterModel::restoreVar(double coeff){
                 ch4_cloudn.x[i][j][k] = coeff * ch4_cloud.x[i][j][k];
                 ch4_icen.x[i][j][k] = coeff * ch4_ice.x[i][j][k];
                 nh4shn.x[i][j][k] = coeff * nh4sh.x[i][j][k];
+                chromn.x[i][j][k] = coeff * chrom.x[i][j][k];
                 // k* and dis* are now prognostic in RungeKuttaJup (rhs_tke / rhs_dis), so their
                 // time-level-n copies have to be refreshed here exactly like every other
                 // transported variable — this is ATOM's UtilsAtm::storeIntermediateData3D.

@@ -430,6 +430,17 @@ private:
     // budget ATJUP_QB_DIAG shows it as the only term that moves NH3 between levels (GRS_200, i = 28:
     // +0.048 of +0.049 g/m3 in 50 it) -- 1e8 times the molecular value. 0.1 / 0.01 are the species at
     // re = 1e4 / 1e5; 0 switches the laminar part off.
+    // ATJUP_CHROM=1 (2026-10-24, default 0 = off: chrom stays 0 everywhere, no output, restart files unchanged):
+    // the chromophore tracer, Jupiter's colouring agent (the red of the GRS, the brown of the belts), a passive
+    // species made by UV photolysis of NH3 where the UV reaches (NH3 vapour self-shielding) and destroyed with
+    // a lifetime. The rates live in ChromJup.h.
+    static bool chrom_on(){
+        static const bool v = [](){ const char* e = getenv("ATJUP_CHROM"); return e && atoi(e) != 0; }();
+        return v; }
+    double chromSource(int i, int j, int k);           // ChromJup.h, nondimensional d(chrom)/dt
+    void chromUV();                                     // ChromJup.h, chrom_uv once per iteration
+    void chromInfo();                                   // ChromJup.h, the startup line
+
     static double species_diff_scale(){
         static const double v = [](){ const char* e = getenv("ATJUP_SPECIES_DIFF_SCALE"); return e ? atof(e) : 0.01; }();
         return v; }
@@ -1271,6 +1282,8 @@ private:
     Array ch4_cloud;            // ch4-cloud
     Array ch4_ice;                // ch4-ice
     Array nh4sh;                    // nh4sh-vapour
+    Array chrom;                    // chromophore tracer, kg/m3 (ATJUP_CHROM; ChromJup.h)
+    Array chrom_uv;                 // UV fraction reaching the cell, exp(-N_NH3,above / N_uv) (ChromJup.h)
 
     Array tn;                    // temperature new
     Array un;                    // u-velocity component in r-direction new
@@ -1287,6 +1300,7 @@ private:
     Array ch4_cloudn;            // ch4_cloud new
     Array ch4_icen;                 // ch4_ice new
     Array nh4shn;                    // nh4sh new
+    Array chromn;                    // chromophore new
 
     Array massflux_h2s;   // mass flux h2s
     Array massflux_nh3;   // mass flux nh3
@@ -1324,6 +1338,7 @@ private:
     Array rhs_ch4_cloud;        // auxilliar field RHS ch4_cloud
     Array rhs_ch4_ice;            // auxilliar field RHS ch4_ice
     Array rhs_nh4sh;                // auxilliar field RHS nh4sh
+    Array rhs_chrom;                // auxilliar field RHS chromophore
     Array rhs_tke;                // auxilliar field RHS turbulent kinetic energy k*
     Array rhs_dis;                // auxilliar field RHS dissipation (epsilon* or omega*)
 
@@ -1348,6 +1363,7 @@ private:
     Array acc_ch4_cloud;
     Array acc_ch4_ice;
     Array acc_nh4sh;
+    Array acc_chrom;
     Array acc_tke;
     Array acc_dis;
 
