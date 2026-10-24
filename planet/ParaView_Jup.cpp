@@ -11,6 +11,8 @@
 #include "cJupiterModel.h"
 #include "ParaViewWriter.h"
 
+#include <algorithm>   // std::sort for the PhotoRGB scale
+
 using namespace std;
 //using namespace JupiterUtils;
 
@@ -132,7 +134,8 @@ void cJupiterModel::paraview_panorama_vts(int n){
  * of SATADJ-DIAG and CWB). NH3Ice is the white deck of the zones and of the GRS oval; NH4SH is the
  * deeper layer that shows through where the NH3 deck is thin (the belts). Grid: the radial slices'
  * (lat, lon) layout (x = 0.1 per latitude row, y = 0.1 per longitude), the layers stacked in z at
- * 0.1 each, so a ParaView slice normal to z picks one layer. The stack is FLIPPED (2026-10-24, user): layer i
+ * 0.1 each, so a ParaView slice normal to z picks one layer. PhotoRGB (below) combines the columns into one
+ * colour per point for a photo-like look. The stack is FLIPPED (2026-10-24, user): layer i
  * sits at z = 0.1 (im-1-i), so layer 0 -- the whole column, the photo -- is the TOP face and a view from
  * above shows it at once; every step down strips cloud from the top. Before, layer i sat at z = 0.1 i and a
  * view from above saw the lid layer, which holds 0 (black). With ATJUP_CHROM the chromophore column
@@ -172,10 +175,49 @@ void cJupiterModel::paraview_cloudview(int n){
         f << "SCALARS " << desc << " float " << 1 << std::endl;
         f << "LOOKUP_TABLE default" << std::endl;
         for(size_t q = 0; q < c.size(); q++) f << c[q] << std::endl;
+        return c;
     };
-    above("NH3Ice_above_gm2", nh3_ice);
-    above("NH4SH_above_gm2", nh4sh);
-    if(chrom_on()) above("Chrom_above_mgm2", chrom, 1.0e6);     // ATJUP_CHROM, ChromJup.h: the colour
+    const std::vector<double> c_ice = above("NH3Ice_above_gm2", nh3_ice);
+    const std::vector<double> c_nhs = above("NH4SH_above_gm2", nh4sh);
+    std::vector<double> c_chr;
+    if(chrom_on()) c_chr = above("Chrom_above_mgm2", chrom, 1.0e6);     // ATJUP_CHROM, ChromJup.h: the colour
+
+    // PhotoRGB (2026-10-24, user): one colour per point, red / green / blue in 0..1, for a direct look
+    // (ParaView: colour by PhotoRGB, untick "Map Scalars"). A RECIPE, not radiative transfer:
+    //   b  brightness of the NH3 ice column             -> white deck, B = 0.15 + 0.85 b
+    //   n  NH4SH column where the NH3 deck is thin, n (1 - b) -> mixed toward brown (0.55, 0.38, 0.22)
+    //   c  chromophore column                            -> mixed toward red-orange (0.85, 0.35, 0.15)
+    // each column scaled between its 2nd and 98th percentile of LAYER 0 (the whole column) over
+    // |lat| <= 80 deg (the chromophore between its 2nd percentile and its maximum: it is concentrated in
+    // spots), so the same scale holds on every layer and the upper layers darken as cloud is stripped
+    // away. The amounts are not calibrated, so the scale is per file: two files are not on one scale.
+    {
+        auto range = [&](const std::vector<double>& c, bool to_max){
+            std::vector<double> v;
+            for(int j = 10; j < jm - 10; j++) for(int k = 0; k < km - 1; k++) v.push_back(c[(size_t)j * km + k]);
+            std::sort(v.begin(), v.end());
+            const double lo = v[v.size() * 2 / 100], hi = to_max ? v.back() : v[v.size() * 98 / 100];
+            return std::make_pair(lo, hi > lo ? hi : lo + 1.0);
+        };
+        auto unit01 = [](double x, const std::pair<double, double>& r){
+            return std::min(1.0, std::max(0.0, (x - r.first) / (r.second - r.first))); };
+        const auto r_ice = range(c_ice, false), r_nhs = range(c_nhs, false);
+        const auto r_chr = c_chr.empty() ? std::make_pair(0.0, 1.0) : range(c_chr, true);
+        f << "COLOR_SCALARS PhotoRGB 3" << std::endl;
+        for(size_t q = 0; q < c_ice.size(); q++){
+            const double b  = unit01(c_ice[q], r_ice);
+            const double nb = unit01(c_nhs[q], r_nhs) * (1.0 - b);
+            const double cc = c_chr.empty() ? 0.0 : unit01(c_chr[q], r_chr);
+            double rgb[3] = { 1.0, 1.0, 1.0 };
+            const double brown[3] = { 0.55, 0.38, 0.22 }, red[3] = { 0.85, 0.35, 0.15 };
+            for(int m_ = 0; m_ < 3; m_++){
+                rgb[m_] += 0.7 * nb * (brown[m_] - rgb[m_]);
+                rgb[m_] += 0.8 * cc * (red[m_] - rgb[m_]);
+                rgb[m_] *= 0.15 + 0.85 * b;
+            }
+            f << rgb[0] << " " << rgb[1] << " " << rgb[2] << std::endl;
+        }
+    }
     f.close();
     std::cout << "   File:  " << planet_name() << "_cloudview_" << n << ".vtk"
               << "  has been written to Directory:  " << output_path << std::endl;
