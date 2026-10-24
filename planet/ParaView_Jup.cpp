@@ -132,7 +132,10 @@ void cJupiterModel::paraview_panorama_vts(int n){
  * of SATADJ-DIAG and CWB). NH3Ice is the white deck of the zones and of the GRS oval; NH4SH is the
  * deeper layer that shows through where the NH3 deck is thin (the belts). Grid: the radial slices'
  * (lat, lon) layout (x = 0.1 per latitude row, y = 0.1 per longitude), the layers stacked in z at
- * 0.1 each, so a ParaView slice normal to z picks one layer. With ATJUP_CHROM the chromophore column
+ * 0.1 each, so a ParaView slice normal to z picks one layer. The stack is FLIPPED (2026-10-24, user): layer i
+ * sits at z = 0.1 (im-1-i), so layer 0 -- the whole column, the photo -- is the TOP face and a view from
+ * above shows it at once; every step down strips cloud from the top. Before, layer i sat at z = 0.1 i and a
+ * view from above saw the lid layer, which holds 0 (black). With ATJUP_CHROM the chromophore column
  * Chrom_above_mgm2 (mg/m2) is added: the colouring agent above each layer.
  */
 void cJupiterModel::paraview_cloudview(int n){
@@ -155,7 +158,7 @@ void cJupiterModel::paraview_cloudview(int n){
     for(int i = 0; i < im; i++)
         for(int j = 0; j < jm; j++)
             for(int k = 0; k < km; k++)
-                f << j * 0.1 << " " << k * 0.1 << " " << i * 0.1 << std::endl;
+                f << j * 0.1 << " " << k * 0.1 << " " << (im - 1 - i) * 0.1 << std::endl;   // layer 0 on top
     f << "POINT_DATA " << npt << std::endl;
     auto above = [&](const char* desc, Array& a, double unit = 1.0e3){
         std::vector<double> c((size_t)im * jm * km, 0.0);          // c[i][j][k], layer im-1 stays 0
