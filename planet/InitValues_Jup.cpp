@@ -435,6 +435,23 @@ void cJupiterModel::initVortex(){
         const double x = double(i - tl) / double(itop - tl);
         sz[i] = (i >= itop) ? 0.0 : (prof == 2 ? 0.5 * (1.0 + std::cos(M_PI * x)) : 1.0 - x);
     }
+    // ATJUP_VORTEX_BOTTOM_I=<ib> (2026-10-24, default 0 = off: full strength down to the floor, as before): the
+    // wind and p' also ramp from 0 at the floor (i = 0) to full at i = ib, same form as the upper ramp. Without it
+    // the vortex stood at full strength (100 m/s) in the floor layer, where the background jets are ~0 m/s
+    // (RC_3000: -4..+4 at j 112 against -45 at i 28), so its foot stayed while the upper part drifted west and
+    // the columns tilted; under ATJUP_HYDRO_SPLIT p_dyn is the floor pressure and stayed with that foot. The floor
+    // value sz0 = sz[0] is what goes into p_dyn, the per-level rest is (sz - sz0) p' (sz0 = 1 without the ramp,
+    // so that branch is unchanged); with ATJUP_VORTEX_THERMAL the rising lower ramp is a warm anomaly under the
+    // vortex, the thermal wind of a vortex strengthening upward, and the vortex's pressure lives in p_hydro.
+    const int ib = (int)envd("ATJUP_VORTEX_BOTTOM_I", 0);
+    if(prof && ib > 0){
+        if(ib >= tl) std::cout << "      ATJUP: initVortex: WARNING ATJUP_VORTEX_BOTTOM_I " << ib << " >= the base " << tl << ", lower ramp skipped" << std::endl;
+        else for(int i = 0; i < ib; i++){
+            const double x = double(i) / double(ib);
+            sz[i] = prof == 2 ? 0.5 * (1.0 - std::cos(M_PI * x)) : x;
+        }
+    }
+    const double sz0 = sz[0];
     // ATJUP_VORTEX_THERMAL=1 (2026-10-23, default 0; needs ATJUP_HYDRO_SPLIT and a profile): the per-level
     // rest (sz - 1) p' is carried by a TEMPERATURE anomaly instead of the frozen p_baro -- the cold top of
     // a warm-core-free anticyclone, the thermal wind of its decay with height. With the buoyancy in
@@ -454,8 +471,8 @@ void cJupiterModel::initVortex(){
         const size_t n_ = ((size_t)i * jm + j) * km + kk;
         w.x[i][j][k] += sz[i] * P0 * W[n_];
         v.x[i][j][k] += sz[i] * P0 * V[n_];
-        p_dyn.x[i][j][k] += P0 * Pat(j, kk);
-        if(prof && !th) p_baro[((size_t)i * jm + j) * km + k] += (sz[i] - 1.0) * P0 * Pat(j, kk);
+        p_dyn.x[i][j][k] += sz0 * P0 * Pat(j, kk);
+        if(prof && !th) p_baro[((size_t)i * jm + j) * km + k] += (sz[i] - sz0) * P0 * Pat(j, kk);
     }
     if(th){
         const size_t n3 = (size_t)im * jm * km;
@@ -465,7 +482,7 @@ void cJupiterModel::initVortex(){
         for(int i = 0; i < im; i++) for(int j = 0; j < jm; j++) for(int k = 0; k < km; k++)
             ph_a[((size_t)i * jm + j) * km + k] = p_hydro.x[i][j][k];
         const double nd_rel = g * (L_atm * 1.0e3) / (u_0 * u_0) * envd("ATJUP_BUOY_SCALE", 1.0) * buoyancy;
-        auto D = [&](int i, int j, int kk){ return (sz[std::max(0, std::min(im - 1, i))] - 1.0) * P0 * Pat(j, kk); };
+        auto D = [&](int i, int j, int kk){ return (sz[std::max(0, std::min(im - 1, i))] - sz0) * P0 * Pat(j, kk); };
         double tmin = 0.0, tmax = 0.0;
         for(int i = 0; i < im; i++) for(int j = 1; j < jm - 1; j++) for(int k = 0; k < km; k++){
             if(SeaMount.x[i][j][k] == 1.0) continue;
@@ -502,6 +519,11 @@ void cJupiterModel::initVortex(){
                tl, im_tropopause[j0], prof == 2 ? "cosine" : "linear", itop, tl, im - 1);
         for(int i = tl; i < im; i++) printf(" %.2f", sz[i]);
         printf(")\n");
+        if(sz0 != 1.0){
+            printf("      ATJUP: initVortex: lower ramp (ATJUP_VORTEX_BOTTOM_I %d) -- %s from 0 at the floor, sz at i 0..%d:", ib, prof == 2 ? "cosine" : "linear", ib);
+            for(int i = 0; i <= ib; i++) printf(" %.2f", sz[i]);
+            printf("\n");
+        }
     }
     const size_t nn = ((size_t)im2 * jm + jn) * km + k0, ns = ((size_t)im2 * jm + js) * km + k0;
     printf("      ATJUP: initVortex: anticyclone at j %d k %d (%.1f deg lat, %d E), half-axes %.1f x %.1f cells, max |V'| %.1f m/s, "
