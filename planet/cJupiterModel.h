@@ -646,6 +646,12 @@ private:
                                    return (e && atoi(e) > 0) ? atoi(e) : 100; }();
         return s; }
     void paraview_sphere_vts(int n);
+    // ATJUP_CLOUDVIEW_STRIDE (2026-10-24): iterations between Jupiter_cloudview_<n>.vtk writes (paraview_cloudview,
+    // ParaView_Jup.cpp). Unset (-1) = together with the panorama .vts, 0 = never.
+    void paraview_cloudview(int n);
+    static int cloudview_stride(){
+        static const int s = [](){ const char* e = getenv("ATJUP_CLOUDVIEW_STRIDE"); return e ? atoi(e) : -1; }();
+        return s; }
 
     void searchMinMax_3D(string, string, 
         string, Array &, double coeff=1., 

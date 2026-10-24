@@ -118,6 +118,61 @@ void cJupiterModel::paraview_panorama_vts(int n){
     return;
 }
 /*
+ * Jupiter_cloudview_<n>.vtk (2026-10-24, ATJUP_CLOUDVIEW_STRIDE): what a camera above the planet would
+ * see of the two cloud decks, for comparison with photographs. Every radial layer i is a horizontal
+ * (lat, lon) sheet holding the column mass ABOVE it, summed from the top down to and including layer i:
+ *
+ *     X_above(i, j, k) = sum_{i' = i .. im-2} X(i', j, k) * layer_thickness_m(i')       [g/m2]
+ *
+ * so layer 0 is the whole column (the photo's view), and stepping i upward strips the deeper cloud
+ * away. Layer im-1, the lid, has no thickness and holds 0 (the same convention as the column sums
+ * of SATADJ-DIAG and CWB). NH3Ice is the white deck of the zones and of the GRS oval; NH4SH is the
+ * deeper layer that shows through where the NH3 deck is thin (the belts). Grid: the radial slices'
+ * (lat, lon) layout (x = 0.1 per latitude row, y = 0.1 per longitude), the layers stacked in z at
+ * 0.1 each, so a ParaView slice normal to z picks one layer.
+ */
+void cJupiterModel::paraview_cloudview(int n){
+    const std::string name = output_path + "/" + planet_name() + "_cloudview_" + std::to_string(n) + ".vtk";
+    std::ofstream f;
+    f.precision(4);
+    f.setf(std::ios::fixed);
+    f.open(name);
+    if(!f.is_open()){
+        std::cerr << "ERROR: could not open cloudview file " << __FILE__ << " at line " << __LINE__ << "\n";
+        abort();
+    }
+    const size_t npt = (size_t)im * jm * km;
+    f << "# vtk DataFile Version 3.0" << std::endl;
+    f << "Cloudview_Data_Jup_Circulation\n";
+    f << "ASCII" << std::endl;
+    f << "DATASET STRUCTURED_GRID" << std::endl;
+    f << "DIMENSIONS " << km << " " << jm << " " << im << std::endl;
+    f << "POINTS " << npt << " float" << std::endl;
+    for(int i = 0; i < im; i++)
+        for(int j = 0; j < jm; j++)
+            for(int k = 0; k < km; k++)
+                f << j * 0.1 << " " << k * 0.1 << " " << i * 0.1 << std::endl;
+    f << "POINT_DATA " << npt << std::endl;
+    auto above = [&](const char* desc, Array& a){
+        std::vector<double> c((size_t)im * jm * km, 0.0);          // c[i][j][k], layer im-1 stays 0
+        for(int j = 0; j < jm; j++) for(int k = 0; k < km; k++){
+            double s = 0.0;
+            for(int i = im - 2; i >= 0; i--){
+                s += a.x[i][j][k] * layer_thickness_m(i) * 1.0e3;    // kg/m3 * m -> g/m2
+                c[((size_t)i * jm + j) * km + k] = s;
+            }
+        }
+        f << "SCALARS " << desc << " float " << 1 << std::endl;
+        f << "LOOKUP_TABLE default" << std::endl;
+        for(size_t q = 0; q < c.size(); q++) f << c[q] << std::endl;
+    };
+    above("NH3Ice_above_gm2", nh3_ice);
+    above("NH4SH_above_gm2", nh4sh);
+    f.close();
+    std::cout << "   File:  " << planet_name() << "_cloudview_" << n << ".vtk"
+              << "  has been written to Directory:  " << output_path << std::endl;
+}
+/*
  * 
 */
 void cJupiterModel::paraview_vtk_radial(int n, int i_radial){

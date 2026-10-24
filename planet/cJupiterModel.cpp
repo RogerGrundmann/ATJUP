@@ -1386,6 +1386,10 @@ void cJupiterModel::Run(){
         if(paraview_panorama_vts_flag && iter_n % panorama_stride() == 0){
             paraview_panorama_vts(iter_n);
         }
+        // ATJUP_CLOUDVIEW_STRIDE (cJupiterModel.h): the from-above cloud columns, by default with the panorama.
+        if(cloudview_stride() > 0 ? (iter_n % cloudview_stride() == 0)
+           : (cloudview_stride() < 0 && paraview_panorama_vts_flag && iter_n % panorama_stride() == 0))
+            paraview_cloudview(iter_n);
 
         if(panorama_cnt == panorama_print) panorama_cnt = 1;
 
