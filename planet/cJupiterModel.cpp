@@ -670,9 +670,11 @@ void cJupiterModel::Run(){
     if(u_init_cont() != 0) initUFromContinuity();
 
     // ATJUP_GEO_BALANCE (cJupiterModel.h): the balanced start, after the boundary passes. Its
-    // solver half is the shared PressureSolver's ATJUP_PRESS_INCR, whose default is 0 there; the
-    // balanced start sets it unless the knob is given.
-    if(geo_balance()) setenv("ATJUP_PRESS_INCR", "1", 0);
+    // solver half was the shared PressureSolver's ATJUP_PRESS_INCR (default 0 there), set here by the
+    // balanced start until 2026-10-25. NO LONGER (user): with it the radial wind in the top fluid cell
+    // grew and flipped sign against the column (the 39 S lid residuum band, 0.011 -> 0.062 in 7000 s);
+    // satchk/pinc_2026-10-25 PI1 / PI0 (vortex, PRESS_LINE, 1000 it): residuum max 0.048 -> 0.017, the
+    // 39 S band 0.031 -> 0.0005, vortex, jets and ice unchanged (|dw| < 1 m/s). ATJUP_PRESS_INCR=1 restores.
     initCellHold();                                                     // ATJUP_CELL_HOLD, cJupiterModel.h
     initGeoBalance();
     initVortex();                                                       // ATJUP_VORTEX, after the balanced background

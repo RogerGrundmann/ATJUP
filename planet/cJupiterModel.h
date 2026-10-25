@@ -790,7 +790,8 @@ public:
     //                           metric force of each column's jet-level wind in rhs_v, and p_baro
     //                           (frozen, added to p_hydro) the per-level rest; see initGeoBalance()
     //   ATJUP_PRESS_INCR 1      the shared solver's defect-correction source (PressureSolver.h):
-    //                           a balanced p_dyn is a fixed point of it
+    //                           a balanced p_dyn is a fixed point of it -- NOT switched on any more since
+    //                           2026-10-25 (cJupiterModel.cpp, initial values): it made the 39 S lid band
     //   ATJUP_DAMP_PDYN 0       no Shapiro pass on p_dyn after the solver (it flattens the balance)
     // DEFAULT 1 since 2026-10-22 (user: "commit, push, default"; ATJUP_GEO_BALANCE=0 restores f857a9c byte for
     // byte, ATJUP_CELL_HOLD following it). Measured at f857a9c from scratch (satchk/cor_2026-10-22, 1000 it):
