@@ -276,13 +276,14 @@ public:
     // m_nh3 + m_h2s = m_nh4sh, so N, S and the mass are conserved by construction. No window: the
     // equilibrium decides where the cloud is. Called in the physics block after the saturation
     // adjustments, and once at the end of the species set-up; H2S and NH4SH join the scalar sync.
-    // Known gap: the moist convective adjustment mixes NH4SH as a tracer without this enthalpy.
+    // The moist convective adjustment carries this enthalpy in its h_L (Tracer.L, cJupiterModel.cpp).
+    // DEFAULT 1 since 2026-10-26, with ATJUP_COMPOSITION; ATJUP_NH4SH_EQ=0 restores the rate law.
     // ===================================================================================================
     // J per kg NH4SH formed: the van't Hoff enthalpy of the Lewis K_p, 4705 ln(10) R* / m_nh4sh.
     static double nh4sh_formation_heat(){ return 4705.0 * std::log(10.0) * 8314.46 / 51.1114; }
 
     static bool nh4sh_eq(){
-        static const bool v = [](){ const char* e = getenv("ATJUP_NH4SH_EQ"); return e && atoi(e) != 0; }();
+        static const bool v = [](){ const char* e = getenv("ATJUP_NH4SH_EQ"); return e ? atoi(e) != 0 : true; }();
         return v;
     }
 

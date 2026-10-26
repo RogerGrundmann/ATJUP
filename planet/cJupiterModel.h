@@ -737,9 +737,11 @@ private:
     // Local mixture density rho = p/(R_mix*T); call with Forces(). See InitValues_Jup.cpp.
     void computeMixtureDensity();
     // ATJUP_CH4_LOCAL_RHO (InitValues_Jup.cpp): CH4 as a fixed mass fraction of the local density.
-    // ATJUP_COMPOSITION=1 (cJupiterModel.cpp, before ThermalPropertiesJup): the observed composition.
+    // ATJUP_COMPOSITION (cJupiterModel.cpp, before ThermalPropertiesJup): the observed composition.
+    // DEFAULT 1 since 2026-10-26 (user: "make ATJUP_COMPOSITION, NH4SH_EQ and SVP_FIT default"); 0 restores
+    // the shipped reference densities, ep and R_ref p_stat.
     static bool composition(){
-        static const bool v = [](){ const char* e = getenv("ATJUP_COMPOSITION"); return e && atoi(e) != 0; }();
+        static const bool v = [](){ const char* e = getenv("ATJUP_COMPOSITION"); return e ? atoi(e) != 0 : true; }();
         return v;
     }
     // DEFAULT 1 since 2026-10-26 (user: "make ATJUP_CH4_LOCAL_RHO default"); ATJUP_CH4_LOCAL_RHO=0 restores the
@@ -749,9 +751,10 @@ private:
         return v;
     }
     void setComposition();
-    // ATJUP_SVP_FIT=1 (InitValues_Jup.cpp, setSvpFit): sourced NH3 liquid / NH3 ice / H2O ice vapour pressures.
+    // ATJUP_SVP_FIT (InitValues_Jup.cpp, setSvpFit): sourced NH3 liquid / NH3 ice / H2O ice vapour pressures.
+    // DEFAULT 1 since 2026-10-26, with ATJUP_COMPOSITION; 0 restores the shipped coefficient sets.
     static bool svp_fit(){
-        static const bool v = [](){ const char* e = getenv("ATJUP_SVP_FIT"); return e && atoi(e) != 0; }();
+        static const bool v = [](){ const char* e = getenv("ATJUP_SVP_FIT"); return e ? atoi(e) != 0 : true; }();
         return v;
     }
     void setSvpFit();
