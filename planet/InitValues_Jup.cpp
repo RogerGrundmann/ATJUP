@@ -873,9 +873,11 @@ void cJupiterModel::Forces(){
 // points above -- verify them against the papers before relying on the last percent.
 // ============================================================================
 void cJupiterModel::setSvpFit(){
-    C_h2o_ice = -1.962499;  L0_h2o_ice = 2641.4013;  del_alf_h2o_ice =  1.629479;  del_bet_h2o_ice = -3.361398e-3;
-    C_nh3_ice = 16.086062;  L0_nh3_ice = 1857.9898;  del_alf_nh3_ice =  0.098768;  del_bet_nh3_ice = -1.179989e-3;
-    C_nh3     = 196.077451; L0_nh3     = 3586.5634;  del_alf_nh3     = -15.978352; del_bet_nh3     =  2.837146e-2;
+    // The sets themselves live in the shared ATPhys.h (one copy for the four models).
+    const ATPhys::SvpSet hi = ATPhys::svp_fit_h2o_ice(), ni = ATPhys::svp_fit_nh3_ice(), nl = ATPhys::svp_fit_nh3_liq();
+    C_h2o_ice = hi.C; L0_h2o_ice = hi.L0; del_alf_h2o_ice = hi.del_alf; del_bet_h2o_ice = hi.del_bet;
+    C_nh3_ice = ni.C; L0_nh3_ice = ni.L0; del_alf_nh3_ice = ni.del_alf; del_bet_nh3_ice = ni.del_bet;
+    C_nh3     = nl.C; L0_nh3     = nl.L0; del_alf_nh3     = nl.del_alf; del_bet_nh3     = nl.del_bet;
     printf("      ATJUP: ATJUP_SVP_FIT: NH3 liquid (NIST Antoine fit), NH3 ice (Fray & Schmitt 2009 fit), H2O ice (Murphy & Koop 2005);"
            " E at 160 K: NH3 ice %.3e bar, at 200 K: H2O ice %.3e bar, at 239.8 K: NH3 liquid %.4f bar\n",
            ATPhys::saturation_vapour_pressure(160.0, C_nh3_ice, L0_nh3_ice, R_nh3, del_alf_nh3_ice, del_bet_nh3_ice),
