@@ -130,6 +130,9 @@ public:
             const char* e = getenv("ATJUP_CHEM_GATE_ZERO");  return e ? atoi(e) : 1; }();
         static const int molar_conc = [](){
             const char* e = getenv("ATJUP_CHEM_MOLAR_CONC"); return e ? atoi(e) : 0; }();
+        // ATJUP_NH4SH_EQ=1: the formation is the equilibrium adjustment EquilibriumNH4SH() below, so the
+        // rate law contributes nothing (w_* = 0 everywhere); the multicomponent diffusion stays.
+        const bool eq_on = nh4sh_eq();
 
         // Zero the polar ghost bands (j < 3 and j > jm-4) that lie outside the
         // RungeKutta domain (which runs j = 3..jm-4).  Concentrations there are
@@ -181,7 +184,7 @@ public:
                     const double kf  = react_rate_const(t_u, T_d, A, B);
                     const double kb  = kf / keq;
 
-                    if ((t_u <= m.t_0_nh4sh) && (t_u >= m.t_00_nh4sh)) {
+                    if (!eq_on && (t_u <= m.t_0_nh4sh) && (t_u >= m.t_00_nh4sh)) {
                         double denom;
                         if (molar_conc) {
                             // c_x = rho * w_x / m_x, the plain molar concentration [kmol/m3].
@@ -204,7 +207,7 @@ public:
                         m.w_nh3.x[i][j][k]   = -m.m_nh3   * R_diff;
                         m.w_h2s.x[i][j][k]   = -m.m_h2s   * R_diff;
                         m.w_nh4sh.x[i][j][k] =  m.m_nh4sh * R_diff;
-                    } else if (gate_zero) {
+                    } else if (gate_zero || eq_on) {
                         // Outside the 200..230 K formation window there is no reaction, so the
                         // rates are zero — not "whatever they were the last time this cell was
                         // inside the window".
@@ -252,6 +255,120 @@ public:
         auto elapsed = chrono::duration_cast<chrono::nanoseconds>(end - begin);
         printf(" time measured: %.3f seconds for ChemMassRateJup\n", elapsed.count() * 1e-9);
         cout << "      ATJUP: ChemMassRateJup ended" << endl;
+    }
+
+    // ===================================================================================================
+    // ATJUP_NH4SH_EQ=1 (2026-10-26, default 0 = off, byte-identical): NH4SH as an EQUILIBRIUM ADJUSTMENT,
+    // replacing the rate law of ChemMassRateJup (whose w_* are then zero).
+    //
+    // WHY. The rate law is kf c_NH3 c_H2S - kb c_NH4SH with kb = kf / keq and keq = m_nh4sh / (m_nh3 m_h2s),
+    // a ratio of molar masses, not an equilibrium constant; kf's A / B / T_d have no source; the
+    // concentrations carry the r_mix / sum_c normalisation the note above calls dimensionally wrong; a
+    // fixed 200-230 K window gates it; and no heat is released.
+    //
+    // WHAT. NH3(g) + H2S(g) <-> NH4SH(s) is in equilibrium where p_NH3 p_H2S = K_p(T),
+    //     log10 K_p [atm^2] = 14.82 - 4705 / T          (Lewis 1969; Weidenschilling & Lewis 1973),
+    // with p_x = (c_x / m_x) R* T [Pa]. Per fluid cell x [kmol/m3] of NH4SH forms (x > 0, product above
+    // K_p) or decomposes (x < 0, product below K_p and solid present, at most all of it), heating the
+    // cell by L x m_nh4sh / (cp_mix rho): L = 4705 ln(10) R* / m_nh4sh = 1.762e6 J/kg, the van't Hoff
+    // enthalpy of the same K_p (90.1 kJ/mol), so the heat and the equilibrium agree. T and K_p are
+    // solved together (bisection on x; f(x) = (a-x)(b-x)(R* T(x))^2 - K_p(T(x)) falls monotonically).
+    // m_nh3 + m_h2s = m_nh4sh, so N, S and the mass are conserved by construction. No window: the
+    // equilibrium decides where the cloud is. Called in the physics block after the saturation
+    // adjustments, and once at the end of the species set-up; H2S and NH4SH join the scalar sync.
+    // Known gap: the moist convective adjustment mixes NH4SH as a tracer without this enthalpy.
+    // ===================================================================================================
+    // J per kg NH4SH formed: the van't Hoff enthalpy of the Lewis K_p, 4705 ln(10) R* / m_nh4sh.
+    static double nh4sh_formation_heat(){ return 4705.0 * std::log(10.0) * 8314.46 / 51.1114; }
+
+    static bool nh4sh_eq(){
+        static const bool v = [](){ const char* e = getenv("ATJUP_NH4SH_EQ"); return e && atoi(e) != 0; }();
+        return v;
+    }
+
+    // One cell to equilibrium; returns x [kmol/m3] formed (> 0) or decomposed (< 0) and applies it.
+    // Same law and heat as described above; all_decomposed is set when the solid ran out.
+    double equilibrateNH4SHCell(int i, int j, int k, bool& all_decomposed, double& sat_entry, double& dT)
+    {
+        constexpr double R_univ = 8314.46, atm = 101325.0;
+        static const double L_f = nh4sh_formation_heat();
+        auto Kp = [&](double T){ return std::pow(10.0, 14.82 - 4705.0 / T) * atm * atm; };   // Pa^2
+        all_decomposed = false; sat_entry = 0.0; dT = 0.0;
+        const double T0 = m.t.x[i][j][k] * m.t_ref;
+        if (!(T0 > 0.0)) return 0.0;
+        double rho = m.rho_mix.x[i][j][k];
+        if (!(rho > 0.0) || !std::isfinite(rho)) rho = m.r_mix;
+        const double a = std::max(0.0, m.nh3.x[i][j][k])   / m.m_nh3;          // kmol/m3
+        const double b = std::max(0.0, m.h2s.x[i][j][k])   / m.m_h2s;
+        const double s = std::max(0.0, m.nh4sh.x[i][j][k]) / m.m_nh4sh;
+        const double heat = L_f * m.m_nh4sh / (m.cp_mix * rho);                // K per kmol/m3 formed
+        auto f = [&](double x){
+            const double T = T0 + heat * x, RT = R_univ * T;
+            return (a - x) * (b - x) * RT * RT - Kp(T); };
+        const double f0 = f(0.0);
+        double lo, hi;
+        if (f0 > 0.0)         { lo = 0.0; hi = std::min(a, b); sat_entry = f0 / Kp(T0); }
+        else if (s > 0.0) {
+            if (f(-s) <= 0.0) { lo = hi = -s; all_decomposed = true; }
+            else              { lo = -s; hi = 0.0; }
+        } else return 0.0;
+        if (hi > lo) for (int it = 0; it < 80; it++) {
+            const double xm = 0.5 * (lo + hi);
+            if (f(xm) > 0.0) lo = xm; else hi = xm;
+            if (hi - lo <= 1.0e-15 * std::max(a, std::max(b, s))) break;
+        }
+        const double x = (f0 > 0.0) ? lo : hi;                                 // never past the root
+        if (x == 0.0) return 0.0;
+        m.nh3.x[i][j][k]   = std::max(0.0, m.nh3.x[i][j][k]   - m.m_nh3   * x);
+        m.h2s.x[i][j][k]   = std::max(0.0, m.h2s.x[i][j][k]   - m.m_h2s   * x);
+        m.nh4sh.x[i][j][k] = std::max(0.0, m.nh4sh.x[i][j][k] + m.m_nh4sh * x);
+        dT = heat * x;
+        m.t.x[i][j][k] = (T0 + dT) / m.t_ref;
+        return x;
+    }
+
+    // where == "init": the set-up's column construction, the equilibrium cloud model of Weidenschilling
+    // & Lewis (1973): each column is swept bottom-up with a rising parcel; a cell takes NH3 and H2S as
+    // the parcel's remaining mass fractions (capped by its own set-up value, i.e. its cold trap), is
+    // equilibrated, and passes what is left upward. So the solid forms where the parcel first crosses
+    // K_p and the limiting H2S is not re-supplied above the cloud. Not conservative by design (it builds a
+    // state). Any other where: every fluid cell equilibrated in place, conservative.
+    void EquilibriumNH4SH(const char* where)
+    {
+        using namespace std;
+        auto begin = chrono::high_resolution_clock::now();
+        const bool sweep = std::string(where) == "init";
+        long n_form = 0, n_decomp = 0, n_all = 0;
+        double dm_form = 0.0, dm_decomp = 0.0, dT_max = 0.0, s_max = 0.0;
+        #pragma omp parallel for collapse(2) schedule(dynamic, 8) \
+            reduction(+:n_form, n_decomp, n_all, dm_form, dm_decomp) reduction(max:dT_max, s_max)
+        for (int j = 0; j < m.jm; j++) {
+            for (int k = 0; k < m.km; k++) {
+                double q_nh3 = 1.0e300, q_h2s = 1.0e300;                            // the parcel, mass fractions
+                for (int i = 0; i < m.im; i++) {
+                    if (m.SeaMount.x[i][j][k] == 1.0) continue;
+                    double rho = m.rho_mix.x[i][j][k];
+                    if (!(rho > 0.0) || !isfinite(rho)) rho = m.r_mix;
+                    if (sweep) {
+                        m.nh3.x[i][j][k] = min(m.nh3.x[i][j][k], q_nh3 * rho);
+                        m.h2s.x[i][j][k] = min(m.h2s.x[i][j][k], q_h2s * rho);
+                    }
+                    bool all_ = false; double sat_ = 0.0, dT_ = 0.0;
+                    const double x = equilibrateNH4SHCell(i, j, k, all_, sat_, dT_);
+                    if (sweep) { q_nh3 = m.nh3.x[i][j][k] / rho; q_h2s = m.h2s.x[i][j][k] / rho; }
+                    s_max = max(s_max, sat_); dT_max = max(dT_max, fabs(dT_));
+                    if (all_) n_all++;
+                    if (x > 0.0)      { n_form++;   dm_form   += m.m_nh4sh * x; }
+                    else if (x < 0.0) { n_decomp++; dm_decomp -= m.m_nh4sh * x; }
+                }
+            }
+        }
+        auto end = chrono::high_resolution_clock::now();
+        printf("      ATJUP: EquilibriumNH4SH (%s%s, Lewis K_p, L %.4e J/kg): formed in %ld cells (sum %.4e kg/m3),"
+               " decomposed in %ld (sum %.4e kg/m3, %ld completely), max p_NH3 p_H2S / K_p - 1 at entry %.3e,"
+               " max dT %.4f K; %.3f s\n", where, sweep ? ", parcel sweep" : "",
+               4705.0 * log(10.0) * 8314.46 / m.m_nh4sh, n_form, dm_form, n_decomp, dm_decomp, n_all, s_max, dT_max,
+               chrono::duration_cast<chrono::nanoseconds>(end - begin).count() * 1e-9);
     }
 
     void DiffMassFluxJup()

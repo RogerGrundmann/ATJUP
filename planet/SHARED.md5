@@ -26,7 +26,7 @@
 # promote them to a shared repository.
 98cda0bd97bbc7a52556b97691e406c1  planet/ATPhys.h
 31a2e16455e63d95654ac16bcf3b03b0  planet/BoundaryConditions.h
-97a14dd488fb7fd821f87905bff64eaf  planet/ConvectiveAdjustment.h
+bfc81b6dc2c4e02a9768ece3c6a5172f  planet/ConvectiveAdjustment.h
 97da55e01823b2dcba4426f038f05e79  planet/FluxLimiter.h
 03b9170d1281bd85145ad79d1ca1da44  planet/ParaViewWriter.h
 05e659b11ce6c48d2467dc8665fe54a3  planet/Precipitation.h

@@ -208,6 +208,10 @@ instead — so it has no `ATJUP_THERMAL_MASSFLUX` knob. The other three models d
 |----------|---------|--------|
 | `ATJUP_PRECIP` | 1 | three-category microphysics + NH₄SH sedimentation |
 | `ATJUP_PRECIP_COUPLING` | 0 | feed the latent heat `Q_precip` into the temperature equation |
+| `ATJUP_CH4_LOCAL_RHO` | 1 (since 2026-10-26) | CH4 as a fixed mass fraction of the local density, at init and after a restart load; 0 restores the constant-density field (0.19 kg/m³ everywhere, a mass fraction above 1 over ~80 km) |
+| `ATJUP_COMPOSITION` | 0 | the observed composition: mass shares from He/H₂ 0.157, CH₄/H₂ 2.37·10⁻³, H₂S/H₂ 8.9·10⁻⁵ (Galileo), H₂O at 2.5× solar O/H, NH₃ 362 ppm (Juno), r_mix held; ep from the mixture, p_stat with R_mix; H₂O / NH₃ / H₂S start as ρ_local × min(deep share, cold trap), no condensate. From scratch only — on a restart H₂O, H₂S and p_stat keep the file's state |
+| `ATJUP_NH4SH_EQ` | 0 | NH₄SH as an equilibrium adjustment on the Lewis K_p (log₁₀ K_p = 14.82 − 4705/T, atm²) with its heat of formation (1.76·10⁶ J/kg), instead of the rate law; parcel-swept initial cloud |
+| `ATJUP_SVP_FIT` | 0 | NH₃ liquid / NH₃ ice / H₂O ice vapour pressures from NIST Antoine, Fray & Schmitt (2009) and Murphy & Koop (2005), fitted into the model's four-coefficient form (coefficients in `setSvpFit`) |
 
 **Turbulence**
 
@@ -270,7 +274,7 @@ value. `ATJUP_TURB=1` set explicitly gave then what the default gives now, byte 
 | `ATJUP_SINTHE_MIN` | 0.55 | polar floor on sin θ; 0.55 means the floor is active poleward of 56.6° |
 | `ATJUP_WALL_NUE` | 4 | wall eddy viscosity at the obstacle, in multiples of 1/re; 0 disables |
 | `ATJUP_WALL_NUE_LAYERS` | 3 | its ramp depth in cells |
-| `ATJUP_LOCAL_RHO` | 0 | use the local density instead of the constant r_mix in q_sat, latent heat and the Lewis groups |
+| `ATJUP_LOCAL_RHO` | 1 (since 2026-10-22) | use the local density instead of the constant r_mix in q_sat, latent heat and the Lewis groups |
 | `ATJUP_NONDIM` | 0 | put the body forces into the units `rhs_u` is written in — see *Scaling* |
 | `ATJUP_ND_BUOY` `_COR` `_CENT` | *follow `ATJUP_NONDIM`* | the three factors individually, for attribution |
 | `ATJUP_ADIABATIC` | 1 (since 2026-10-22; was: follows `ATJUP_NONDIM`, i.e. off) | compression work against p_stat, i.e. the dry adiabatic lapse rate; 0 restores |
@@ -279,6 +283,9 @@ value. `ATJUP_TURB=1` set explicitly gave then what the default gives now, byte 
 | `ATJUP_CONV_ADJ` | *follows `ATJUP_NONDIM`* | dry convective adjustment of superadiabatic columns |
 | `ATJUP_CONV_ADJ_LAPSE` | 1 | scale its critical lapse rate (1 = the dry adiabat) |
 | `ATJUP_CONV_ADJ_PASSES` | 64 | cap on sweeps per column; a warning is printed if it is reached |
+| `ATJUP_MCA` | 0 | moist convective adjustment with the Ledoux criterion every N iterations (see below) |
+| `ATJUP_MCA_LEDOUX` `_LOADING` `_RELAX` `_PASSES` | 1, 1, 1, 64 | composition in the density test (0 = temperature only), condensate weight, fraction applied per call, sweep cap |
+| `ATJUP_MCA_DEBUG` | — | `j,k`: print the parcel test of one column on the first call |
 | `ATJUP_THERMAL_WIND` | *follows `ATJUP_NONDIM`* | put the zonal wind's shear into thermal-wind balance at startup |
 | `ATJUP_TW_LAT_TAPER` | 10 | latitude band about the equator where the balance is not imposed |
 | `ATJUP_TW_MERIDIONAL` | 0 | also adjust v, from the zonal density gradient |
@@ -592,6 +599,23 @@ geometry produces a non-finite state within 150 iterations, with the entire diff
 caps. With `ATJUP_METRIC_RADIUS` set, the two values become indistinguishable, because the terms the
 floor protects are damped by the radius. Lowering the floor is therefore safe only in that
 geometry, and 150 iterations is not yet enough evidence to make it the default.
+
+### The moist convective adjustment (Ledoux)
+
+`MoistConvectiveAdjustmentJup` (shared `ConvectiveAdjustment.h`, `ATJUP_MCA`) tests every adjacent pair
+of a column with a parcel: the lower cell is lifted to the level above conserving its liquid-ice static
+energy h_L = c_p T + g z − Σ (l_v q_liq + l_s q_ice) − L_NH₄SH q_NH₄SH and the total H₂O and NH₃, and both
+cells are put in phase equilibrium. The pair is unstable when the parcel is lighter, i.e. has the higher
+virtual temperature T (1 + Σ q_v (1/ε − 1) − q_cond). In hydrogen the vapours are heavy (ε ≈ 7–8), so a
+vapour content falling with height stabilises the column. Unstable segments are mixed in h_L, q_t and the
+tracers (H₂S, NH₄SH, chromophore), mass-weighted, and returned to equilibrium; the result is the dry or
+moist adiabat. It conserves energy and mass to round-off (~4·10⁻¹⁶).
+
+Measured 2026-10-26: on the shipped composition it adjusts about a third of the columns per call, almost
+all at the NH₃ freezing level, while ~60 % of the pairs a saturated parcel would make unstable in
+temperature are held by the water-vapour gradient. On `ATJUP_COMPOSITION` it fires in no column at all —
+the Ledoux term holds the water cloud, the lapse rate (2.0 K/km) is below the dry adiabat (2.20 K/km).
+It mixes neither momentum nor turbulence, and the local test does not see penetrative convection.
 
 ---
 

@@ -75,6 +75,7 @@ class cJupiterModel{
     template<class M> friend class Precipitation;
     template<class M> friend class Turbulence;
     template<class M> friend class ConvectiveAdjustment;
+    template<class M> friend class MoistConvectiveAdjustment;
     template<class M> friend class Reporting;
     template<class M> friend class ParaViewWriter;
 
@@ -723,6 +724,27 @@ private:
 
     // Local mixture density rho = p/(R_mix*T); call with Forces(). See InitValues_Jup.cpp.
     void computeMixtureDensity();
+    // ATJUP_CH4_LOCAL_RHO (InitValues_Jup.cpp): CH4 as a fixed mass fraction of the local density.
+    // ATJUP_COMPOSITION=1 (cJupiterModel.cpp, before ThermalPropertiesJup): the observed composition.
+    static bool composition(){
+        static const bool v = [](){ const char* e = getenv("ATJUP_COMPOSITION"); return e && atoi(e) != 0; }();
+        return v;
+    }
+    // DEFAULT 1 since 2026-10-26 (user: "make ATJUP_CH4_LOCAL_RHO default"); ATJUP_CH4_LOCAL_RHO=0 restores the
+    // constant-density CH4 field. (It followed ATJUP_COMPOSITION before, which now changes nothing.)
+    static bool ch4_local_rho(){
+        static const bool v = [](){ const char* e = getenv("ATJUP_CH4_LOCAL_RHO"); return e ? atoi(e) != 0 : true; }();
+        return v;
+    }
+    void setComposition();
+    // ATJUP_SVP_FIT=1 (InitValues_Jup.cpp, setSvpFit): sourced NH3 liquid / NH3 ice / H2O ice vapour pressures.
+    static bool svp_fit(){
+        static const bool v = [](){ const char* e = getenv("ATJUP_SVP_FIT"); return e && atoi(e) != 0; }();
+        return v;
+    }
+    void setSvpFit();
+    void setCompositionEp();
+    void initCh4LocalRho(const char* where);
 
     // ATJUP_LOCAL_RHO=1 — use the LOCAL mixture density rho_mix in place of the constant
     // reference density r_mix wherever a density genuinely belongs to the cell: the saturation

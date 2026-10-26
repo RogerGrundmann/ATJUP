@@ -14,3 +14,4 @@
 class cJupiterModel;
 
 typedef ConvectiveAdjustment<cJupiterModel> ConvectiveAdjustmentJup;
+typedef MoistConvectiveAdjustment<cJupiterModel> MoistConvectiveAdjustmentJup;

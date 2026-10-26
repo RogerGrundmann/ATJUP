@@ -111,6 +111,16 @@ static double timestep()           { static const double v = [](){ const char* e
 // of what it is worth was made; ATJUP_CONV_ADJ=1 forces it on without them, which shows what the
 // stratification does on its own. With ATJUP_NONDIM unset the default is off and every run is
 // bit-identical to before.
+// ATJUP_MCA=<N> (2026-10-26, DEFAULT 0 = off): the moist convective adjustment with the Ledoux
+// criterion (MoistConvectiveAdjustmentJup, shared ConvectiveAdjustment.h, where the note and its own
+// knobs are) every N iterations, right after the dry one. It mixes h_L, the total H2O / NH3
+// and H2S / NH4SH / chromophore over every segment a parcel test finds lighter than its
+// surroundings, saturated parcels on their moist adiabat, the heavy vapours stabilising.
+static int    mca_stride(){
+    static const int v = [](){ const char* e = getenv("ATJUP_MCA"); return e ? std::max(0, atoi(e)) : 0; }();
+    return v;
+}
+
 static int    conv_adj_enabled(){
     static const int v = [](){
         const char* e = getenv("ATJUP_CONV_ADJ");
@@ -484,7 +494,13 @@ void cJupiterModel::Run(){
 
 //    goto Printout;
 
+    if(svp_fit()) setSvpFit();                       // ATJUP_SVP_FIT (InitValues_Jup.cpp), before any SVP is evaluated
+    if(composition()) setComposition();              // ATJUP_COMPOSITION (InitValues_Jup.cpp)
+
     ChemistryJup(*this).ThermalPropertiesJup();
+    if(composition()) setCompositionEp();            // needs R_mix (InitValues_Jup.cpp)
+    printf("      ATJUP: mixture r_mix %.5f kg/m3, cp_mix %.2f J/(kg K), R_mix %.3f J/(kg K), mue_mix %.4e Pa s, g/cp %.4f K/km\n",
+           r_mix, cp_mix, R_mix, mue_mix, g / cp_mix * 1.0e3);
 
     init_temperature();
 
@@ -526,9 +542,9 @@ void cJupiterModel::Run(){
 
 //    goto Printout;
 
-    JupiterUtils::damp_wiggles(h2o,       &i_topography, true, true, true);
-    JupiterUtils::damp_wiggles(h2o_cloud, &i_topography, true, true, true);
-    JupiterUtils::damp_wiggles(h2o_ice,   &i_topography, true, true, true);
+    if(!composition()) JupiterUtils::damp_wiggles(h2o,       &i_topography, true, true, true);   // ATJUP_COMPOSITION: not smoothed
+    if(!composition()) JupiterUtils::damp_wiggles(h2o_cloud, &i_topography, true, true, true);   // ATJUP_COMPOSITION: not smoothed
+    if(!composition()) JupiterUtils::damp_wiggles(h2o_ice,   &i_topography, true, true, true);   // ATJUP_COMPOSITION: not smoothed
 
 //    goto Printout;
 
@@ -540,9 +556,9 @@ void cJupiterModel::Run(){
         C_nh3, L0_nh3, R_nh3, del_alf_nh3, del_bet_nh3,
         nh3, nh3_cloud, nh3_ice);
 
-    JupiterUtils::damp_wiggles(nh3,       &i_topography, true, true, true);
-    JupiterUtils::damp_wiggles(nh3_cloud, &i_topography, true, true, true);
-    JupiterUtils::damp_wiggles(nh3_ice,   &i_topography, true, true, true);
+    if(!composition()) JupiterUtils::damp_wiggles(nh3,       &i_topography, true, true, true);   // ATJUP_COMPOSITION: not smoothed
+    if(!composition()) JupiterUtils::damp_wiggles(nh3_cloud, &i_topography, true, true, true);   // ATJUP_COMPOSITION: not smoothed
+    if(!composition()) JupiterUtils::damp_wiggles(nh3_ice,   &i_topography, true, true, true);   // ATJUP_COMPOSITION: not smoothed
 
     init_vapour_cloud_ice("CH4", ch4_tropopause,
         coeff_ch4_A, coeff_ch4_B,
@@ -565,7 +581,7 @@ void cJupiterModel::Run(){
         ep_h2s, r_h2s, m_h2s,
         C_h2s, L0_h2s, R_h2s, del_alf_h2s, del_bet_h2s, h2s);
 
-    JupiterUtils::damp_wiggles(h2s, &i_topography, true, true, true);
+    if(!composition()) JupiterUtils::damp_wiggles(h2s, &i_topography, true, true, true);   // ATJUP_COMPOSITION: not smoothed
 
 //    goto Printout;
 
@@ -586,9 +602,9 @@ void cJupiterModel::Run(){
         C_h2o_ice, L0_h2o_ice, del_alf_h2o_ice, del_bet_h2o_ice,
         h2o, h2o_cloud, h2o_ice);
 
-    JupiterUtils::damp_wiggles(h2o,       &i_topography, true, true, true);
-    JupiterUtils::damp_wiggles(h2o_cloud, &i_topography, true, true, true);
-    JupiterUtils::damp_wiggles(h2o_ice,   &i_topography, true, true, true);
+    if(!composition()) JupiterUtils::damp_wiggles(h2o,       &i_topography, true, true, true);   // ATJUP_COMPOSITION: not smoothed
+    if(!composition()) JupiterUtils::damp_wiggles(h2o_cloud, &i_topography, true, true, true);   // ATJUP_COMPOSITION: not smoothed
+    if(!composition()) JupiterUtils::damp_wiggles(h2o_ice,   &i_topography, true, true, true);   // ATJUP_COMPOSITION: not smoothed
 
 
     SaturationAdjustmentJup(*this).run("NH3",
@@ -598,9 +614,9 @@ void cJupiterModel::Run(){
         C_nh3_ice, L0_nh3_ice, del_alf_nh3_ice, del_bet_nh3_ice,
         nh3, nh3_cloud, nh3_ice);
 
-    JupiterUtils::damp_wiggles(nh3,       &i_topography, true, true, true);
-    JupiterUtils::damp_wiggles(nh3_cloud, &i_topography, true, true, true);
-    JupiterUtils::damp_wiggles(nh3_ice,   &i_topography, true, true, true);
+    if(!composition()) JupiterUtils::damp_wiggles(nh3,       &i_topography, true, true, true);   // ATJUP_COMPOSITION: not smoothed
+    if(!composition()) JupiterUtils::damp_wiggles(nh3_cloud, &i_topography, true, true, true);   // ATJUP_COMPOSITION: not smoothed
+    if(!composition()) JupiterUtils::damp_wiggles(nh3_ice,   &i_topography, true, true, true);   // ATJUP_COMPOSITION: not smoothed
 
 
     SaturationAdjustmentJup(*this).run("CH4",
@@ -625,6 +641,9 @@ void cJupiterModel::Run(){
                 if(SeaMount.x[i][j][k] == 1.0) a_->x[i][j][k] = 0.0;
         printf("      ATJUP: ATJUP_INIT_SPECIES_FULL: species initialised without the obstacle, zeroed inside it\n");
     }
+
+    if(ch4_local_rho()) initCh4LocalRho("init");     // after the obstacle is back: zero inside it
+    if(ChemistryJup::nh4sh_eq()){ computeMixtureDensity(); ChemistryJup(*this).EquilibriumNH4SH("init"); }
 
 //    goto Printout;
 
@@ -705,6 +724,10 @@ void cJupiterModel::Run(){
     int iter_start = 1;
     if(restart_from_iter >= 0 && load_state(restart_from_iter)){
         iter_start = restart_from_iter + 1;
+        if(ch4_local_rho()) initCh4LocalRho("restart");   // the file holds the constant-density field
+        if(composition())
+            printf("      ATJUP: WARNING - ATJUP_COMPOSITION on a restart: the mixture constants and CH4 follow it, but"
+                   " H2O, H2S and p_stat keep the state of the file; start from scratch for a clean arm\n");
         restoreVar(1.0);          // refresh the n-level copies from the restored fields
     }
 
@@ -1006,6 +1029,9 @@ void cJupiterModel::Run(){
             C_ch4_ice, L0_ch4_ice, del_alf_ch4_ice, del_bet_ch4_ice,
             ch4, ch4_cloud, ch4_ice);
 
+        // ATJUP_NH4SH_EQ: the NH4SH equilibrium adjustment (ChemistryJup.h), on the adjusted NH3.
+        if(ChemistryJup::nh4sh_eq()) ChemistryJup(*this).EquilibriumNH4SH("loop");
+
         // Must stay AFTER the SaturationAdjustmentJup calls: its condensate depletion is applied
         // in place, and running it before them would let the adjustment simply undo the removal.
         cwb_mark(CW_SATADJ_OTHER); tb_mark(CW_SATADJ_OTHER); qb_mark(CW_SATADJ_OTHER);
@@ -1038,6 +1064,8 @@ void cJupiterModel::Run(){
         // iterations, 0.09 % of the H2O column) -- ATJUP_SATADJ_CONSERVE=1 removes it (default off:
         // that knob is in the shared header).
         static const int rk_scalar_sync = [](){ const char* e = getenv("ATJUP_RK_SCALAR_SYNC"); return e ? atoi(e) : 2; }();
+        // ATJUP_NH4SH_EQ: the equilibrium adjustment writes H2S and NH4SH directly, so they join the sync.
+        const bool nh4sh_sync_ = ChemistryJup::nh4sh_eq();
         if(rk_scalar_sync >= 1){
             #pragma omp parallel for collapse(2) schedule(static)
             for(int i = 0; i < im; i++){
@@ -1053,6 +1081,7 @@ void cJupiterModel::Run(){
                         ch4_cloudn.x[i][j][k] = ch4_cloud.x[i][j][k];
                         ch4_icen.x[i][j][k]   = ch4_ice.x[i][j][k];
                         if(rk_scalar_sync >= 2) tn.x[i][j][k] = t.x[i][j][k];
+                        if(nh4sh_sync_){ h2sn.x[i][j][k] = h2s.x[i][j][k]; nh4shn.x[i][j][k] = nh4sh.x[i][j][k]; }
                     }
                 }
             }
@@ -1217,6 +1246,26 @@ void cJupiterModel::Run(){
         // cells it must not mix across, and before restoreVar so that the adjusted temperature
         // is what the n-level copies carry into the next step. Off unless ATJUP_NONDIM is set.
         if(conv_adj_enabled()) ConvectiveAdjustmentJup(*this).run();
+        if(mca_stride() > 0 && iter_n % mca_stride() == 0){
+            typedef MoistConvectiveAdjustmentJup::Gas    Gas_;
+            typedef MoistConvectiveAdjustmentJup::Tracer Tr_;
+            std::vector<Gas_> gases = {
+                { "H2O", &h2o, &h2o_cloud, &h2o_ice, ep_h2o, lv_h2o, ls_h2o, t_0_h2o,
+                  C_h2o, L0_h2o, R_h2o, del_alf_h2o, del_bet_h2o, C_h2o_ice, L0_h2o_ice, del_alf_h2o_ice, del_bet_h2o_ice },
+                { "NH3", &nh3, &nh3_cloud, &nh3_ice, ep_nh3, lv_nh3, ls_nh3, t_0_nh3,
+                  C_nh3, L0_nh3, R_nh3, del_alf_nh3, del_bet_nh3, C_nh3_ice, L0_nh3_ice, del_alf_nh3_ice, del_bet_nh3_ice } };
+            // CH4 is left out, as gas and as tracer: it cannot condense here (t_0 90.7 K, the coldest
+            // cell ~103 K) and is well mixed, so mixing it changes nothing. The first probe (2026-10-26)
+            // had it in while its field was still the r_mix-scaled constant density (ATJUP_CH4_LOCAL_RHO=0:
+            // 137-190 g/m3, a mass fraction above 1 over ~80 km); T_v went negative at the top and every
+            // column fired.
+            // NH4SH carries its heat of formation in the conserved energy when ATJUP_NH4SH_EQ forms it with
+            // that heat (ChemistryJup::EquilibriumNH4SH); under the old rate law it releases none, so 0.
+            const double L_nh4sh_ = ChemistryJup::nh4sh_eq() ? ChemistryJup::nh4sh_formation_heat() : 0.0;
+            std::vector<Tr_> tracers = { { "H2S", &h2s, ep_h2s, false, 0.0 }, { "NH4SH", &nh4sh, 0.0, true, L_nh4sh_ },
+                                         { "chrom", &chrom, 0.0, false, 0.0 } };
+            MoistConvectiveAdjustmentJup(*this, gases, tracers).run();
+        }
 
 //        RungeKuttaJup();
 

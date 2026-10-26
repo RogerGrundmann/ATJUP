@@ -621,7 +621,12 @@ void cJupiterModel::init_PressureStatic(){
 
     auto begin = std::chrono::high_resolution_clock::now();
 
-    const double exp_pressure = g / (gam * R_ref);
+    // ATJUP_COMPOSITION: the gas constant of the mixture, R_mix, in place of R_ref = 3.75 kJ/(kg K), so that
+    // p_stat is hydrostatic for the density every consumer forms, rho_local = p / (R_mix T): with R_ref the
+    // two disagreed by R_ref / R_mix - 1 = 6 % (21 % against the shipped R_mix 3105). The anchor stays
+    // p_ref at T = t_ref (165 K, the 1-bar level), so the deep pressures rise with the larger exponent.
+    const double R_kJ = composition() ? R_mix * 1.0e-3 : R_ref;      // [kJ/(kg K)], see the unit note below
+    const double exp_pressure = g / (gam * R_kJ);
 
     // p_stat ~ (T/t_ref)^(g/(gam*R_ref)) is the POLYTROPIC relation: it assumes the lapse rate is
     // exactly gam. That holds through the troposphere, but init_temperature now clamps the profile
@@ -637,7 +642,7 @@ void cJupiterModel::init_PressureStatic(){
     //
     // Below the clamp the analytic formula is kept untouched, so the troposphere — and every
     // calibration already tuned against it — is bit-identical.
-    const double R_spec = R_ref * 1.0e3;               // [J/(kg K)]
+    const double R_spec = R_kJ * 1.0e3;                // [J/(kg K)]
 
     #pragma omp parallel for collapse(2) schedule(static)
     for (int j = 0; j < jm; j++) {
@@ -662,6 +667,10 @@ void cJupiterModel::init_PressureStatic(){
             }
         }
     }
+
+    if (composition())
+        printf("      ATJUP: ATJUP_COMPOSITION: p_stat with R_mix %.1f J/(kg K) (R_ref %.1f), exponent %.4f; p at the bottom, equator %.3f bar\n",
+               R_spec, R_ref * 1.0e3, exp_pressure, p_stat.x[0][(jm - 1) / 2][0]);
 
     auto end     = std::chrono::high_resolution_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
@@ -790,6 +799,157 @@ void cJupiterModel::Forces(){
 
 
 // ============================================================================
+// ATJUP_CH4_LOCAL_RHO (2026-10-26; DEFAULT 1 since the same day on the user's word, =0 restores the
+// constant-density field): CH4 as a FIXED MASS FRACTION of the local density. MEASURED before the flip
+// (satchk/ch4_2026-10-26/CR, PI0 restart 1000 -> 1100 vs mca_2026-10-26/M0): T, u, v, w, NH3 / H2O ice
+// bit-identical -- radiation is not coupled into T by default, so only the CH4 field and the Q_rad
+// diagnostic move; with ATJUP_RAD_COUPLING the methane opacity reads this field.
+//
+// WHY. init_vapour_cloud_ice writes every gas as magnus * r_mix * q_sat capped at r_max. Methane never
+// saturates on Jupiter (t_0 90.7 K, the coldest cell ~103 K), so the cap holds everywhere and CH4 is a
+// CONSTANT DENSITY, r_ch4 = 0.19 kg/m3 at the equator and 0.7 of it at the poles (137-190 g/m3 at PI0
+// it 1000). Against the local density (ATJUP_LOCAL_RHO, default 1) that is a mass fraction of 0.17 at
+// the bottom and above 1 over ~80 km (14 at the lid, rho 0.0135). Radiation.h reads exactly that
+// q_ch4 = ch4 / rho for the methane opacity; the moist convective adjustment's density test went
+// negative with it.
+//
+// WHAT. c = r_max(j) * rho_local / r_mix, i.e. the mass fraction the model's own reference level has
+// (r_ch4 / r_mix = 0.148 at the equator, the same parabola in latitude), the density being
+// computeMixtureDensity()'s; cloud and ice zero; zero inside the obstacle. Called at the end of the
+// species set-up and again after a restart file is loaded, so a continued run gets the same field
+// (the CH4 transport history in the file is discarded; it was the cap plus round-off). The scalar
+// r_ch4 is NOT changed here: it enters r_mix and through it mue_mix / cp_mix. The abundance itself
+// (0.148 by mass against 0.0142 observed) is ATJUP_COMPOSITION (setComposition below); with it set the
+// mass fraction here is r_ch4 / r_mix at every latitude (methane is well mixed), without the polar 0.7.
+// ============================================================================
+// ============================================================================
+// ATJUP_COMPOSITION=1 (2026-10-26, default 0 = off, byte-identical): the OBSERVED composition in the
+// reference densities r_x that ThermalPropertiesJup turns into r_mix, c_mix, cp_mix, mue_mix, k_mix and
+// R_mix, and in the deep caps of the H2O / H2S / CH4 fields.
+//
+// WHY. The shipped r_x are, as mass shares of r_mix = 1.2844: H2 0.673, He 0.106, H2O 0.070, CH4 0.148,
+// NH3 0.0031, H2S 0.0003. r_h2 = 0.864 / r_he = 0.136 are Jupiter's VOLUME fractions entered as mass
+// (He by mass is 0.230); r_ch4 = 0.19 is 10.6x the observed methane, r_h2o = 0.09 4.3x water at 2.5x
+// solar, r_h2s 0.28x the observed H2S. The mixture came out with mean molar mass 2.68 (R_mix 3105)
+// against 2.35, and cp_mix 10655.
+//
+// WHAT. Mole ratios to H2: He 0.157 (Galileo, von Zahn et al. 1998), CH4 2.37e-3 and H2S 8.9e-5
+// (Galileo GPMS, Wong et al. 2004), H2O 2 x 2.5 x solar O/H = 2 x 2.5 x 4.90e-4 (Asplund et al. 2009;
+// 2.5x solar = Juno MWR, Li et al. 2020), NH3 362 ppm by volume (Juno MWR deep, Li et al. 2017). Their
+// mass shares w_x set r_x = w_x * r_mix with the SUM r_mix HELD at its shipped value, so p_dyn_to_bar
+// and every other r_mix scaling stay put and only the composition moves; H2 takes the remainder;
+// c_x = r_x / m_x. The field caps (init_vapour_cloud_ice / init_h2s) become w_x * rho_local (latitude
+// parabola kept for H2O / H2S / NH3); NH3's deep plateau (t > t_add, was the constant r_nh3_add =
+// 0.009 kg/m3: 0.8 % by mass at the bottom rising to 2.5 % at 2 bar, 3-10x Juno) is that same well-mixed
+// share, so the NH3 mass fraction no longer rises with height below the cloud base; CH4 the uniform
+// w_ch4 * rho_local (ATJUP_CH4_LOCAL_RHO follows this knob). The vapour below the cap is still
+// magnus * r_mix * q_sat as before.
+// ============================================================================
+// ============================================================================
+// ATJUP_SVP_FIT=1 (2026-10-26, default 0 = off, byte-identical): the NH3 liquid, NH3 ice and H2O ice
+// saturation vapour pressures from published curves, in the model's own four-coefficient form
+//     ln E[bar] = C + (-L0 / T + del_alf ln T + del_bet T) / (1e-3 R)      (ATPhys::saturation_vapour_pressure)
+// so every consumer (SaturationAdjustment, Precipitation, the moist convective adjustment, the set-up)
+// takes them through the members. Not affected: the H2O liquid set (within 7 % of reference from 273 to
+// 320 K), CH4, H2S, and Thermo_Jup's two-coefficient pairs, which feed only the Q_Latent diagnostic.
+//
+// WHY. The shipped curves are too steep: their effective latent heat L0 + del_alf T + del_bet T^2 is too
+// large (NH3 ice 2550 J/g at 160 K against 1832; L0_nh3_ice was L0_nh3 x ls/lv). Against the references:
+// NH3 ice x0.93 at 195.4 K, x0.18 at 160, x0.05 at 140, x0.003 at 110; NH3 liquid x1.4 at 220,
+// x1.9 at the normal boiling point, x3.9 at 300; H2O ice x0.51 at 200 K, x0.09 at 150. At the NH3 ice
+// deck (140-160 K) the vapour saturated 5-20x too low.
+//
+// WHAT (fits made 2026-10-26, satchk scratch svpfit.py):
+//   H2O ice   Murphy & Koop (2005), ln p[Pa] = 9.550426 - 5723.265/T + 3.53068 ln T - 0.00728332 T --
+//             the model's form exactly, no fit (611.66 Pa at 273.16 K).
+//   NH3 ice   least-squares fit over 110-195.4 K to Fray & Schmitt (2009), ln p[bar] = sum_i A_i / T^i,
+//             A = 15.96, -3537, -3.310e4, 1.742e6, -2.995e7; max error 0.05 %. Check: 0.0611 bar at the
+//             triple point; 8.59e-4 / 2.94e-5 bar at 160 / 140 K against 8.65e-4 / 3.03e-5 from
+//             Clausius-Clapeyron with 31.2 kJ/mol from the triple point.
+//   NH3 liq.  least-squares fit over 195.4-330 K to the NIST Antoine equations for ammonia,
+//             log10 p[bar] = 3.18757 - 506.713/(T - 80.78) below 239.6 K, 4.86886 - 1113.928/(T - 10.409)
+//             above; max error 3.2 %, 5 % at 350 K. Check: 1.030 bar at 239.8 K (1.013), 10.5 bar at 300 K.
+// The coefficient values were written from memory of those sources and checked only against the fixed
+// points above -- verify them against the papers before relying on the last percent.
+// ============================================================================
+void cJupiterModel::setSvpFit(){
+    C_h2o_ice = -1.962499;  L0_h2o_ice = 2641.4013;  del_alf_h2o_ice =  1.629479;  del_bet_h2o_ice = -3.361398e-3;
+    C_nh3_ice = 16.086062;  L0_nh3_ice = 1857.9898;  del_alf_nh3_ice =  0.098768;  del_bet_nh3_ice = -1.179989e-3;
+    C_nh3     = 196.077451; L0_nh3     = 3586.5634;  del_alf_nh3     = -15.978352; del_bet_nh3     =  2.837146e-2;
+    printf("      ATJUP: ATJUP_SVP_FIT: NH3 liquid (NIST Antoine fit), NH3 ice (Fray & Schmitt 2009 fit), H2O ice (Murphy & Koop 2005);"
+           " E at 160 K: NH3 ice %.3e bar, at 200 K: H2O ice %.3e bar, at 239.8 K: NH3 liquid %.4f bar\n",
+           ATPhys::saturation_vapour_pressure(160.0, C_nh3_ice, L0_nh3_ice, R_nh3, del_alf_nh3_ice, del_bet_nh3_ice),
+           ATPhys::saturation_vapour_pressure(200.0, C_h2o_ice, L0_h2o_ice, R_h2o, del_alf_h2o_ice, del_bet_h2o_ice),
+           ATPhys::saturation_vapour_pressure(239.8, C_nh3, L0_nh3, R_nh3, del_alf_nh3, del_bet_nh3));
+}
+
+
+void cJupiterModel::setComposition(){
+    // NH3: 362 ppm by volume (Juno MWR deep, Li et al. 2017) over an H2 mole fraction of 0.8626.
+    const double x_he = 0.157, x_ch4 = 2.37e-3, x_h2s = 8.9e-5, x_h2o = 2.0 * 2.5 * 4.90e-4, x_nh3 = 362.0e-6 / 0.8626;  // per H2
+    const double S = r_h2 + r_he + r_h2s + r_nh3 + r_nh4sh + r_h2o + r_ch4;
+    const double w_nh4sh = r_nh4sh / S;
+    // mass per mole of H2 of the mixture (NH4SH, a condensate, keeps its share)
+    const double m_tot = m_h2 + x_he * m_he + x_ch4 * m_ch4 + x_h2s * m_h2s + x_h2o * m_h2o + x_nh3 * m_nh3;
+    const double w_rest = 1.0 - w_nh4sh;
+    const double o_h2 = r_h2, o_he = r_he, o_h2o = r_h2o, o_ch4 = r_ch4, o_h2s = r_h2s, o_nh3 = r_nh3;
+    r_he  = w_rest * x_he  * m_he  / m_tot * S;
+    r_ch4 = w_rest * x_ch4 * m_ch4 / m_tot * S;
+    r_h2s = w_rest * x_h2s * m_h2s / m_tot * S;
+    r_h2o = w_rest * x_h2o * m_h2o / m_tot * S;
+    r_nh3 = w_rest * x_nh3 * m_nh3 / m_tot * S;
+    r_h2  = S - (r_he + r_ch4 + r_h2s + r_h2o + r_nh3 + r_nh4sh);
+    c_h2 = r_h2 / m_h2; c_he = r_he / m_he; c_ch4 = r_ch4 / m_ch4; c_h2s = r_h2s / m_h2s; c_h2o = r_h2o / m_h2o; c_nh3 = r_nh3 / m_nh3;
+    printf("      ATJUP: ATJUP_COMPOSITION: mass shares of r_mix %.4f kg/m3 (held): H2 %.4f -> %.4f, He %.4f -> %.4f,"
+           " H2O %.4f -> %.4f, CH4 %.4f -> %.4f, H2S %.5f -> %.5f, NH3 %.5f -> %.5f (deep plateau: this share x local"
+           " density, ATJUP_R_NH3_ADD ignored)\n", S,
+           o_h2 / S, r_h2 / S, o_he / S, r_he / S, o_h2o / S, r_h2o / S, o_ch4 / S, r_ch4 / S, o_h2s / S, r_h2s / S, o_nh3 / S, r_nh3 / S);
+}
+
+
+// ATJUP_COMPOSITION: ep_x = m_x / M_mix with M_mix = R* / R_mix, the molar mass of the gas the
+// species are measured against (c / rho_local, rho_local = p / (R_mix T)), so that q_sat = ep E / p
+// is a mass fraction of THAT gas. The shipped values belong to M ~ 2.22 (ep_h2o 8.125 = 18.015 / 2.217),
+// neither the shipped mixture (M 2.68 from R_mix 3105) nor the corrected one (2.36): H2O and NH3
+// saturation came out 6 % too high against the corrected gas. Every consumer reads the members:
+// SaturationAdjustment, Precipitation, Thermo_Jup, the moist convective adjustment, the set-up.
+void cJupiterModel::setCompositionEp(){
+    const double R_univ = 8314.46;                      // J/(kmol K); m_x in kg/kmol, R_mix in J/(kg K)
+    const double M_mix  = R_univ / R_mix;
+    const double o_h2o = ep_h2o, o_nh3 = ep_nh3, o_h2s = ep_h2s, o_ch4 = ep_ch4, o_nh4sh = ep_nh4sh;
+    ep_h2o = m_h2o / M_mix; ep_nh3 = m_nh3 / M_mix; ep_h2s = m_h2s / M_mix; ep_ch4 = m_ch4 / M_mix; ep_nh4sh = m_nh4sh / M_mix;
+    printf("      ATJUP: ATJUP_COMPOSITION: ep = m_x / M_mix, M_mix %.4f kg/kmol: H2O %.4f -> %.4f, NH3 %.4f -> %.4f,"
+           " H2S %.4f -> %.4f, CH4 %.4f -> %.4f, NH4SH %.4f -> %.4f\n", M_mix,
+           o_h2o, ep_h2o, o_nh3, ep_nh3, o_h2s, ep_h2s, o_ch4, ep_ch4, o_nh4sh, ep_nh4sh);
+}
+
+
+void cJupiterModel::initCh4LocalRho(const char* where){
+    computeMixtureDensity();
+    const double d_j_half = (double)(jm - 1) / 2.0;
+    double q_min = 1e30, q_max = 0.0, c_min = 1e30, c_max = 0.0;
+    #pragma omp parallel for collapse(2) schedule(static) reduction(min:q_min, c_min) reduction(max:q_max, c_max)
+    for (int j = 0; j < jm; j++) {
+        for (int k = 0; k < km; k++) {
+            const double par   = JupiterUtils::parabola((double)j / d_j_half);
+            const double r_max_j = (R_MAX_POLE_FRAC * r_ch4 - r_ch4) * par + R_MAX_POLE_FRAC * r_ch4;
+            // With ATJUP_COMPOSITION the observed abundance, well mixed: no polar reduction.
+            const double frac  = composition() ? r_ch4 / r_mix : r_max_j / r_mix;
+            for (int i = 0; i < im; i++) {
+                const double rho = rho_mix.x[i][j][k];
+                const double c   = (SeaMount.x[i][j][k] == 1.0 || !(rho > 0.0)) ? 0.0 : frac * rho;
+                ch4.x[i][j][k] = c; ch4_cloud.x[i][j][k] = 0.0; ch4_ice.x[i][j][k] = 0.0;
+                if (c > 0.0) { q_min = std::min(q_min, frac); q_max = std::max(q_max, frac);
+                               c_min = std::min(c_min, c);    c_max = std::max(c_max, c); }
+            }
+        }
+    }
+    printf("      ATJUP: ATJUP_CH4_LOCAL_RHO (%s): CH4 = mass fraction %.4f..%.4f x local density, %.3f..%.3f g/m3; cloud and ice 0\n",
+           where, q_min, q_max, c_min * 1e3, c_max * 1e3);
+}
+
+
+// ============================================================================
 // Vapour, Cloud and Ice Initialization (H2O and NH3)
 // ============================================================================
 void cJupiterModel::init_vapour_cloud_ice(std::string gas,
@@ -861,6 +1021,44 @@ void cJupiterModel::init_vapour_cloud_ice(std::string gas,
         r_max[j]      = r_max_eff      * par + r_max_pole;
         r_max_add[j]  = r_max_add_eff  * par + r_max_add_pole;
         t_add[j]      = t_add_eff      * par + t_add_pole;
+    }
+
+    // ========================================================================
+    // ATJUP_COMPOSITION (setComposition): H2O and NH3 as rho_local * min(deep share, cold trap), the
+    // cold trap being the smallest saturation mass fraction ep * E(T) / p met from the bottom up to the
+    // cell (ice saturation below t_0, liquid above). So the start is nowhere supersaturated -- the
+    // MAGNUS_COEFF 2 x r_mix x q_sat form wrote twice saturation on the constant reference density,
+    // i.e. up to ~200x saturation under the lid, which the first adjustment condensed with its latent
+    // heat -- and no mass fraction rises above the tropopause. Cloud and ice start at zero; the
+    // smoothing passes of the set-up are skipped for these gases (cJupiterModel.cpp), since a smoothed
+    // saturated profile is supersaturated again. NH3's deep plateau r_nh3_add is replaced by the share.
+    // ========================================================================
+    if (composition() && (gas == "H2O" || gas == "NH3")) {
+        const bool h2o_ = (gas == "H2O");
+        const double Ci = h2o_ ? C_h2o_ice : C_nh3_ice, L0i = h2o_ ? L0_h2o_ice : L0_nh3_ice;
+        const double ai = h2o_ ? del_alf_h2o_ice : del_alf_nh3_ice, bi = h2o_ ? del_bet_h2o_ice : del_bet_nh3_ice;
+        #pragma omp parallel for collapse(2) schedule(static)
+        for (int j = 0; j < jm; j++) {
+            for (int k = 0; k < km; k++) {
+                double q_trap = 1.0e300;
+                for (int i = 0; i < im; i++) {
+                    const double t_u = t.x[i][j][k] * t_ref, p_u = p_stat.x[i][j][k];
+                    cloud.x[i][j][k] = 0.0; ice.x[i][j][k] = 0.0;
+                    if (!(t_u > 0.0) || !(p_u > 0.0) || is_land(SeaMount, i, j, k)) { c.x[i][j][k] = 0.0; continue; }
+                    const double E = (t_u >= t_0) ? ATPhys::saturation_vapour_pressure(t_u, C, L0, R, del_alf, del_bet)
+                                                  : ATPhys::saturation_vapour_pressure(t_u, Ci, L0i, R, ai, bi);
+                    q_trap = std::min(q_trap, ep * E / p_u);
+                    const double rho_l = p_u * 1.0e5 / (R_mix * t_u);
+                    c.x[i][j][k] = rho_l * std::min(r_max[j] / r_mix, q_trap);
+                }
+            }
+        }
+        auto end_c = std::chrono::high_resolution_clock::now();
+        printf("      ATJUP: ATJUP_COMPOSITION: %s = rho_local x min(share %.5f, cold trap), cloud and ice 0\n",
+               gas.c_str(), r_max[(jm - 1) / 2] / r_mix);
+        printf(" Time measured: %.3f seconds for init_vapour_cloud_ice (%s)\n",
+               std::chrono::duration_cast<std::chrono::nanoseconds>(end_c - begin).count() * 1e-9, gas.c_str());
+        return;
     }
 
     // ========================================================================
@@ -956,6 +1154,26 @@ void cJupiterModel::init_h2s(std::string gas,
     r_max = std::vector<double>(jm, r_max_pole);
     for (int j = 0; j < jm; j++) {
         r_max[j] = r_max_eff * JupiterUtils::parabola((double)j / d_j_half) + r_max_pole;
+    }
+
+    // ATJUP_COMPOSITION: rho_local * min(deep share, cold trap), as for H2O / NH3 in
+    // init_vapour_cloud_ice; not smoothed afterwards (cJupiterModel.cpp).
+    if (composition()) {
+        #pragma omp parallel for collapse(2) schedule(static)
+        for (int j = 0; j < jm; j++) {
+            for (int k = 0; k < km; k++) {
+                double q_trap = 1.0e300;
+                for (int i = 0; i < im; i++) {
+                    const double t_u = t.x[i][j][k] * t_ref, p_u = p_stat.x[i][j][k];
+                    if (!(t_u > 0.0) || !(p_u > 0.0) || is_land(SeaMount, i, j, k)) { c.x[i][j][k] = 0.0; continue; }
+                    q_trap = std::min(q_trap, ep * ATPhys::saturation_vapour_pressure(t_u, C, L0, R, del_alf, del_bet) / p_u);
+                    c.x[i][j][k] = p_u * 1.0e5 / (R_mix * t_u) * std::min(r_max[j] / r_mix, q_trap);
+                }
+            }
+        }
+        printf("      ATJUP: ATJUP_COMPOSITION: %s = rho_local x min(share %.5f, cold trap)\n", gas.c_str(), r_max[(jm - 1) / 2] / r_mix);
+        std::cout << "      ATJUP: init_h2s of " << gas << " ended" << std::endl;
+        return;
     }
 
     // ========================================================================
