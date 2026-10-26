@@ -944,7 +944,7 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     rhs_t.x[i][j][k] =
         + pressure_t
         - transport_t
-        + diffusion_t * (1.0 / (re * pr) + nue_t_s)
+        + diffusion_t * (t_diff_scale() / (re * pr) + nue_t_s)
         + radiation_t
         + precip_t;
 
@@ -957,7 +957,7 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
         a_[JupTb::T_TR_RAD][i] -= cw * u_ijk * dtdr;
         a_[JupTb::T_TR_THE][i] -= cw * v_invrm * dtdthe;
         a_[JupTb::T_TR_PHI][i] -= cw * w_invrs * dtdphi;
-        a_[JupTb::T_DIFF][i]   += cw * diffusion_t * (1.0 / (re * pr) + nue_t_s);
+        a_[JupTb::T_DIFF][i]   += cw * diffusion_t * (t_diff_scale() / (re * pr) + nue_t_s);
         a_[JupTb::T_RAD][i]    += cw * radiation_t;
         a_[JupTb::T_PRECIP][i] += cw * precip_t;
     }
@@ -1181,7 +1181,7 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
                        iter_n, t.x[i][j][k] * t_ref, rhs_t.x[i][j][k], pressure_t,
                        coeff_energy_p * (u_ijk * dpdr + v_invrm * dpdthe + w_invrs * dpdphi),
                        coeff_energy_p * u_ijk * dpstatdr, -transport_t,
-                       diffusion_t * (1.0 / (re * pr) + nue_t_s), radiation_t);
+                       diffusion_t * (t_diff_scale() / (re * pr) + nue_t_s), radiation_t);
                 printf("      PROBEADV %4d  u*dwdr=%11.4f  v/r*dwdthe=%11.4f"
                        "  w/(r sin)*dwdphi=%11.4f  metric=%11.4f | dwdr=%10.3f dwdthe=%10.3f"
                        " dwdphi=%10.3f\n",

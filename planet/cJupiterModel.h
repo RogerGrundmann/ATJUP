@@ -442,6 +442,18 @@ private:
     void chromUV();                                     // ChromJup.h, chrom_uv once per iteration
     void chromInfo();                                   // ChromJup.h, the startup line
 
+    // ATJUP_T_DIFF_SCALE=<f> (2026-10-26, DEFAULT 0.01 since 2026-10-26; 1 restores the old laminar value): factor on the laminar heat diffusivity
+    // 1/(re pr) of the temperature equation (the eddy part nue_t / Pr_t is not touched), the counterpart of
+    // ATJUP_SPECIES_DIFF_SCALE below. WHY: with re = 1000 the temperature diffuses with u_0 L_atm / (re pr)
+    // ~ 2e4 m2/s, 1e8 times the molecular value. MEASURED on the corrected state (satchk/rad_2026-10-26/RC0,
+    // COMPOSITION + NH4SH_EQ + SVP_FIT, 1000 -> 2000 it = 7000 s): level-mean T -11 K at i 0, +5.5 K at
+    // i 30, the outgoing radiation 13.7 -> 16.3 W/m2, the NH3 ice deck evaporating; the 10-22 runs showed
+    // the same pattern (-9.9 / +5.5 K per 7000 s). 0.01 is the temperature at re = 1e5, as for the species.
+    // TD1 (0.1) / TD01 (0.01), same arm: i 0 -1.3 / -0.1 K, i 30 +0.2 / 0.0 K, OLR 13.97 / 13.72, NH3 ice deck
+    // growing (i 27 0.003 -> 0.011 / 0.012 g/m3) instead of evaporating.
+    static double t_diff_scale(){
+        static const double v = [](){ const char* e = getenv("ATJUP_T_DIFF_SCALE"); return e ? atof(e) : 0.01; }();
+        return v; }
     static double species_diff_scale(){
         static const double v = [](){ const char* e = getenv("ATJUP_SPECIES_DIFF_SCALE"); return e ? atof(e) : 0.01; }();
         return v; }
