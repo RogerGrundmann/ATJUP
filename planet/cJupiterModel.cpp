@@ -111,13 +111,15 @@ static double timestep()           { static const double v = [](){ const char* e
 // of what it is worth was made; ATJUP_CONV_ADJ=1 forces it on without them, which shows what the
 // stratification does on its own. With ATJUP_NONDIM unset the default is off and every run is
 // bit-identical to before.
-// ATJUP_MCA=<N> (2026-10-26, DEFAULT 0 = off): the moist convective adjustment with the Ledoux
+// ATJUP_MCA=<N> (2026-10-26, DEFAULT 1 since 2026-10-26, 0 = off): the moist convective adjustment with the Ledoux
 // criterion (MoistConvectiveAdjustmentJup, shared ConvectiveAdjustment.h, where the note and its own
 // knobs are) every N iterations, right after the dry one. It mixes h_L, the total H2O / NH3
 // and H2S / NH4SH / chromophore over every segment a parcel test finds lighter than its
 // surroundings, saturated parcels on their moist adiabat, the heavy vapours stabilising.
+// On the corrected state (satchk/mcac_2026-10-26) it fires only in the GRS core, 0.05-0.08 % of the
+// columns, max dT 2 K there, level means < 1e-3 K, +4 % run time.
 static int    mca_stride(){
-    static const int v = [](){ const char* e = getenv("ATJUP_MCA"); return e ? std::max(0, atoi(e)) : 0; }();
+    static const int v = [](){ const char* e = getenv("ATJUP_MCA"); return e ? std::max(0, atoi(e)) : 1; }();
     return v;
 }
 

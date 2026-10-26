@@ -284,7 +284,7 @@ value. `ATJUP_TURB=1` set explicitly gave then what the default gives now, byte 
 | `ATJUP_CONV_ADJ` | *follows `ATJUP_NONDIM`* | dry convective adjustment of superadiabatic columns |
 | `ATJUP_CONV_ADJ_LAPSE` | 1 | scale its critical lapse rate (1 = the dry adiabat) |
 | `ATJUP_CONV_ADJ_PASSES` | 64 | cap on sweeps per column; a warning is printed if it is reached |
-| `ATJUP_MCA` | 0 | moist convective adjustment with the Ledoux criterion every N iterations (see below) |
+| `ATJUP_MCA` | 1 (since 2026-10-26) | moist convective adjustment with the Ledoux criterion every N iterations, 0 = off (see below) |
 | `ATJUP_MCA_LEDOUX` `_LOADING` `_RELAX` `_PASSES` | 1, 1, 1, 64 | composition in the density test (0 = temperature only), condensate weight, fraction applied per call, sweep cap |
 | `ATJUP_MCA_DEBUG` | — | `j,k`: print the parcel test of one column on the first call |
 | `ATJUP_THERMAL_WIND` | *follows `ATJUP_NONDIM`* | put the zonal wind's shear into thermal-wind balance at startup |
@@ -616,6 +616,9 @@ Measured 2026-10-26: on the shipped composition it adjusts about a third of the 
 all at the NH₃ freezing level, while ~60 % of the pairs a saturated parcel would make unstable in
 temperature are held by the water-vapour gradient. On `ATJUP_COMPOSITION` it fires in no column at all —
 the Ledoux term holds the water cloud, the lapse rate (2.0 K/km) is below the dry adiabat (2.20 K/km).
+On the corrected state after 2000 iterations (`ATJUP_COMPOSITION` + `ATJUP_NH4SH_EQ` + `ATJUP_SVP_FIT`,
+`ATJUP_T_DIFF_SCALE` 0.01) it fires only in the core of the GRS, in 0.05–0.08 % of the columns (levels
+11–28, up to 2 K there, level means below 10⁻³ K), for 4 % more run time; on by default since then.
 It mixes neither momentum nor turbulence, and the local test does not see penetrative convection.
 
 ---
