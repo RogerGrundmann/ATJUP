@@ -189,7 +189,7 @@ variable to 0 to switch it off.
 | `ATJUP_RAD_COUPLING` | 1 | feed `Q_rad` into the temperature equation (see note below); default 1 since 2026-10-27, 0 = off |
 | `ATJUP_SOLAR` | 1 | absorbed shortwave channel (only acts with `ATJUP_RADIATION`) |
 | `ATJUP_CIA_STRENGTH` | 3.9 | scale the H₂/He collision-induced opacity; default via `rad_default_cia_strength()` since 2026-10-27 (photosphere ~0.26 bar, OLR 13.7 W/m² on the corrected composition), 1 = the old value |
-| `ATJUP_OPACITY_STRENGTH` | 1 | scale the gas-band and cloud opacity |
+| `ATJUP_OPACITY_STRENGTH` | 1 | scale the gas-band and cloud opacity. The shared `opac_cal` 0.025 was tuned on the old fields (CH4 ~18x and the NH3 ice deck ~1000x the corrected state); on the corrected state the band + cloud opacity barely acts (OPACITY_STRENGTH ~650 would be needed for 0.3 bar, CP1_1000 sweep 10-26). Decided 2026-10-27: it stays at 1, `opac_cal` stays shared at 0.025, and `ATJUP_CIA_STRENGTH` 3.9 carries the photosphere -- a large factor here would tie the radiation to the still-forming NH3 deck |
 
 The shared `Radiation.h` also prints, every run with `ATJUP_RADIATION=1`, the τ=1 photosphere
 pressure **and the temperature there** beside the blackbody flux it implies. That second number is
