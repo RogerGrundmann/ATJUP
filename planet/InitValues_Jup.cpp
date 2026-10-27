@@ -869,8 +869,15 @@ void cJupiterModel::Forces(){
 //   NH3 liq.  least-squares fit over 195.4-330 K to the NIST Antoine equations for ammonia,
 //             log10 p[bar] = 3.18757 - 506.713/(T - 80.78) below 239.6 K, 4.86886 - 1113.928/(T - 10.409)
 //             above; max error 3.2 %, 5 % at 350 K. Check: 1.030 bar at 239.8 K (1.013), 10.5 bar at 300 K.
-// The coefficient values were written from memory of those sources and checked only against the fixed
-// points above -- verify them against the papers before relying on the last percent.
+// VERIFIED 2026-10-27 (row JUP-SVP-SOURCES; the source coefficients had been written from memory): the source
+// equations above are the published ones -- Murphy & Koop 2005 (QJRMS 131, 1539; the same constants in
+// independent implementations), Fray & Schmitt 2009 (PSS 57, 2053; NH3-1 row of their Table, as reproduced in
+// the Arrokoth ices supplement, NASA NTRS 20210019502), NIST WebBook Antoine rows for ammonia (Stull 1947,
+// 164.0-239.6 and 239.6-371.5 K). The sets in ATPhys.h against them: H2O ice max 0.001 % over 110-273 K;
+// NH3 ice max 0.045 % (rms 0.013 %) over 110-195.4 K; NH3 liquid max 3.2 % at 195.4 K (rms 0.9 %) over
+// 195.4-330 K, 1.3 % above 239.6 K, 11.8 % at 371.5 K -- the 3.2 % is the size of NIST's own seam between its
+// two rows at 239.6 K (0.993 vs 1.020 bar, 2.7 %). At the triple point the liquid set gives 0.0603 bar against
+// the ice set's 0.0611 (1.3 % apart, where the two phases should agree).
 // ============================================================================
 void cJupiterModel::setSvpFit(){
     // The sets themselves live in the shared ATPhys.h (one copy for the four models).
