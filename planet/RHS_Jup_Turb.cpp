@@ -676,20 +676,28 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     // (and whose own latent heat it converts with /(cp_mix*r_mix)). The r_mix therefore
     // cancels, leaving the true mixing-ratio tendency; using the local density here would
     // instead inflate the heating by r_mix/rho_local (~13x at the cloud decks).
+    // ATJUP_PRECIP_RHO_LOCAL (2026-10-27, row JUP-VAPOUR-RMIX; DEFAULT 1, 0 = r_mix as described above):
+    // the note above stopped being true with ATJUP_LOCAL_RHO (default 1 since 2026-10-22). The adjustment
+    // and the microphysics now hold TRUE local densities (q_sat = rho_at * ep * E / p) and the adjustment
+    // heats with /(cp_mix * rho_at), so Q_precip is a physical W/m3 and dT/dt = Q / (rho_local cp_mix):
+    // dividing by r_mix made this heating rho_local / r_mix too WEAK (~1/13 at the cloud decks). rho_at()
+    // returns r_mix itself when ATJUP_LOCAL_RHO=0, so the knob follows that switch.
     // DEFAULT 1.0 since 2026-07-31. It gates BOTH halves of the coupling: this latent-heat term
     // and the condensate depletion that PrecipitationJup reports into S_precip_* below. They are
     // one physical statement — the heat a conversion releases and the mass it moved have to
     // enter the model together, or the budget is inconsistent by construction.
     static const double precip_coupling = [](){ const char* e = getenv("ATJUP_PRECIP_COUPLING"); return e ? atof(e) : 1.0; }();
+    static const bool precip_rho_local = [](){ const char* e = getenv("ATJUP_PRECIP_RHO_LOCAL"); return e ? atoi(e) != 0 : true; }();
     double precip_t = 0.0;
     if(precip_coupling != 0.0){
         const double L_rad = L_atm * 1.0e3;                     // atmosphere thickness [m]
-        if(r_mix > 0.0 && cp_mix > 0.0){
+        const double rho_p = precip_rho_local ? rho_at(i, j, k) : r_mix;
+        if(rho_p > 0.0 && cp_mix > 0.0){
             precip_t = precip_coupling * Q_precip.x[i][j][k] * L_rad
-                     / (r_mix * cp_mix * u_0 * t_ref);
-            // Same explicit-scheme guard as the radiative term. r_mix is a constant here so
-            // there is no 1/rho blow-up, but latent heating is a stiff, locally concentrated
-            // source (it switches on hard at the freezing level), so keep the limiter.
+                     / (rho_p * cp_mix * u_0 * t_ref);
+            // Same explicit-scheme guard as the radiative term. With the local density 1/rho grows
+            // ~95x toward the lid, and latent heating is a stiff, locally concentrated source (it
+            // switches on hard at the freezing level), so keep the limiter.
             constexpr double precip_t_max = 0.5;
             if(!std::isfinite(precip_t)) precip_t = 0.0;
             else if(precip_t >  precip_t_max) precip_t =  precip_t_max;

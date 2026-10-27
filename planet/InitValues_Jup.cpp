@@ -842,8 +842,10 @@ void cJupiterModel::Forces(){
 // parabola kept for H2O / H2S / NH3); NH3's deep plateau (t > t_add, was the constant r_nh3_add =
 // 0.009 kg/m3: 0.8 % by mass at the bottom rising to 2.5 % at 2 bar, 3-10x Juno) is that same well-mixed
 // share, so the NH3 mass fraction no longer rises with height below the cloud base; CH4 the uniform
-// w_ch4 * rho_local (ATJUP_CH4_LOCAL_RHO follows this knob). The vapour below the cap is still
-// magnus * r_mix * q_sat as before.
+// w_ch4 * rho_local (ATJUP_CH4_LOCAL_RHO follows this knob). Below the cap H2O / NH3 / H2S are
+// rho_local x min(share, cold trap) (init_vapour_cloud_ice / init_h2s); the magnus * r_mix * q_sat form
+// acts only with ATJUP_COMPOSITION=0 (and for CH4, which initCh4LocalRho then overwrites) -- checked
+// 2026-10-27, row JUP-VAPOUR-RMIX.
 // ============================================================================
 // ============================================================================
 // ATJUP_SVP_FIT=1 (2026-10-26, default 0 = off, byte-identical): the NH3 liquid, NH3 ice and H2O ice
