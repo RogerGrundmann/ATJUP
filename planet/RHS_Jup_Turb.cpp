@@ -615,7 +615,8 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     //   radiation_t = rad_coupling * Q_rad * L_rad / (rho * cp_mix * u_0 * t_ref).
     // rho is the LOCAL density from the ideal-gas law (essential so the thin, cold upper
     // atmosphere — where Q_rad>0 heats — responds strongly and relaxes toward radiative
-    // equilibrium). Gated by ATJUP_RAD_COUPLING (default 0 = off, bit-identical); Q_rad is
+    // equilibrium). Gated by ATJUP_RAD_COUPLING: DEFAULT 1.0 since 2026-10-27 (user, with
+    // ATJUP_CIA_STRENGTH 3.9; RC1 vs RC0 over 7000 s: max |dT| 4.3e-3 K); 0 = off restores. Q_rad is
     // nonzero only when ATJUP_RADIATION is enabled (the default).
     //
     // SCALING: rad_coupling = 1.0 is the PHYSICALLY CORRECT value — the expression above is the
@@ -630,7 +631,7 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     // between the radiative and advective timescales. (An earlier +8 K/100-iter result at
     // coupling=10 was mostly a units bug: Q_rad was computed with a layer thickness in km
     // instead of m and so was 1000x too large, making the effective multiplier ~1e4.)
-    static const double rad_coupling = [](){ const char* e = getenv("ATJUP_RAD_COUPLING"); return e ? atof(e) : 0.0; }();
+    static const double rad_coupling = [](){ const char* e = getenv("ATJUP_RAD_COUPLING"); return e ? atof(e) : 1.0; }();
     double radiation_t = 0.0;
     if(rad_coupling != 0.0){
         // The density here used to be recomputed from a hard-coded R_H2He = 3600 J/(kg K),

@@ -46,7 +46,7 @@ static int    shapiro_vel_inloop() { static const int    v = [](){ const char* e
 
 // Radiation knob. DEFAULT ON since 8df7626 (ATJUP_RADIATION=0 switches it off). RadiationJup
 // runs each even iteration and fills the diagnostic radiation/epsilon/Q_rad arrays; Q_rad only
-// reaches rhs_t if ATJUP_RAD_COUPLING is also set (see RHS_Jup_Turb.cpp).
+// reaches rhs_t through ATJUP_RAD_COUPLING (default 1 since 2026-10-27; see RHS_Jup_Turb.cpp).
 //static int    radiation_enabled()  { static const int    v = [](){ const char* e = getenv("ATJUP_RADIATION");           return e ? atoi(e) : 0;   }(); return v; }
 static int    radiation_enabled()  { static const int    v = [](){ const char* e = getenv("ATJUP_RADIATION");           return e ? atoi(e) : 1;   }(); return v; }
 

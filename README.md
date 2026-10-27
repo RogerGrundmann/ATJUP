@@ -186,9 +186,9 @@ variable to 0 to switch it off.
 | Variable | Default | Effect |
 |----------|---------|--------|
 | `ATJUP_RADIATION` | 1 | grey two-stream solve; fills `Q_rad`, `radiation`, `epsilon` |
-| `ATJUP_RAD_COUPLING` | 0 | feed `Q_rad` into the temperature equation (see note below) |
+| `ATJUP_RAD_COUPLING` | 1 | feed `Q_rad` into the temperature equation (see note below); default 1 since 2026-10-27, 0 = off |
 | `ATJUP_SOLAR` | 1 | absorbed shortwave channel (only acts with `ATJUP_RADIATION`) |
-| `ATJUP_CIA_STRENGTH` | 1 | scale the H₂/He collision-induced opacity |
+| `ATJUP_CIA_STRENGTH` | 3.9 | scale the H₂/He collision-induced opacity; default via `rad_default_cia_strength()` since 2026-10-27 (photosphere ~0.26 bar, OLR 13.7 W/m² on the corrected composition), 1 = the old value |
 | `ATJUP_OPACITY_STRENGTH` | 1 | scale the gas-band and cloud opacity |
 
 The shared `Radiation.h` also prints, every run with `ATJUP_RADIATION=1`, the τ=1 photosphere

@@ -1072,6 +1072,10 @@ private:
     static double rad_albedo_bond() { return 0.343; }  // Jupiter Bond albedo (so S*(1-A) is ABSORBED)
     static double rad_x_H2()        { return 0.863; }  // H2 mole fraction
     static double rad_x_He()        { return 0.134; }  // He mole fraction
+    // Default of <TAG>_CIA_STRENGTH in the shared Radiation.h (2026-10-27, user): 3.9 -- the CIA-only grey
+    // opacity puts the photosphere of the corrected composition at ~0.26 bar / OLR 13.7 W/m2 (CP1_1000 sweep,
+    // 10-26; 1 gave 0.54 bar / 22.1). ATJUP_CIA_STRENGTH=1 restores.
+    static double rad_default_cia_strength(){ return 3.9; }
 
 public:
     static double sinthe_min(){
