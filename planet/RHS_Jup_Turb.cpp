@@ -606,6 +606,18 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
         dphdthe_term = pgrad(p_hydro, 0, 1, 0, inv_2dthe) * inv_rm;
         dphdphi_term = pgrad(p_hydro, 0, 0, 1, inv_2dphi) * inv_rmsinthe;
     }
+    // ATJUP_PHYDRO_TOP_TAPER (2026-10-27, row JUP-RES23N; default 0 = unchanged): ATJUP_BC_TOP_TAPER holds v and w
+    // to zero in the two top fluid layers (=1 compounds x2/3 at im-3 and x1/3 at im-2 to a hard zero), but the
+    // horizontal p_hydro force -- the thermal-wind gradient the zonal jet balances below -- reached the lid at full
+    // strength, unopposed by Coriolis there (SRC_SPLIT 55 N, i 39: p_hydro +1.20e-2, Coriolis -6e-7). Its horizontal
+    // divergence was the pressure solver's source under the lid, answered radially: the zonal lid bands of the
+    // residuum. =1 drops that force in those two layers (the wind is held there anyway), =2 scales it 2/3 and 1/3.
+    static const int phydro_top_taper = [](){ const char* e = getenv("ATJUP_PHYDRO_TOP_TAPER"); return e ? atoi(e) : 0; }();
+    if(phydro_top_taper != 0 && i >= im - 3){
+        const double f_ = (phydro_top_taper == 2) ? ((i == im - 3) ? 2.0 / 3.0 : 1.0 / 3.0) : 0.0;
+        dphdthe_term *= f_;
+        dphdphi_term *= f_;
+    }
 
     // ===== Radiative heating source (step 4, opt-in) =====
     // Convert the diagnostic radiative flux divergence Q_rad [W/m3] (RadiationJup) into a

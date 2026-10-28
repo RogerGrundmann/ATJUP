@@ -740,10 +740,14 @@ void cJupiterModel::Run(){
     // default, ATJUP_UB_BAND=<degrees>). Printed every n iterations.
     static const int ub_every = [](){ const char* e = getenv("ATJUP_UB_DIAG"); return e ? atoi(e) : 0; }();
     static const int ub_band  = [](){ const char* e = getenv("ATJUP_UB_BAND"); return e ? atoi(e) : 5; }();
+    // ATJUP_UB_LAT=<deg N> (2026-10-27, print-only, default 0 = the equator as before): the band's centre,
+    // for the zonal lid bands of row JUP-RES23N (64 S, 53 S, 55 N, 75 N); as ATURAN_UB_LAT.
+    static const int ub_lat   = [](){ const char* e = getenv("ATJUP_UB_LAT"); return e ? atoi(e) : 0; }();
     const bool ub_on = ub_every > 0 && im <= JupUb::MAXLEV;
     JupUb::st().on = ub_on;
-    JupUb::st().j_lo = (jm - 1) / 2 - ub_band;
-    JupUb::st().j_hi = (jm - 1) / 2 + ub_band;
+    const int ub_jc = std::max(1, std::min(jm - 2, (jm - 1) / 2 - ub_lat));
+    JupUb::st().j_lo = std::max(1, ub_jc - ub_band);
+    JupUb::st().j_hi = std::min(jm - 2, ub_jc + ub_band);
     enum { UB_RK_RESET = 0, UB_RK_REST, UB_FILTER, UB_BC, UB_N };
     static const char* ub_name[UB_N] = { "RK reset", "RK rest", "filter on u", "BC" };
     static const char* ub_term[JupUb::NTERM] = { "RK -dp/dr", "RK +(v2+w2)/r", "RK -advection", "RK diffusion",
