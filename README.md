@@ -298,6 +298,7 @@ value. `ATJUP_TURB=1` set explicitly gave then what the default gives now, byte 
 | `ATJUP_PBARO_FOLLOW` | 0 | with `ATJUP_HYDRO_SPLIT`: p_baro takes up the change of the buoyancy integral since the start with a time constant of n RK steps; 0 = frozen |
 | `ATJUP_PBARO_FOLLOW_ZONAL` | 1 | only the zonal mean of that change, so a local anomaly (a vortex's cold top) keeps its pressure; 0 = cell by cell |
 | `ATJUP_VORTEX_THERMAL` | 0 | with `ATJUP_VORTEX`, a profile and `ATJUP_HYDRO_SPLIT`: the vortex's decay with height as a cold top (T′) instead of frozen p_baro, so it is advected with the vortex; `ATJUP_VORTEX_BASE_I=26` keeps T′ near −9 K |
+| `ATJUP_VORTEX_LOW_I=<il>` | 0 | with `ATJUP_VORTEX_BOTTOM_I=<ib>`: a lens vortex -- nothing (wind, p′, T′) below i = il, the lower ramp from 0 at il to full at ib (0 = the ramp from the floor, as before). Opt-in (row JUP-FREE-GRS, 2026-10-27): the ramp from the floor left its warm anomaly in the slow deep wind as a fixed foot; L14U / L14P (LOW_I 14, BOTTOM_I 22, to 4000) kept the column together in longitude but did not decide the foot / top question, because the vortex barely moved |
 | `ATJUP_HYDRO_REF` | 0 | 0 = integrate up from the base (intended), 1 = down from the top |
 | `ATJUP_BUOY_SCALE` | 1 | multiplier on top of the buoyancy's physical value |
 | `ATJUP_BUOY_RAMP_ITERS` | 0 | ramp the buoyancy in linearly over n iterations |

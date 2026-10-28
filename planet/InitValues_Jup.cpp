@@ -443,12 +443,22 @@ void cJupiterModel::initVortex(){
     // value sz0 = sz[0] is what goes into p_dyn, the per-level rest is (sz - sz0) p' (sz0 = 1 without the ramp,
     // so that branch is unchanged); with ATJUP_VORTEX_THERMAL the rising lower ramp is a warm anomaly under the
     // vortex, the thermal wind of a vortex strengthening upward, and the vortex's pressure lives in p_hydro.
+    // ATJUP_VORTEX_LOW_I=<il> (2026-10-27, default 0 = the ramp starts at the floor, as BOTTOM_I alone): a LENS
+    // vortex -- nothing (wind, p', T') below i = il, the lower ramp from 0 at il to full at ib. VB18_3000 / WK0: the
+    // warm anomaly of a ramp from the floor sits in the slow deep wind (background w linear from ~0 at the floor
+    // to -45 m/s at the tropopause), stays behind when the upper vortex drifts west, and regrows its own floor
+    // circulation (6 -> 44 m/s) -- a fixed foot. With il in the moving layer the whole anomaly is carried by it.
     const int ib = (int)envd("ATJUP_VORTEX_BOTTOM_I", 0);
+    const int il = (int)envd("ATJUP_VORTEX_LOW_I", 0);
     if(prof && ib > 0){
         if(ib >= tl) std::cout << "      ATJUP: initVortex: WARNING ATJUP_VORTEX_BOTTOM_I " << ib << " >= the base " << tl << ", lower ramp skipped" << std::endl;
-        else for(int i = 0; i < ib; i++){
-            const double x = double(i) / double(ib);
-            sz[i] = prof == 2 ? 0.5 * (1.0 - std::cos(M_PI * x)) : x;
+        else{
+            const int i0 = (il > 0 && il < ib) ? il : 0;
+            if(il > 0 && il >= ib) std::cout << "      ATJUP: initVortex: WARNING ATJUP_VORTEX_LOW_I " << il << " >= ATJUP_VORTEX_BOTTOM_I " << ib << ", ignored" << std::endl;
+            for(int i = 0; i < ib; i++){
+                const double x = (i < i0) ? 0.0 : double(i - i0) / double(ib - i0);
+                sz[i] = prof == 2 ? 0.5 * (1.0 - std::cos(M_PI * x)) : x;
+            }
         }
     }
     const double sz0 = sz[0];
@@ -520,7 +530,7 @@ void cJupiterModel::initVortex(){
         for(int i = tl; i < im; i++) printf(" %.2f", sz[i]);
         printf(")\n");
         if(sz0 != 1.0){
-            printf("      ATJUP: initVortex: lower ramp (ATJUP_VORTEX_BOTTOM_I %d) -- %s from 0 at the floor, sz at i 0..%d:", ib, prof == 2 ? "cosine" : "linear", ib);
+            printf("      ATJUP: initVortex: lower ramp (ATJUP_VORTEX_BOTTOM_I %d, LOW_I %d) -- %s from 0 at i %d, sz at i 0..%d:", ib, il, prof == 2 ? "cosine" : "linear", (il > 0 && il < ib) ? il : 0, ib);
             for(int i = 0; i <= ib; i++) printf(" %.2f", sz[i]);
             printf("\n");
         }
