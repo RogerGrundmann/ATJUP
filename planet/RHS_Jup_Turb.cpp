@@ -775,6 +775,7 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     double diffusion_dis_re = 0.0;
     double tke_src          = 0.0;
     double dis_src          = 0.0;
+    double c_w_prod         = 0.0;   // the branch's production coefficient of the dis* equation (ATJUP_TURB_BUOY)
 
     if(turb_on){
         constexpr double C_nue        = 0.028;      // C_mu, mirrors TurbulenceJup::C_nue
@@ -862,6 +863,7 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
 
             tke_src = P_k - Y_k + L_k / re_turb;
             dis_src = P_w - Y_w + L_w / re_turb;
+            c_w_prod = C_eps_1;
         }
         else if(turb_sel == 1){                              // k-omega, Wilcox 1988/2006
             constexpr double sig_k    = 0.6;
@@ -904,6 +906,7 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
 
             tke_src = P_k - Y_k;
             dis_src = P_w - Y_w + D_w;
+            c_w_prod = gam;
 
             // C_lim is the stress limiter of the 2006 revision; it acts on nue*, which
             // TurbulenceJup owns, so it is only referenced here to keep the constant set
@@ -946,6 +949,37 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
 
             tke_src = P_k - Y_k;
             dis_src = P_w - Y_w + D_w;
+            c_w_prod = F1 * gam1 + (1.0 - F1) * gam2;
+        }
+
+        // ---- ATJUP_TURB_BUOY (default 0 = off, unchanged): buoyancy production of k ----
+        // Neither ATJUP nor ATOM had a buoyancy term in the k equation: k was made by shear alone,
+        // so a stable layer and a convectively unstable one produced the same k. The standard
+        // gradient-diffusion form (Rodi 1987; Fluent / OpenFOAM buoyantKOmegaSST):
+        //   G_b = -(nu_t / Pr_t) N^2,   N^2 = (g/T) (dT/dz + g/cp)   [1/s^2]
+        // i.e. the turbulent heat flux -nu_t/Pr_t dtheta/dz times the buoyancy g/theta: stable
+        // stratification (N^2 > 0) is a SINK of k (work against gravity), unstable (N^2 < 0) a
+        // SOURCE. Dry N^2 with the model's cp_mix (11811 J/(kg K) with ATJUP_COMPOSITION, g/cp = 2.19 K/km); the condensate / virtual-T
+        // part is left out. The dis* equation gets the same production coefficient times
+        // dis*/k* on the UNSTABLE part only (C3 = 1 for G_b > 0, 0 for G_b < 0), the usual choice:
+        // a stable layer damps k but does not create omega. Nondimensional as P_full:
+        // G* = -(cnue / Pr_t) N^2 (L/u_0)^2. Pr_t: ATJUP_TURB_BUOY_PRT (default 0.9 = ATOM's pr_turb).
+        // The source caps below bound it as they bound P - Y. N^2 from the centred T difference
+        // over the real layer heights (stretched grid), one-sided at the radial planes.
+        static const int turb_buoy = [](){ const char* e = getenv("ATJUP_TURB_BUOY"); return e ? atoi(e) : 0; }();
+        if(turb_buoy){
+            static const double pr_t = [](){ const char* e = getenv("ATJUP_TURB_BUOY_PRT"); return e ? atof(e) : 0.9; }();
+            const int ip = std::min(i + 1, im - 1), imn = std::max(i - 1, 0);
+            const double dz_m = ((double)get_layer_height(ip) - (double)get_layer_height(imn)) * 1.0e3;
+            const double T_K  = std::max(t.x[i][j][k] * t_ref, 1.0);
+            const double dTdz = (t.x[ip][j][k] - t.x[imn][j][k]) * t_ref / std::max(dz_m, 1.0);
+            const double N2   = g / T_K * (dTdz + g / cp_mix);
+            const double tscale = L_m / u_0;
+            const double G_b  = -(cnue / pr_t) * N2 * tscale * tscale;
+            if(std::isfinite(G_b)){
+                tke_src += G_b;
+                dis_src += c_w_prod * dis_s / tke_s * std::max(G_b, 0.0);
+            }
         }
 
         // Same source caps as compute_sources(): they bound the P-Y balance and stop the

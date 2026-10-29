@@ -222,6 +222,7 @@ instead — so it has no `ATJUP_THERMAL_MASSFLUX` knob. The other three models d
 | `ATJUP_TURB_MODEL` | *param* | override `turb_model` (`none`, `k_epsilon`, `k_omega`, `k_omega_SST`) |
 | `ATJUP_TURB_COUPLING` | 0 | feed the eddy viscosity into momentum, heat and species diffusion |
 | `ATJUP_NUE_MAX` | 1e5 | eddy-viscosity ceiling [m²/s] — a runaway guard, not the operative limiter |
+| `ATJUP_TURB_BUOY` | 0 | buoyancy production in the k equation, G_b = -(nu_t/Pr_t) N², N² = (g/T)(dT/dz + g/cp_mix) (dry); the ω equation takes it on the unstable side only (C3 = 1 / 0). Pr_t = `ATJUP_TURB_BUOY_PRT` (0.9, ATOM's pr_turb). Opt-in (row JUP-FREE-GRS, 2026-10-29): on the REF / LR6 state the whole troposphere is stable (N² 2e-5 deep to 5e-4 aloft, Ri 50-900), so the offline estimate on LR6 5000 has k decaying in ~100 % of cells; no dynamics arm run (LA1 stopped at it 260) |
 | `ATJUP_ABL_TAPER` | 0 | restore ATOM's boundary-layer taper of the eddy viscosity |
 | `ATJUP_TURB_WALL_HOLD` | 1 | reassert the closure's wall condition above the obstacle after every Runge-Kutta step, as ATOM does; with 0 (the behaviour until 2026-10-09) the step overwrites it and k there runs to its ceiling (1000 m²/s² at iteration 368) |
 | `ATJUP_TURB_WALL_OMEGA` | 1 | give the wall cell above the obstacle a log-layer wall function for ω; 0 (the behaviour until 2026-10-09) leaves the viscous-sublayer value, which on a 3.5 km layer is zero and drains ω from the shear layer above it. Max k at iteration 896: 502 with 0, 231 m²/s² with 1, levelling off |
