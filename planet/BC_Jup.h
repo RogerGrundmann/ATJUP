@@ -84,7 +84,7 @@ namespace BCJupKnobs {
     // pole_copy, radius_copy, seam_damp and the lid temperature pin — moved into the
     // shared BoundaryConditions.h along with the routines they gate, and their defaults
     // are now cJupiterModel::bc_default_*(). Their names and values are unchanged:
-    // ATJUP_BC_RIGID_LID and ATJUP_BC_TOP_TAPER still default to 1, ATJUP_BC_POLE_COPY
+    // ATJUP_BC_RIGID_LID still defaults to 1 (ATJUP_BC_TOP_TAPER to 3 since 2026-10-29, see bcRadius), ATJUP_BC_POLE_COPY
     // to 1, ATJUP_BC_RADIUS_COPY and ATJUP_BC_SEAM_DAMP to 0.
     //
     // What stays is the OBSTACLE knob, because the obstacle routines below are ATJUP's
@@ -183,7 +183,50 @@ namespace BCJupKnobs {
 // identical (t, u, v, w, tke among them). The plane now follows the first cell, so the column
 // WITH the plane falls further (-0.63 %): read ATJUP_CWB_DIAG's "integrated cells" line.
 inline void BC_Jup::bcRadius(){
+    // ATJUP_BC_TOP_TAPER=3 (2026-10-29, row JUP-RES23N; ATJUP-only, the giants never see it): a ZONAL-MEAN-
+    // PRESERVING top sponge. The shared routine treats 3 like 1 (v, w *= 2/3 at im-3, *= 1/3 at im-2, = 0 at the
+    // lid); afterwards (1 - f) x the zonal mean taken BEFORE the call is added back, so each layer becomes
+    //   v = vbar + f (v - vbar)      (f = 2/3, 1/3; the lid takes the im-2 mean)
+    // and only the deviations from the zonal mean (vortex, waves) are damped toward rest, geometrically as with
+    // =1. Why: the lid bands are a zonal-mean effect -- the taper held the zonal wind at 0 where the
+    // horizontal p_hydro force of the jets stays (fix (B) / WT0 freed it and cured the bands 20-30x) -- but
+    // switching the taper off (WT0) let the vortex reach the lid (20 cells on the 150 m/s cap). ATOM has the same
+    // taper toward 0 (BC_Atm.h), so no cure there. Means over k = 0..km-2 (km-1 is the periodic copy of 0).
+    // DEFAULT since 2026-10-29 (user, after WS3 to 3000 with ATJUP_W_UPPER_LID_FRAC=0.85: i39 bands 0.001 as WT0,
+    // vortex |V'| 0 at i39 as REF); =1 restores the old taper to 0.
+    static const int top_taper_jup = BCJupKnobs::env_int("ATJUP_BC_TOP_TAPER", cJupiterModel::bc_default_top_taper());
+    std::vector<double> zm;                                        // [layer 0/1][v/w][j]
+    if(top_taper_jup == 3){
+        const int im = m.im, jm = m.jm, km = m.km, kn = km - 1;
+        zm.assign((size_t)4 * jm, 0.0);
+        #pragma omp parallel for
+        for(int j = 0; j < jm; j++)
+            for(int l = 0; l < 2; l++){
+                const int i = im - 3 + l;
+                double sv = 0.0, sw = 0.0;
+                for(int k = 0; k < kn; k++){ sv += m.v.x[i][j][k]; sw += m.w.x[i][j][k]; }
+                zm[(size_t)(2 * l) * jm + j]     = sv / kn;
+                zm[(size_t)(2 * l + 1) * jm + j] = sw / kn;
+            }
+    }
+
     BoundaryConditions<cJupiterModel>(m).bcRadius();
+
+    if(top_taper_jup == 3){
+        const int im = m.im, jm = m.jm, km = m.km;
+        #pragma omp parallel for
+        for(int j = 0; j < jm; j++){
+            const double v3 = zm[j], w3 = zm[(size_t)jm + j], v2 = zm[(size_t)2 * jm + j], w2 = zm[(size_t)3 * jm + j];
+            for(int k = 0; k < km; k++){
+                m.v.x[im-3][j][k] += (1.0/3.0) * v3;
+                m.w.x[im-3][j][k] += (1.0/3.0) * w3;
+                m.v.x[im-2][j][k] += (2.0/3.0) * v2;
+                m.w.x[im-2][j][k] += (2.0/3.0) * w2;
+                m.v.x[im-1][j][k]  = v2;
+                m.w.x[im-1][j][k]  = w2;
+            }
+        }
+    }
 
     Array* species[] = {
         &m.h2o, &m.h2o_cloud, &m.h2o_ice,

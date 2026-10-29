@@ -586,14 +586,14 @@ private:
         const double h_top     = m.get_layer_height(m.im - 1);
         const double inv_range = 1.0 / (h_top - m.get_layer_height(tl));
 
-        // ATJUP_W_UPPER_LID_FRAC (2026-10-28, row JUP-RES23N, option 2; default 0 = the linear decay to 0 at the lid
-        // below, unchanged): the ZONAL wind w falls linearly from its tropopause value to that fraction of it at the
+        // ATJUP_W_UPPER_LID_FRAC (2026-10-28, row JUP-RES23N, option 2; DEFAULT 0.85 since 2026-10-29 together with
+        // ATJUP_BC_TOP_TAPER=3; =0 restores the linear decay to 0 at the lid below): the ZONAL wind w falls linearly from its tropopause value to that fraction of it at the
         // lid instead of to 0 (1 = no decay). The decay to 0 over the ~14 km above the tropopause (23 N: 81 m/s at
         // i36 to 0 at i40) needs a T contrast of +-60 K for thermal-wind balance (satchk/tcon_2026-10-28 TW1); the
         // start is isothermal there, so the balance sat in the frozen p_baro and the run builds cold belts toward it,
         // the p_hydro force under the lid. A few K across a jet carry ~10-15 m/s over that depth. v (the prescribed
         // meridional cells) keeps the decay to 0; ATJUP_BC_TOP_TAPER still brings both to 0 in the top three layers.
-        static const double lid_frac = [](){ const char* e = getenv("ATJUP_W_UPPER_LID_FRAC"); return e ? atof(e) : 0.0; }();
+        static const double lid_frac = [](){ const char* e = getenv("ATJUP_W_UPPER_LID_FRAC"); return e ? atof(e) : 0.85; }();
         const bool keep = (lid_frac != 0.0) && (&v_or_w == &m.w);
 
         #pragma omp parallel for schedule(static)

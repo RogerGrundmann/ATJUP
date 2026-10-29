@@ -981,7 +981,7 @@ private:
     static int bc_margin(){ return 0; }
     static int bc_default_form(){ return BCForm::NEUMANN; }
     static int bc_default_rigid_lid(){ return 1; }
-    static int bc_default_top_taper(){ return 1; }
+    static int bc_default_top_taper(){ return 3; }   // 3 = zonal-mean-preserving sponge (BC_Jup::bcRadius, 2026-10-29, row JUP-RES23N); 1 = the old taper to 0
     static int bc_default_pole_copy(){ return 1; }
     static int bc_default_radius_copy(){ return 0; }
     static int bc_pole_open_rows(){ return 2; }   // rows next to each pole that RungeKutta does not integrate; bcTheta fills them (<TAG>_BC_POLE_FILL, default 1)
