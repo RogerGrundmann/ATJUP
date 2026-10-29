@@ -217,6 +217,10 @@ void cJupiterModel::init_temperature(){
 //                            - 2.0 * d_j / d_j_half) + t_pole) / t_ref;
             double ratio = (double)j / d_j_half;
             t.x[0][j][k] = (t_h2_eff * JupiterUtils::parabola(ratio) + t_pole) / t_ref;
+            // ATJUP_INIT_LAPSE_ADIABAT (cJupiterModel.cpp): pivot about the 1-bar level T = t_ref, so the
+            // height of T = t_ref (and with it p_ref) stays where the config lapse rate gam_cfg puts it.
+            if (gam_cfg > 0.0)
+                t.x[0][j][k] = 1.0 + gam / gam_cfg * (t.x[0][j][k] - 1.0);
 
             // Linear lapse-rate profile upward from surface, CLAMPED at the tropopause.
             //

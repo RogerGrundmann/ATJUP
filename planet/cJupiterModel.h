@@ -1281,6 +1281,10 @@ private:
     // follow the isothermal hydrostatic law instead.
     std::vector<std::vector<int> > i_strato_base;
 
+    // ATJUP_INIT_LAPSE_ADIABAT: the config's lapse rate before the knob replaced gam (0 = knob off).
+    // init_temperature pivots the profile about the 1-bar level (T = t_ref) instead of the bottom.
+    double gam_cfg = 0.0;
+
     // Snapshot of the lid temperature t.x[im-1][j][k] taken from the initial condition on the
     // first bcRadius() call (ATOM's t_top_init). Empty until then; used only when the
     // ATJUP_BC_T_LID_PIN knob is set. See the discussion in BC_Jup.h bcRadius().

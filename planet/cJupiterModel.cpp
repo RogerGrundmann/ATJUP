@@ -504,6 +504,32 @@ void cJupiterModel::Run(){
     printf("      ATJUP: mixture r_mix %.5f kg/m3, cp_mix %.2f J/(kg K), R_mix %.3f J/(kg K), mue_mix %.4e Pa s, g/cp %.4f K/km\n",
            r_mix, cp_mix, R_mix, mue_mix, g / cp_mix * 1.0e3);
 
+    // ATJUP_INIT_LAPSE_ADIABAT=<f> (2026-10-29, default 0 = off: gam from the config, 2.0 K/km,
+    // unchanged): the initial tropospheric lapse rate becomes f x the model's own dry adiabat
+    // g / cp_mix (2.195 K/km with ATJUP_COMPOSITION), so f = 1 starts the deep atmosphere neutral
+    // instead of 0.2 K/km subadiabatic (N^2 ~ 2e-5 1/s2 at the deep levels, Ri 50-250 on LR6 5000:
+    // the MCA never fires and ATJUP_TURB_BUOY would only damp k). Real Jupiter is close to the
+    // adiabat below ~0.5 bar (Galileo probe). It overrides the member gam, so the polytropic
+    // pressure exponent g / (gam R) of init_PressureStatic and of the shared SaturationAdjustment
+    // follows the new profile. The 1-bar level is held: p_stat is anchored at p_ref where T = t_ref
+    // (165 K), so init_temperature pivots each column about the height where the config profile
+    // reaches t_ref, T(0) -> t_ref + (gam / gam_cfg) (T(0) - t_ref), instead of holding T(0) (which
+    // cooled the column aloft by up to 19 K and moved every p level 20-40 %, A1 of 10-29); the deep
+    // column warms (+15.6 K at the equator bottom) and its pressure falls with the larger scale
+    // height. Needs cp_mix, hence after ThermalPropertiesJup. gam is also used
+    // at run time (SaturationAdjustment), so a restart arm should carry the same setting as the
+    // run that wrote the file; start such an arm from scratch.
+    {
+        const char* e = getenv("ATJUP_INIT_LAPSE_ADIABAT");
+        const double f = e ? atof(e) : 0.0;
+        if(f > 0.0){
+            gam_cfg = gam;
+            gam = f * g / cp_mix * 1.0e3;                 // [K/km], the unit of gam
+            printf("      ATJUP: ATJUP_INIT_LAPSE_ADIABAT=%.4f: gam %.4f -> %.4f K/km (g/cp_mix %.4f K/km), pivot at T = t_ref %.1f K (1 bar)\n",
+                   f, gam_cfg, gam, g / cp_mix * 1.0e3, t_ref);
+        }
+    }
+
     init_temperature();
 
 //    goto Printout;
