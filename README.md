@@ -292,7 +292,7 @@ value. `ATJUP_TURB=1` set explicitly gave then what the default gives now, byte 
 | `ATJUP_MCA` | 1 (since 2026-10-26) | moist convective adjustment with the Ledoux criterion every N iterations, 0 = off (see below) |
 | `ATJUP_MCA_LEDOUX` `_LOADING` `_RELAX` `_PASSES` | 1, 1, 1, 64 | composition in the density test (0 = temperature only), condensate weight, fraction applied per call, sweep cap |
 | `ATJUP_MCA_DEBUG` | — | `j,k`: print the parcel test of one column on the first call |
-| `ATJUP_MCA_INTERIOR` | 0 | 1 = leave the radial boundary planes i = 0 and i = im-1 out of the MCA column (shared `ConvectiveAdjustment.h`; 1 by default on ATURAN only, where mixing the floor plane looped against `bcRadius`) |
+| `ATJUP_MCA_INTERIOR` | 1 | 1 = leave the radial boundary planes i = 0 and i = im-1 out of the MCA column (shared `ConvectiveAdjustment.h`, `mca_default_interior()`; 1 by default on all four since 2026-10-30, on ATURAN since 10-28, where mixing the floor plane looped against `bcRadius`; 0 = the old column) |
 | `ATJUP_THERMAL_WIND` | *follows `ATJUP_NONDIM`* | put the zonal wind's shear into thermal-wind balance at startup |
 | `ATJUP_TW_LAT_TAPER` | 10 | latitude band about the equator where the balance is not imposed |
 | `ATJUP_TW_MERIDIONAL` | 0 | also adjust v, from the zonal density gradient |
