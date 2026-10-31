@@ -264,10 +264,17 @@ void cJupiterModel::writeResults(){
 // cAtmosphereModel::save_state / load_state (FileIO_Atm.cpp), with the same file layout:
 // a 5-int header followed by the arrays, each written as im*jm contiguous rows of km doubles.
 //
-// Only the genuinely PROGNOSTIC arrays are stored. Everything else — the reaction rates,
-// diffusive and thermal mass fluxes, forces, radiation, precipitation fluxes and the latent
-// and sensible heat fields — is recomputed from these at the top of every even iteration, so
-// storing them would only add bulk and a way for the file to disagree with itself.
+// Only the genuinely PROGNOSTIC arrays were stored at first: everything else was taken to be
+// recomputed from these at the top of every even iteration. That premise was WRONG for some of
+// them (row SAT-RESTART-REPRO, satchk/restartjup_2026-10-31): a restart at 7 -> 16 or 14 -> 16
+// differed from the straight run in every output file, and loading every array (3D and 2D) from a
+// dump of the straight run made both byte-identical. Leave-one-out named the carried ones, see
+// restart_arrays_carried(): odd iterations read the fluxes, sinks and rho_mix of the last even
+// physics block, the wall hold reads vel_star every iteration, and the projection reads
+// aux_u / v / w. So magic "JUP2" = the fixed list, then the carried 3D list, then vel_star, then
+// chrom; with it the resume skips the rebuild it needed before (forced physics block,
+// initCh4LocalRho, restoreVar). A "JUP1" file still loads as before. ATJUP_RESTART_CARRIED=0
+// writes JUP1.
 //
 // p_stat is included even though it is quasi-static: it is what the buoyancy term and the
 // whole saturation chain read, and it must match the temperature field it was built with.
@@ -284,6 +291,17 @@ std::vector<Array*> cJupiterModel::restart_arrays(){
              &nh4sh, &nh4shn,
              &p_dyn, &p_dynn, &p_stat,
              &tke, &dis, &tken, &disn, &nue };
+}
+
+// Read by the next iteration before it rewrites them (see the note above restart_arrays). Each of
+// them alone breaks the byte match of a resumed run; only in JUP2 files, followed by vel_star (2D).
+std::vector<Array*> cJupiterModel::restart_arrays_carried(){
+    return { &aux_u, &aux_v, &aux_w,
+             &difflux_h2s,  &difflux_nh3,
+             &massflux_h2s, &massflux_nh3,
+             &fluxlim_nh4sh, &thermalmassflux,
+             &Q_precip, &Q_rad, &rho_mix,
+             &S_precip_h2o, &S_precip_h2o_cloud, &S_precip_h2o_ice, &S_precip_nh3, &S_precip_nh3_ice };
 }
 
 // Names parallel to restart_arrays(), so the NaN report can say WHICH field went bad.
@@ -573,17 +591,26 @@ void cJupiterModel::save_state(int iter){
     // Header: magic, grid dimensions, and the iteration this state belongs to. The grid is
     // checked on load so a restart written at a different resolution is rejected rather than
     // read as garbage.
-    const int32_t hdr[5] = { 0x4A555031 /*"JUP1"*/, im, jm, km, iter };
+    const int32_t hdr[5] = { restart_carried() ? 0x4A555032 /*"JUP2"*/ : 0x4A555031 /*"JUP1"*/, im, jm, km, iter };
     f.write(reinterpret_cast<const char*>(hdr), sizeof(hdr));
 
     std::vector<Array*> arrs = restart_arrays();
+    if(restart_carried()){ std::vector<Array*> c_ = restart_arrays_carried(); arrs.insert(arrs.end(), c_.begin(), c_.end()); }
     // ATJUP_CHROM (ChromJup.h): chrom and chromn after the fixed list, only when the tracer is on, so a
     // default restart file keeps its size and bytes.
-    if(chrom_on()){ arrs.push_back(&chrom); arrs.push_back(&chromn); }
     for(size_t a = 0; a < arrs.size(); a++)
         for(int i = 0; i < im; i++)
             for(int j = 0; j < jm; j++)
                 f.write(reinterpret_cast<const char*>(arrs[a]->x[i][j]), km * sizeof(double));
+    if(restart_carried())
+        for(int j = 0; j < jm; j++) f.write(reinterpret_cast<const char*>(vel_star.y[j]), km * sizeof(double));
+    if(chrom_on()){
+        arrs.push_back(&chrom); arrs.push_back(&chromn);
+        for(size_t a = arrs.size() - 2; a < arrs.size(); a++)
+            for(int i = 0; i < im; i++)
+                for(int j = 0; j < jm; j++)
+                    f.write(reinterpret_cast<const char*>(arrs[a]->x[i][j]), km * sizeof(double));
+    }
 
     if(!f){
         cout << "      ATJUP: save_state FAILED while writing " << fn
@@ -606,13 +633,17 @@ bool cJupiterModel::load_state(int iter){
     }
     int32_t hdr[5];
     f.read(reinterpret_cast<char*>(hdr), sizeof(hdr));
-    if(!f || hdr[0] != 0x4A555031 || hdr[1] != im || hdr[2] != jm || hdr[3] != km){
+    const bool jup2 = f && hdr[0] == 0x4A555032;
+    if(!f || (hdr[0] != 0x4A555031 && !jup2) || hdr[1] != im || hdr[2] != jm || hdr[3] != km){
         cout << "      ATJUP: load_state: bad header / grid mismatch in " << fn
              << " - running from scratch" << endl;
         return false;
     }
 
     std::vector<Array*> arrs = restart_arrays();
+    if(jup2){ std::vector<Array*> c_ = restart_arrays_carried(); arrs.insert(arrs.end(), c_.begin(), c_.end()); }
+    else cout << "      ATJUP: load_state: JUP1 file without the carried arrays - the resumed run will not"
+                 " reproduce the straight one (row SAT-RESTART-REPRO)" << endl;
     for(size_t a = 0; a < arrs.size(); a++)
         for(int i = 0; i < im; i++)
             for(int j = 0; j < jm; j++){
@@ -623,6 +654,15 @@ bool cJupiterModel::load_state(int iter){
                     return false;
                 }
             }
+
+    if(jup2){
+        for(int j = 0; j < jm; j++) f.read(reinterpret_cast<char*>(vel_star.y[j]), km * sizeof(double));
+        if(!f){
+            cout << "      ATJUP: load_state: truncated file " << fn << " - running from scratch" << endl;
+            return false;
+        }
+    }
+    restart_full = jup2;
 
     // ATJUP_CHROM: the two tracer arrays, if the file carries them; a file written without the tracer
     // starts it from 0.

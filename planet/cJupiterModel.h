@@ -1185,6 +1185,12 @@ private:
     // Binary checkpoint / restart of the full 3D state (FileIO_Jup.cpp), the ATJUP
     // counterpart of ATOM's cAtmosphereModel::save_state / load_state.
     std::vector<Array*> restart_arrays();   // the prognostic 3D fields a checkpoint serializes
+    std::vector<Array*> restart_arrays_carried();   // derived fields the next iteration reads before it rewrites them (JUP2)
+    static bool restart_carried(){          // ATJUP_RESTART_CARRIED=0: write the old JUP1 file without them
+        static const bool v = [](){ const char* e = getenv("ATJUP_RESTART_CARRIED"); return e ? atoi(e) != 0 : true; }();
+        return v;
+    }
+    bool restart_full = false;              // set by load_state for a JUP2 file: the resume needs no rebuild
     void save_state(int iter);              // dump restart_arrays() to output_path/jup_restart_<iter>.bin
     bool load_state(int iter);              // restore them; false (and run from scratch) if absent/mismatched
     bool restart_state_is_clean();          // true when every serialized field is finite everywhere

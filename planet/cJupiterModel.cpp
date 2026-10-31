@@ -750,8 +750,14 @@ void cJupiterModel::Run(){
     // resumes at restart_from_iter+1, so the parity of iter_n is preserved and the
     // "even iterations do the physics" schedule continues where it left off.
     int iter_start = 1;
+    bool resumed = false;
     if(restart_from_iter >= 0 && load_state(restart_from_iter)){
         iter_start = restart_from_iter + 1;
+        resumed = true;
+    }
+    // A JUP2 file (FileIO_Jup.cpp) holds the state as the straight run had it, carried arrays included:
+    // nothing is rebuilt, so the resumed run reproduces the straight one. A JUP1 file is rebuilt as before.
+    if(resumed && !restart_full){
         if(ch4_local_rho()) initCh4LocalRho("restart");   // the file holds the constant-density field
         if(composition())
             printf("      ATJUP: WARNING - ATJUP_COMPOSITION on a restart: the mixture constants and CH4 follow it, but"
@@ -1012,7 +1018,9 @@ void cJupiterModel::Run(){
         // rhs_nh3 / rhs_nh4sh read massflux_* directly. Force the block on the first iteration
         // after a restart, whatever its parity, so the diagnostics are rebuilt from the
         // restored state before anything consumes them.
-        if(iter_n % 2 == 0 || iter_n == iter_start){
+        // With a JUP2 file the carried arrays are restored, and this extra call would put the resumed run
+        // off the straight one; iteration 1 of a run from scratch keeps it.
+        if(iter_n % 2 == 0 || (iter_n == iter_start && !restart_full)){
 
         ub_tab ub_f0, ub_f1;
         if(ub_on) ub_f0 = ub_force(false);
