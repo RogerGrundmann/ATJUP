@@ -1083,6 +1083,7 @@ private:
     // opacity puts the photosphere of the corrected composition at ~0.26 bar / OLR 13.7 W/m2 (CP1_1000 sweep,
     // 10-26; 1 gave 0.54 bar / 22.1). ATJUP_CIA_STRENGTH=1 restores.
     static double rad_default_cia_strength(){ return 3.9; }
+    static int    rad_default_bottom(){ return 0; }    // <TAG>_RAD_BOTTOM default (shared Radiation.h; 2026-11-01, non-opaque bottom: =1 changes the state, so opt-in)
 
 public:
     static double sinthe_min(){
