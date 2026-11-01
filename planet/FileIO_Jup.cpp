@@ -39,7 +39,7 @@ void cJupiterModel::writeData(){
 
     if (paraview_panorama_vts_flag && panorama_cnt == panorama_print && !getenv("ATJUP_PANORAMA_STRIDE")) {
         paraview_panorama_vts(iter_n);
-//        paraview_sphere_vts(iter_n);
+        paraview_sphere_vts(iter_n);
     }
 
     JupiterPlotData();

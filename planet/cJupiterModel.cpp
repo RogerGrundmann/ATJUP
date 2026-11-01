@@ -433,10 +433,10 @@ void cJupiterModel::Run(){
     // Two places assume rad.z starts at 1 and must not be combined with this knob:
     //   - coord_stretching (default false) forms exp_rm = 1/(rm+1), which becomes 1/500 rather
     //     than 1/2 and silently rescales every radial derivative. Leave it off.
-    //   - paraview_sphere_vts builds Cartesian coordinates as rad.z * (unit sphere), so the
-    //     rendered shell would become a skin of relative thickness 1/500. Its only call site
-    //     (FileIO_Jup.cpp) is commented out, so nothing renders wrong today; the radial, longal,
-    //     zonal and panorama writers do not use rad.z at all.
+    //   - paraview_sphere_vts used to build Cartesian coordinates as rad.z * (unit sphere), which
+    //     would render a skin of relative thickness 1/500. Since 2026-11-01 it uses
+    //     1 + rad.z[i] - rad.z[0] (a shell 1..2 under either metric) and its call is on again; the
+    //     radial, longal, zonal and panorama writers do not use rad.z at all.
     {
         // DEFAULT SINCE 2026-07-28: on, at R_planet_km. Unset means "use Jupiter's radius";
         // ATJUP_METRIC_RADIUS=0 restores the old rad.z = 1..2 metric for A/B work.
