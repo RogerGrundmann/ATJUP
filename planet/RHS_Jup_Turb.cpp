@@ -725,7 +725,8 @@ void cJupiterModel::RHSJup(int i, int j, int k, const CellGeometry& geo){
     // number of 0.9, the standard value for shear-driven turbulence, in place of the laminar
     // 1/(sc*re). Gated by ATJUP_TURB_COUPLING (default 0 = off, bit-identical); nue is nonzero
     // only when the closure is on (turb_model != none, the default).
-    static const double turb_coupling = [](){ const char* e = getenv("ATJUP_TURB_COUPLING"); return e ? atof(e) : 0.0; }();
+    // DEFAULT 1.0 since 2026-11-01 (user: "turbulence should be default always", closure on + coupling 1; row GIANTS-TURB-FREE); =0 restores.
+    static const double turb_coupling = [](){ const char* e = getenv("ATJUP_TURB_COUPLING"); return e ? atof(e) : 1.0; }();
     constexpr double Pr_t = 0.9;
     const double nue_t   = (turb_coupling != 0.0 && std::isfinite(nue.x[i][j][k]))
                          ? turb_coupling * std::max(0.0, nue.x[i][j][k]) : 0.0;

@@ -370,7 +370,9 @@ inline void BC_Jup::bcSeaMount()
     // outside the staircase flank of this cone, so a run without the cone is the control
     // that separates "the obstacle edge makes it" from "the momentum budget makes it".
     // i_topography is still filled below, all zeros, so every consumer stays valid.
-    const bool no_mount = BCJupKnobs::env_int("ATJUP_NO_SEAMOUNT", 0) != 0;
+    // DEFAULT 1 since 2026-11-01 (user: "ATJUP no longer should assume a solid cone in the flow field"; row
+    // GIANTS-TURB-FREE): no obstacle, a smooth spherical shell; ATJUP_NO_SEAMOUNT=0 restores the cone (CONE_GEOM 2).
+    const bool no_mount = BCJupKnobs::env_int("ATJUP_NO_SEAMOUNT", 1) != 0;
 
     // ATJUP_CONE_GEOM=1 (2026-10-19, the default until 2026-10-20; 0 restores the cone below): the top
     // of the obstacle at i = 26, the level of the model's NH3-ice cloud peak (~0.69 bar, the "visible

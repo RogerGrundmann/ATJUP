@@ -222,7 +222,8 @@ instead — so it has no `ATJUP_THERMAL_MASSFLUX` knob. The other three models d
 |----------|---------|--------|
 | `ATJUP_TURB` | *unset* | override the switch that `turb_model` sets: 0 = closure off, anything else = on |
 | `ATJUP_TURB_MODEL` | *param* | override `turb_model` (`none`, `k_epsilon`, `k_omega`, `k_omega_SST`) |
-| `ATJUP_TURB_COUPLING` | 0 | feed the eddy viscosity into momentum, heat and species diffusion |
+| `ATJUP_TURB_COUPLING` | 1 | feed the eddy viscosity into momentum, heat and species diffusion; default 1 since 2026-11-01, 0 restores |
+| `ATJUP_TURB_FREE` | 1 | no wall law and no surface boundary layer in the closure: uniform background k / omega at the start, u_tau the calm-air floor everywhere, the k-epsilon / SST wall distance 'far' (free-flow form); 0 restores the ATOM surface picture (row GIANTS-TURB-FREE, 2026-11-01). ATJUP_TURB_WALL_HOLD / _WALL_OMEGA act only above an obstacle, so with NO_SEAMOUNT 1 they do nothing |
 | `ATJUP_NUE_MAX` | 1e5 | eddy-viscosity ceiling [m²/s] — a runaway guard, not the operative limiter |
 | `ATJUP_TURB_BUOY` | 0 | buoyancy production in the k equation, G_b = -(nu_t/Pr_t) N², N² = (g/T)(dT/dz + g/cp_mix) (dry); the ω equation takes it on the unstable side only (C3 = 1 / 0). Pr_t = `ATJUP_TURB_BUOY_PRT` (0.9, ATOM's pr_turb). Opt-in (row JUP-FREE-GRS, 2026-10-29): on the REF / LR6 state the whole troposphere is stable (N² 2e-5 deep to 5e-4 aloft, Ri 50-900), so the offline estimate on LR6 5000 has k decaying in ~100 % of cells; no dynamics arm run (LA1 stopped at it 260) |
 | `ATJUP_ABL_TAPER` | 0 | restore ATOM's boundary-layer taper of the eddy viscosity |
@@ -314,7 +315,7 @@ value. `ATJUP_TURB=1` set explicitly gave then what the default gives now, byte 
 | `ATJUP_PRESS_SWEEPS` | 1 | relaxation sweeps of the pressure equation per call |
 | `ATJUP_TURB_CURV` | 1 | spherical curvature terms in the turbulence production |
 | `ATJUP_COSTHE_ABS` | 0 | restore the old, non-reversing cos θ (diagnostic only) |
-| `ATJUP_NO_SEAMOUNT` | 0 | build no obstacle at all (diagnostic) |
+| `ATJUP_NO_SEAMOUNT` | 1 | build no obstacle: a smooth spherical shell, default since 2026-11-01 (no solid cone in the flow); 0 restores the cone (CONE_GEOM 2) |
 | `ATJUP_U_INIT_SCALE` | 0 | scale the prescribed **radial** branch of the initial overturning cells; 1.0 (the default until 2026-10-08) peaks at 40 m/s, 0.025 at 1 m/s. The branch is the whole of the model's velocity divergence: at 1.0 the H2O column loses 3.8 % in 224 iterations, at 0 it closes |
 | `ATJUP_RK_SCALAR_SYNC` | 2 | after the saturation adjustment, copy the condensable fields (1) and the temperature (2) into the time-level copies the Runge-Kutta step integrates from, so the adjustment's condensate and latent heat survive the step; 0 (the default until 2026-10-08) discards them every step |
 | `ATJUP_SATADJ_NEWTON` | 1 | saturation adjustment: step towards the saturation value with the Newton length 1/(1+G), G the latent-heat feedback, instead of a fixed half step; 0 (the behaviour until 2026-10-09) left half of the adjusted H2O cells and 95 % of the NH3 cells of the first call unconverged after 15 passes — all of them cold, all-ice cells starting far above their target. The knob lives in the shared `SaturationAdjustment.h`; its default is per planet and only ATJUP's is 1 |
