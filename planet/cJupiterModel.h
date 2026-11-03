@@ -1010,6 +1010,8 @@ private:
     // radial boundary planes from the interior and RK does not integrate them, so mixing them is undone every iteration.
     // <TAG>_MCA_INTERIOR=0 restores.
     static bool mca_default_interior(){ return true; }
+    // <TAG>_MCA_PHASE default (shared ConvectiveAdjustment.h): 0 here; with SATADJ_BERGERON 2 it would not act anyway.
+    static bool mca_default_phase(){ return false; }
     // Newton step of the saturation adjustment on by default (2026-10-09): see the note on
     // <TAG>_SATADJ_NEWTON in the shared SaturationAdjustment.h. ATJUP_SATADJ_NEWTON=0 restores.
     static bool satadj_default_newton(){ return true; }

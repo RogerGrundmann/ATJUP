@@ -1291,9 +1291,9 @@ void cJupiterModel::Run(){
             typedef MoistConvectiveAdjustmentJup::Tracer Tr_;
             std::vector<Gas_> gases = {
                 { "H2O", &h2o, &h2o_cloud, &h2o_ice, ep_h2o, lv_h2o, ls_h2o, t_0_h2o,
-                  C_h2o, L0_h2o, R_h2o, del_alf_h2o, del_bet_h2o, C_h2o_ice, L0_h2o_ice, del_alf_h2o_ice, del_bet_h2o_ice },
+                  C_h2o, L0_h2o, R_h2o, del_alf_h2o, del_bet_h2o, C_h2o_ice, L0_h2o_ice, del_alf_h2o_ice, del_bet_h2o_ice, t_00_h2o },
                 { "NH3", &nh3, &nh3_cloud, &nh3_ice, ep_nh3, lv_nh3, ls_nh3, t_0_nh3,
-                  C_nh3, L0_nh3, R_nh3, del_alf_nh3, del_bet_nh3, C_nh3_ice, L0_nh3_ice, del_alf_nh3_ice, del_bet_nh3_ice } };
+                  C_nh3, L0_nh3, R_nh3, del_alf_nh3, del_bet_nh3, C_nh3_ice, L0_nh3_ice, del_alf_nh3_ice, del_bet_nh3_ice, t_00_nh3 } };
             // CH4 is left out, as gas and as tracer: it cannot condense here (t_0 90.7 K, the coldest
             // cell ~103 K) and is well mixed, so mixing it changes nothing. The first probe (2026-10-26)
             // had it in while its field was still the r_mix-scaled constant density (ATJUP_CH4_LOCAL_RHO=0:
