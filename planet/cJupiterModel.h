@@ -987,6 +987,8 @@ private:
     // ATJUP_BC_BOTTOM_FORM (shared BoundaryConditions.h, 2026-11-05): 0 = the bottom plane i = 0 takes
     // the radial form above, as before. 1 / 2 / 3 = copy / Neumann / cubic there (ATSAT ships 3).
     static int bc_default_bottom_form(){ return 0; }
+    // <TAG>_TURB_BUOY default (shared Turbulence.h): 0 = no buoyancy term (=1 dry, =3 = =1 here: no turb_moist_gas overload).
+    static int turb_default_buoy(){ return 0; }
     static int bc_pole_open_rows(){ return 2; }   // rows next to each pole that RungeKutta does not integrate; bcTheta fills them (<TAG>_BC_POLE_FILL, default 1)
 
     std::vector<Array*> bc_fields_radius();
