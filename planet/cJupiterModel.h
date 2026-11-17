@@ -1017,6 +1017,8 @@ private:
     static bool mca_default_interior(){ return true; }
     // <TAG>_MCA_PHASE default (shared ConvectiveAdjustment.h): 0 here; with SATADJ_BERGERON 2 it would not act anyway.
     static bool mca_default_phase(){ return false; }
+    // <TAG>_MCA_SMOOTH default (shared ConvectiveAdjustment.h, hook 2026-11-17): 0 = off, as before.
+    static int mca_default_smooth(){ return 0; }
     // Newton step of the saturation adjustment on by default (2026-10-09): see the note on
     // <TAG>_SATADJ_NEWTON in the shared SaturationAdjustment.h. ATJUP_SATADJ_NEWTON=0 restores.
     static bool satadj_default_newton(){ return true; }
