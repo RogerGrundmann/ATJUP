@@ -864,11 +864,14 @@ public:
         return v; }
     std::vector<double> cell_vbar0, cell_ubar0;   // [i*jm + j], empty unless ATJUP_CELL_HOLD
     void initCellHold();
-    // ATJUP_VORTEX=1 (2026-10-22, default 0): a geostrophically balanced elliptical anticyclone on top of
-    // the balanced background -- the free Great Red Spot, no solid body (use with ATJUP_NO_SEAMOUNT=1).
+    // ATJUP_VORTEX=1 (2026-10-22; DEFAULT 1 since 2026-11-20, user: "the GRS switch should always be on";
+    // =0 restores the zonally symmetric start): a geostrophically balanced elliptical anticyclone on top of
+    // the balanced background -- the free Great Red Spot, no solid body (ATJUP_NO_SEAMOUNT, default 1).
+    // ATJUP_V_MASSBAL_ZONAL follows it. The runs that closed JUP-FREE-GRS (LR6) also set HYDRO_SPLIT,
+    // VORTEX_THERMAL, VORTEX_BASE_I=26, VORTEX_BOTTOM_I=18 and PRESS_LINE, which stay opt-in.
     // See initVortex() in InitValues_Jup.cpp for the knobs and the balance.
     static bool vortex(){
-        static const bool v = [](){ const char* e = getenv("ATJUP_VORTEX"); return e && atoi(e) != 0; }();
+        static const bool v = [](){ const char* e = getenv("ATJUP_VORTEX"); return e ? atoi(e) != 0 : true; }();
         return v; }
     void initVortex();
     // ATJUP_U_INIT_CONT=<n> (DEFAULT 2 since 2026-10-18 on the user's word, 0 restores): the initial radial velocity from the model's own discrete
