@@ -58,6 +58,7 @@ namespace{
 // so it cannot be forward-declared as one. The template is declared here and the alias formed
 // below; a pointer to a specialization needs neither complete.
 template<class M> class PressureSolver;
+template<class M> class ProcessDiag;               // <TAG>_PROC_DIAG (shared ProcessDiag.h)
 class cJupiterModel;
 typedef PressureSolver<cJupiterModel> PressureSolverJup;
 
@@ -74,6 +75,7 @@ class cJupiterModel{
     template<class M> friend class Radiation;
     template<class M> friend class Precipitation;
     template<class M> friend class Turbulence;
+    template<class M> friend class ProcessDiag;
     template<class M> friend class ConvectiveAdjustment;
     template<class M> friend class MoistConvectiveAdjustment;
     template<class M> friend class Reporting;

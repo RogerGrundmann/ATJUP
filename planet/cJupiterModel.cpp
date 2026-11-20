@@ -27,6 +27,7 @@
 #include "TurbulenceJup.h"
 #include "ConvectiveAdjustmentJup.h"
 #include "ThermalWindJup.h"
+#include "ProcessDiag.h"     // ATJUP_PROC_DIAG, output-only (process fields), SHARED
 
 #include <cstdlib>   // getenv/atof/atoi for the Shapiro velocity-filter knobs
 
@@ -998,6 +999,14 @@ void cJupiterModel::Run(){
         qb_last = qb_first = qb_lev(false);
     }
 
+    // ATJUP_PROC_DIAG (shared ProcessDiag.h), output-only, default off. The condensable gases with their
+    // precipitation arrays, and the density rhs_t divides Q_precip by (local by default, ATJUP_PRECIP_RHO_LOCAL).
+    static const bool proc_rho_local_ = [](){ const char* e = getenv("ATJUP_PRECIP_RHO_LOCAL"); return e ? atoi(e) != 0 : true; }();
+    ProcessDiag<cJupiterModel> proc_(*this, {
+        { "H2O", &h2o, &h2o_cloud, &h2o_ice, &P_rain, &P_snow, &P_graupel, &S_precip_h2o, &S_precip_h2o_cloud, &S_precip_h2o_ice },
+        { "NH3", &nh3, &nh3_cloud, &nh3_ice, &P_nh3_rain, &P_nh3_snow, &P_nh3_graupel, &S_precip_nh3, &S_precip_nh3_cloud, &S_precip_nh3_ice },
+        { "CH4", &ch4, &ch4_cloud, &ch4_ice, &P_ch4_rain, &P_ch4_snow, &P_ch4_graupel, &S_precip_ch4, &S_precip_ch4_cloud, &S_precip_ch4_ice } },
+        [this](int i, int j, int k) -> double { return proc_rho_local_ ? rho_at(i, j, k) : r_mix; });
     for(iter_n = iter_start; iter_n <= nm; iter_n++){
 
         auto begin = std::chrono::high_resolution_clock::now();
@@ -1047,6 +1056,7 @@ void cJupiterModel::Run(){
         if(radiation_enabled()) RadiationJup(*this).run();
         cwb_mark(CW_PRE); tb_mark(CW_PRE); qb_mark(CW_PRE);
 
+        proc_.satadj_begin();
         SaturationAdjustmentJup(*this).run("H2O",
             t_0_h2o, t_00_h2o,
             ep_h2o, lv_h2o, ls_h2o,
@@ -1070,12 +1080,14 @@ void cJupiterModel::Run(){
             ch4, ch4_cloud, ch4_ice);
 
         // ATJUP_NH4SH_EQ: the NH4SH equilibrium adjustment (ChemistryJup.h), on the adjusted NH3.
+        proc_.satadj_end(); proc_.chem_begin();
         if(ChemistryJup::nh4sh_eq()) ChemistryJup(*this).EquilibriumNH4SH("loop");
+        proc_.chem_end();
 
         // Must stay AFTER the SaturationAdjustmentJup calls: its condensate depletion is applied
         // in place, and running it before them would let the adjustment simply undo the removal.
         cwb_mark(CW_SATADJ_OTHER); tb_mark(CW_SATADJ_OTHER); qb_mark(CW_SATADJ_OTHER);
-        if(precip_enabled()) PrecipitationJup(*this).run();   // H2O+NH3 3-cat + NH4SH settling
+        if(precip_enabled()){ proc_.precip_begin(); PrecipitationJup(*this).run(); proc_.precip_end(); }   // H2O+NH3 3-cat + NH4SH settling
         cwb_mark(CW_PRECIP); tb_mark(CW_PRECIP); qb_mark(CW_PRECIP);
 
         // ATJUP_RK_SCALAR_SYNC=<0|1|2> (2026-10-08). DEFAULT 2 SINCE 2026-10-08 (was 0), at the user's
@@ -1304,7 +1316,9 @@ void cJupiterModel::Run(){
             const double L_nh4sh_ = ChemistryJup::nh4sh_eq() ? ChemistryJup::nh4sh_formation_heat() : 0.0;
             std::vector<Tr_> tracers = { { "H2S", &h2s, ep_h2s, false, 0.0 }, { "NH4SH", &nh4sh, 0.0, true, L_nh4sh_ },
                                          { "chrom", &chrom, 0.0, false, 0.0 } };
+            proc_.mca_begin();
             MoistConvectiveAdjustmentJup(*this, gases, tracers).run();
+            proc_.mca_end();
         }
 
 //        RungeKuttaJup();
@@ -1484,6 +1498,7 @@ void cJupiterModel::Run(){
         if(cloudview_stride() > 0 ? (iter_n % cloudview_stride() == 0)
            : (cloudview_stride() < 0 && paraview_panorama_vts_flag && iter_n % panorama_stride() == 0))
             paraview_cloudview(iter_n);
+        proc_.iteration_done(iter_n);                    // ATJUP_PROC_DIAG: write + reset at its stride
 
         if(panorama_cnt == panorama_print) panorama_cnt = 1;
 
