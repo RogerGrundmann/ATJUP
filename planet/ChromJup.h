@@ -21,6 +21,14 @@
  *              i ~27-28, the top of the NH3 ice deck, and deeper over the vortex (less vapour above it).
  *              A fixed decay length (the first version, H_uv 10 km) let the NH3 that grows with depth
  *              win: the tracer peaked at i 26, under the cloud top.
+ *              ATJUP_CHROM_HAZE_P1=<bar> (2026-11-21, default 0 = off, byte-identical; ported from ATSAT 69e9583):
+ *              times exp(-tau_haze), the UV optical depth of a photochemical HAZE with a uniform mixing ratio,
+ *              tau_haze = min(p_up, p_base) / p1, p_up the static pressure at the cell's upper face (p_stat of
+ *              the cell above; the lid's own), p1 the pressure where tau_haze = 1. ATJUP_CHROM_HAZE_PBASE=<bar>
+ *              (default 0 = no base) ends the haze there. Jupiter's chromophore sits in / just above the upper
+ *              tropospheric haze at ~0.2 bar (Braude et al. 2020). On Saturn (satchk/chromhaze_2026-11-21) the
+ *              haze lifted the production peak only up to the top of the NH3 ice (the source above ~1 bar is
+ *              the ice) and cut the amount 7-35x; it cannot change the latitude pattern (uniform haze).
  *     J        ATJUP_CHROM_J, effective production rate [1/s], default 1e-6
  *     tau      ATJUP_CHROM_TAU [days of 86400 s], default 30
  *
@@ -43,24 +51,27 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <string>
 
 namespace JupChrom {
-    struct Par { double J, N_uv, tau_s; int src; };
+    struct Par { double J, N_uv, tau_s; int src; double haze_p1, haze_pbase; };
     inline const Par& par(){
         static const Par p = [](){
             auto d = [](const char* n, double v){ const char* e = getenv(n); return e ? atof(e) : v; };
             return Par{ d("ATJUP_CHROM_J", 1.0e-6), d("ATJUP_CHROM_NUV", 3.0e-4), d("ATJUP_CHROM_TAU", 30.0) * 86400.0,
-                        (int)d("ATJUP_CHROM_SRC", 1.0) };
+                        (int)d("ATJUP_CHROM_SRC", 1.0), d("ATJUP_CHROM_HAZE_P1", 0.0), d("ATJUP_CHROM_HAZE_PBASE", 0.0) };
         }();
         return p;
     }
 }
 
 // chrom_uv = exp(-N_above / N_uv), N_above the NH3 vapour column from the upper face of the cell to the lid
-// (the lid layer im-1 has no thickness, as in every column sum here).
+// (the lid layer im-1 has no thickness, as in every column sum here); with ATJUP_CHROM_HAZE_P1 > 0 also
+// times exp(-min(p_up, p_base) / p1), p_up = p_stat of the cell above (bar).
 inline void cJupiterModel::chromUV(){
     if(!chrom_on()) return;
     const double n_uv = JupChrom::par().N_uv;
+    const double p1 = JupChrom::par().haze_p1, pb = JupChrom::par().haze_pbase;
     #pragma omp parallel for collapse(2) schedule(static)
     for(int j = 0; j < jm; j++){
         for(int k = 0; k < km; k++){
@@ -68,6 +79,11 @@ inline void cJupiterModel::chromUV(){
             chrom_uv.x[im-1][j][k] = 1.0;
             for(int i = im - 2; i >= 0; i--){
                 chrom_uv.x[i][j][k] = n_uv > 0.0 ? std::exp(-n_above / n_uv) : 1.0;
+                if(p1 > 0.0){
+                    double p_up = std::max(0.0, p_stat.x[i+1][j][k]);
+                    if(pb > 0.0) p_up = std::min(p_up, pb);
+                    chrom_uv.x[i][j][k] *= std::exp(-p_up / p1);
+                }
                 n_above += std::max(0.0, nh3.x[i][j][k]) * layer_thickness_m(i);
             }
         }
@@ -88,4 +104,7 @@ inline void cJupiterModel::chromInfo(){
     const JupChrom::Par& p = JupChrom::par();
     printf("      ATJUP: ATJUP_CHROM on -- chromophore tracer: J %.3e 1/s, N_uv %.3e kg/m2 (NH3 vapour self-shielding), tau %.1f d, source %s\n",
            p.J, p.N_uv, p.tau_s / 86400.0, p.src ? "NH3 vapour + cloud + ice" : "NH3 vapour");
+    if(p.haze_p1 > 0.0)
+        printf("      ATJUP: ATJUP_CHROM_HAZE_P1 %.3f bar -- UV haze tau = min(p, %s) / p1 in A_uv\n",
+               p.haze_p1, p.haze_pbase > 0.0 ? (std::to_string(p.haze_pbase) + " bar").c_str() : "no base");
 }
