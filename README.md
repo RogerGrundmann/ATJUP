@@ -1,14 +1,15 @@
 # ATJUP
 
 Jupiter atmospheric general circulation model based on the numerical framework of the ATOM climate model.
-Solves the 3-D Navier-Stokes equations in a spherical shell extending from the water-cloud level
+Solves the 3-D turbulent Navier-Stokes equations in a spherical shell extending from the water-cloud level
 (p = 10 MPa, T = 350 K) to the upper troposphere (p = 10 kPa, T = 110 K), including full cloud
 microphysics and chemistry for the H₂/He atmosphere of Jupiter.
 
 As interested in Computational Fluid Dynamics I looked with my eyes at the statement of planetologist that Jupiters 
 Great Red Spot was a storm and thought about a fixed icy body just below the top of the atmosphere which could cause 
 a wake flow behind such a body and which could fix it at its position. It looks that the code could provide such a 
-different view on Jupiters Great Red Spot.
+different view on Jupiters Great Red Spot. Parallel to that approach, a prescribed artificial vortex can float around 
+its initial position. Both approaches are reached by a switch.
 
 For all relevant data concerning planet Jupiter and its atmosphere the book Plantetary Sciences 
 by Imke de Pater and Jack J. Lissauer was inevitable.
@@ -145,11 +146,11 @@ Two build behaviours are worth knowing, both of which cause silently stale binar
 
 ### Shared physics headers
 
-Eleven headers in `planet/` are **byte-identical across ATJUP, ATSAT, ATNEPT and ATURAN**:
+Thirteen headers in `planet/` are **byte-identical across ATJUP, ATSAT, ATNEPT and ATURAN**:
 
 ```
-ATPhys.h  BoundaryConditions.h  ConvectiveAdjustment.h  FluxLimiter.h  ParaViewWriter.h
-Precipitation.h  PressureSolver.h  Radiation.h  Reporting.h  SaturationAdjustment.h  Turbulence.h
+ATPhys.h  BoundaryConditions.h  ConvectiveAdjustment.h  FluxLimiter.h  JetRef.h  ParaViewWriter.h
+Precipitation.h  PressureSolver.h  ProcessDiag.h  Radiation.h  Reporting.h  SaturationAdjustment.h  Turbulence.h
 ```
 
 There is no submodule and no symlink holding them together — Synology Drive has silently reverted
@@ -322,6 +323,7 @@ value. `ATJUP_TURB=1` set explicitly gave then what the default gives now, byte 
 | `ATJUP_COSTHE_ABS` | 0 | restore the old, non-reversing cos θ (diagnostic only) |
 | `ATJUP_NO_SEAMOUNT` | 1 | build no obstacle: a smooth spherical shell, default since 2026-11-01 (no solid cone in the flow); 0 restores the cone (CONE_GEOM 2) |
 | `ATJUP_U_INIT_SCALE` | 0 | scale the prescribed **radial** branch of the initial overturning cells; 1.0 (the default until 2026-10-08) peaks at 40 m/s, 0.025 at 1 m/s. The branch is the whole of the model's velocity divergence: at 1.0 the H2O column loses 3.8 % in 224 iterations, at 0 it closes |
+| `ATJUP_JET_REF` | **0** (2026-11-23; SHARED `planet/JetRef.h`; row GIANTS-ZONAL-WIND) | =1 rebuilds every latitude row of the prescribed zonal wind w from an observed cloud-level profile instead of the node table (which was read off de Pater & Lissauer Figs. 4.31 / 4.32 and is off on every giant: `literature/zonalwind_compare.png`). Tropopause value per 1-deg planetocentric row from `JetRef.h` (Jupiter: HST/OPAL 2018, Schmider et al. 2024 Table 2; Saturn: Cassini ISS continuum 350-500 mbar, Garcia-Melendo et al. 2011; Uranus: Sromovsky et al. 2015 Table 7; Neptune: Voyager fit of Sromovsky et al. 1993), the model's own vertical shape through `init_v_or_w`, bottom value 0 on every row; applied before the u_0 division. Byte check `satchk/jetref_2026-11-23/check.out` (unset / =0 = head); 1000-it pair in the same folder. |
 | `ATJUP_RK_SCALAR_SYNC` | 2 | after the saturation adjustment, copy the condensable fields (1) and the temperature (2) into the time-level copies the Runge-Kutta step integrates from, so the adjustment's condensate and latent heat survive the step; 0 (the default until 2026-10-08) discards them every step |
 | `ATJUP_SATADJ_NEWTON` | 1 | saturation adjustment: step towards the saturation value with the Newton length 1/(1+G), G the latent-heat feedback, instead of a fixed half step; 0 (the behaviour until 2026-10-09) left half of the adjusted H2O cells and 95 % of the NH3 cells of the first call unconverged after 15 passes — all of them cold, all-ice cells starting far above their target. The knob lives in the shared `SaturationAdjustment.h`; its default is per planet and only ATJUP's is 1 |
 | `ATJUP_SATADJ_CONSERVE` | 1 | saturation adjustment: ice above the melting point melts into the liquid and cools the cell by the latent heat of fusion, and an evaporation step takes from the phase that is there; 0 (the behaviour until 2026-10-09) deletes that ice, a sink of water. Shared `SaturationAdjustment.h`, per-planet default, only ATJUP's is 1 |
