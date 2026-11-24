@@ -1037,6 +1037,8 @@ private:
     // NH3 (and every gas) below t_0 to ice saturation only, empty cells nucleating at ice saturation
     // (2026-10-25, user): <TAG>_SATADJ_BERGERON in the shared SaturationAdjustment.h. ATJUP_SATADJ_BERGERON=0 restores.
     static int satadj_default_bergeron(){ return 2; }
+    // <TAG>_SATADJ_FREEZE of the shared SaturationAdjustment.h (2026-11-24): off here (ATSAT only, row GIANTS-PHASE-OUTSIDE).
+    static bool satadj_default_freeze(){ return false; }
     // Shared Precipitation.h: the factor on its five rate coefficients. They were set for this
     // planet, so 1. ATJUP_PRECIP_SCALE overrides.
     static double precip_rate_scale(){ return 1.0; }
