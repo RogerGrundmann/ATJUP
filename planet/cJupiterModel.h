@@ -30,6 +30,7 @@
 #include "PythonStream.h"
 #include "Utils.h"
 #include "BoundaryConditions.h"   // BCForm, and the shared BC template
+#include "CpH2.h"                // <TAG>_CP_H2 / _CP_GAS (shared; refused here, see cp_lapse_supported)
 #include "Config.h"
 
 // Forward declarations — full definitions included at the bottom of this file
@@ -75,6 +76,7 @@ class cJupiterModel{
     template<class M> friend class Radiation;
     template<class M> friend class Precipitation;
     template<class M> friend class Turbulence;
+    template<class M> friend struct CpH2::Lapse;      // <TAG>_CP_H2 / _CP_GAS (shared CpH2.h)
     template<class M> friend class ProcessDiag;
     template<class M> friend class ConvectiveAdjustment;
     template<class M> friend class MoistConvectiveAdjustment;
@@ -82,6 +84,10 @@ class cJupiterModel{
     template<class M> friend class ParaViewWriter;
 
 public:
+    // <TAG>_CP_H2 / <TAG>_CP_GAS of the shared CpH2.h (2026-11-24, row GIANTS-ICE-TP): the cp(T) set-up adiabat (1-bar anchor)
+    // and the hydrostatic p it needs are ported to ATSAT only; here the knobs are refused with a message and stay 0.
+    static bool cp_lapse_supported(){ return false; }
+    static bool cp_lapse_in_dynamics(){ return true; }    // CpH2.h: cp(T) also in the RHS / MCA / turbulence once ported
 
     const char *filename;
 
