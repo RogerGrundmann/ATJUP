@@ -88,6 +88,9 @@ public:
     // and the hydrostatic p it needs are ported to ATSAT only; here the knobs are refused with a message and stay 0.
     static bool cp_lapse_supported(){ return false; }
     static bool cp_lapse_in_dynamics(){ return true; }    // CpH2.h: cp(T) also in the RHS / MCA / turbulence once ported
+    // defaults of <TAG>_CP_H2 / <TAG>_CP_GAS (CpH2.h; 2026-11-24, user: "make the cp(T) knobs default on all four"; =0 restores) -- 0 here: set-up not ported
+    static int cp_h2_default(){ return 0; }
+    static bool cp_gas_default(){ return false; }
 
     const char *filename;
 
