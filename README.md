@@ -100,6 +100,12 @@ reaches that base therefore depends on where the boundary cuts the vertical stru
 obstacle it lies inside the NH₄SH stability band, so the crystals dominate there while H₂O dominates
 elsewhere. Read the per-species fields, not only the total.
 
+### Cloud profiles vs Atreya
+
+![Cloud and ice densities vs Atreya's equilibrium cloud model](doc/overlay_Jupiter_J1_1000.png)
+
+Jupiter, arm J1 (`ATJUP_JET_REF` 1 = the default, `satchk/jetref_2026-11-23`) at iteration 1000, against Atreya & Wong 2005 Fig. 2 (1x solar). J0 and the bottom-form pair F0 / F3 at 1000 look the same. The 45 / 75 deg panels are empty because on this meridian (k = 180) there is no NH3 / H2O condensate at those two latitudes at 1000 (there is at 60 N and 45 S). Condensate densities against temperature (left axis) and pressure (right axis) at three latitudes; liquid solid, ice dashed, NH4SH dotted; Atreya's ECCM shaded by pressure (bar = base) and as long dashes by temperature (x = base). Made with `python3 -I tools/cloudprofile_pv.py <zonal.vtk> --out <file.png>` (`--atreya <case>|none`, `--lat 0,45,75`); the set for all four giants is in `literature/cloudprofile_compare/` (outside the repo).
+
 ---
 
 ## Repository Layout
