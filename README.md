@@ -106,6 +106,10 @@ elsewhere. Read the per-species fields, not only the total.
 
 Jupiter, arm J1 (`ATJUP_JET_REF` 1 = the default, `satchk/jetref_2026-11-23`) at iteration 1000, against Atreya & Wong 2005 Fig. 2 (1x solar). J0 and the bottom-form pair F0 / F3 at 1000 look the same. The 45 / 75 deg panels are empty because on this meridian (k = 180) there is no NH3 / H2O condensate at those two latitudes at 1000 (there is at 60 N and 45 S). Condensate densities against temperature (left axis) and pressure (right axis) at three latitudes; liquid solid, ice dashed, NH4SH dotted; Atreya's ECCM shaded by pressure (bar = base) and as long dashes by temperature (x = base). Made with `python3 -I tools/cloudprofile_pv.py <zonal.vtk> --out <file.png>` (`--atreya <case>|none`, `--lat 0,45,75`); the set for all four giants is in `literature/cloudprofile_compare/` (outside the repo).
 
+![Cloud decks and stream lines on the sphere](https://raw.githubusercontent.com/RogerGrundmann/ATJUP/ATJUP/doc/Jupiter_cloud_streamlines.jpeg)
+
+Jupiter: H2O ice / cloud, NH3 ice and NH4SH (ParaView screenshot of a `Jupiter_sphere_<n>.vts`, 2026-11-25) on the sphere (`<Planet>_sphere_<n>.vts`, shells exaggerated to 1..2 radii), each species as the region above 10 % of its maximum, cut along the 90 / 270 deg meridians, one colour bar per species; white: Velocity stream lines. Made with `python3 -I literature/sphere_screens.py <sphere.vts> <Planet>` (outside the repo).
+
 ---
 
 ## Repository Layout
