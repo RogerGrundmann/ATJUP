@@ -15,10 +15,10 @@ A 3-D circulation model of **Jupiter's** atmosphere with clouds, chemistry and t
 | Uranus | [ATURAN](https://github.com/RogerGrundmann/ATURAN) | 225 km, ~17 bar to 0.10-0.14 bar | CH₄, H₂S, NH₄SH, H₂O | the 98° tilt and the equator-to-pole temperature puzzle |
 | Neptune | [ATNEPT](https://github.com/RogerGrundmann/ATNEPT) | 200 km, ~32 bar to 0.03-0.05 bar | CH₄, H₂S, NH₄SH, H₂O | the fastest winds in the Solar System, driven by internal heat |
 
-Jupiter atmospheric general circulation model based on the numerical framework of the ATOM climate model.
+Jupiter atmospheric general circulation model based on the numerical framework of the [ATOM climate model](https://github.com/atom-model/ATOM).
 Solves the 3-D turbulent Navier-Stokes equations in a spherical shell extending from the water-cloud level
 (p = 10 MPa, T = 350 K) to the upper troposphere (p = 10 kPa, T = 110 K), including full cloud
-microphysics and chemistry for the H₂/He atmosphere of Jupiter.
+microphysics and chemistry for the H₂/He atmosphere of Jupiter. Its precipitation scheme -- the COSMO three-category rain / snow / graupel scheme in the shared `Precipitation.h` -- comes from [ATOM_Precipitation](https://github.com/RogerGrundmann/ATOM_Precipitation), a development version of ATOM.
 
 As interested in Computational Fluid Dynamics I looked with my eyes at the statement of planetologist that Jupiters 
 Great Red Spot was a storm and thought about a fixed icy body just below the top of the atmosphere which could cause 
