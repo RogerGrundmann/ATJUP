@@ -63,8 +63,9 @@ by Imke de Pater and Jack J. Lissauer was inevitable.
   treatment at the polar singularity
 
 The three modules below are **on by default** (microphysics since 2026-07-31, radiation and
-turbulence since `8df7626`), but none of their coupling knobs is, so they fill their own fields
-without feeding the temperature or momentum equations. See *Optional modules*.
+turbulence since `8df7626`), and so are their coupling knobs (precipitation since 2026-07-31,
+radiation since 2026-10-27, turbulence since 2026-11-01), so they feed the temperature, momentum
+and species equations. See *Optional modules*.
 
 - **Microphysics:** three-category (rain / snow / graupel) COSMO scheme, run independently for H₂O and
   NH₃, plus Stokes sedimentation of NH₄SH crystals within their stability band. Phase changes at the

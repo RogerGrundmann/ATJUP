@@ -4,10 +4,11 @@
 
 Moved verbatim from README.md on 2026-11-26 (the README keeps a short summary of this section). A new knob gets its row HERE, not in the README.
 
-The three modules run by default; their **coupling** knobs are off by default, so a stock run
-computes `Q_rad`, `Q_precip` and the eddy viscosity without feeding them back into the temperature
-or momentum equations (the microphysics does remove the condensate it converts). Set a module's
-variable to 0 to switch it off.
+The three modules run by default, and so do their **coupling** knobs: `ATJUP_RAD_COUPLING` 1
+(since 2026-10-27), `ATJUP_PRECIP_COUPLING` 1 (since 2026-07-31) and `ATJUP_TURB_COUPLING` 1 (since
+2026-11-01), so a stock run feeds `Q_rad`, `Q_precip` and the eddy viscosity back into the
+temperature, momentum and species equations. Set a module's variable to 0 to switch it off, or its
+coupling knob to 0 to keep it diagnostic-only.
 
 **Radiation**
 
@@ -36,7 +37,7 @@ instead — so it has no `ATJUP_THERMAL_MASSFLUX` knob. The other three models d
 | Variable | Default | Effect |
 |----------|---------|--------|
 | `ATJUP_PRECIP` | 1 | three-category microphysics + NH₄SH sedimentation |
-| `ATJUP_PRECIP_COUPLING` | 0 | feed the latent heat `Q_precip` into the temperature equation |
+| `ATJUP_PRECIP_COUPLING` | 1 (since 2026-07-31) | feed the latent heat `Q_precip` into the temperature equation, together with the condensate depletion it reports (`S_precip_*`); 0 = diagnostic only |
 | `ATJUP_CH4_LOCAL_RHO` | 1 (since 2026-10-26) | CH4 as a fixed mass fraction of the local density, at init and after a restart load; 0 restores the constant-density field (0.19 kg/m³ everywhere, a mass fraction above 1 over ~80 km) |
 | `ATJUP_T_DIFF_SCALE` | 0.01 (since 2026-10-26) | factor on the laminar heat diffusivity 1/(re pr) of the temperature equation (the eddy part is untouched), the counterpart of `ATJUP_SPECIES_DIFF_SCALE`; at 1 (the old value, ~2e4 m²/s) the corrected state drifts -11 K at the bottom and +5.5 K aloft per 7000 s and the NH3 ice deck evaporates |
 | `ATJUP_COMPOSITION` | 1 (since 2026-10-26) | the observed composition: mass shares from He/H₂ 0.157, CH₄/H₂ 2.37·10⁻³, H₂S/H₂ 8.9·10⁻⁵ (Galileo), H₂O at 2.5× solar O/H, NH₃ 362 ppm (Juno), r_mix held; ep from the mixture, p_stat with R_mix; H₂O / NH₃ / H₂S start as ρ_local × min(deep share, cold trap), no condensate. From scratch only — on a restart H₂O, H₂S and p_stat keep the file's state |
